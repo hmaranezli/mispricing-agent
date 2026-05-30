@@ -1,122 +1,146 @@
 """
-council/scout.py — KATMAN 1: Kesif Ajani (GERCEK mispricing tanimi).
-Edge SADECE su durumda gecerli:
-  - Hyperliquid son N dk'da BELIRGIN yon gosterdi (guclu hareket)
-  - Polymarket o yonu HENUZ fiyatlamadi (ters tarafta veya notrde)
-Iki kaynak ayni yonu soyluyorsa -> edge YOK (hemfikirler).
-Uydurma katsayi yok, order yok.
+council/scout.py — KATMAN 1: Keşif Ajanı.
+
+Edge tanımı (matematiksel):
+  fair_yes = P(fiyat > referans | şimdiki, kalan_süre)  [Black-Scholes binary]
+  YES ucuz → fair_yes - best_ask > MIN_EDGE_PCT
+  NO ucuz  → best_bid - fair_yes > MIN_EDGE_PCT
+
+Referans fiyat: PM penceresinin eventStartTime'ındaki HL fiyatı.
+PM fiyatı: Gamma CLOB'dan bestAsk/bestBid (gerçek zamanlı).
 """
 import asyncio
 import sys
 import os
-import re
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data.shortterm import find_shortterm, _parse
-from data.hl_candles import fetch_candles, realized_move
+from data.shortterm import find_shortterm, parse_market_window
+from data.hl_candles import price_at_timestamp, current_price
+from data.fair_value import fair_yes
 import config
 
-# Hyperliquid hareketi bu esigi gecmezse "yon yok" sayilir (gurultu).
-STRONG_MOVE_PCT = 0.10   # son penceede en az %0.10 hareket = belirgin yon
+MIN_SECONDS = 60   # Çözüme bu kadar saniyeden az kalmışsa atla
 
 
-def _asset_of(q):
-    q = (q or "").lower()
+def _asset_of(question) -> str | None:
+    q = (question or "").lower()
     if "bitcoin" in q or "btc" in q:
         return "BTC"
     if "ethereum" in q or "eth" in q:
         return "ETH"
+    if "solana" in q or "sol" in q:
+        return "SOL"
+    if "ripple" in q or "xrp" in q:
+        return "XRP"
     return None
 
 
-def _interval_minutes(slug):
-    m = re.search(r"-(\d+)m-", slug or "")
-    return int(m.group(1)) if m else None
+def _edge_signal(fair: float, best_ask: float, best_bid: float) -> dict | None:
+    """
+    fair: fair_yes değeri [0,1]
+    best_ask: YES almak için ödeyeceğimiz fiyat
+    best_bid: YES satmak için alacağımız fiyat
+
+    Edge hesabı:
+      YES edge = fair - best_ask         (YES ucuzsa pozitif)
+      NO edge  = best_bid - fair         (NO ucuzsa pozitif; fair_no=1-fair, no_ask=1-best_bid)
+
+    Returns None (edge yok/yetersiz) veya {"action": "YES"|"NO", "edge": float}
+    """
+    yes_edge = fair - best_ask
+    no_edge  = best_bid - fair
+
+    if yes_edge >= config.MIN_EDGE_PCT:
+        return {"action": "YES", "edge": yes_edge}
+    if no_edge >= config.MIN_EDGE_PCT:
+        return {"action": "NO", "edge": no_edge}
+    return None
 
 
-async def scan_edges():
+async def _process_market(m: dict) -> dict | None:
+    """Tek marketi değerlendirir. Edge yoksa veya veri eksikse None."""
+    asset = _asset_of(m.get("question", ""))
+    if asset is None:
+        return None
+
+    window = parse_market_window(m)
+    if window is None:
+        return None
+
+    if window["neg_risk"]:
+        return None
+
+    if window["seconds_remaining"] < MIN_SECONDS:
+        return None
+
+    if window["best_ask"] <= 0 or window["best_bid"] <= 0:
+        return None
+
+    try:
+        ref_price = await price_at_timestamp(asset, window["start_ms"])
+        cur       = await current_price(asset)
+    except (ValueError, Exception):
+        return None
+
+    fair = fair_yes(cur, ref_price, window["seconds_remaining"], asset)
+    signal = _edge_signal(fair, window["best_ask"], window["best_bid"])
+    if signal is None:
+        return None
+
+    return {
+        "question":          (m.get("question") or "?")[:60],
+        "asset":             asset,
+        "fair_value":        round(fair, 4),
+        "ref_price":         ref_price,
+        "cur_price":         cur,
+        "best_ask":          window["best_ask"],
+        "best_bid":          window["best_bid"],
+        "seconds_remaining": window["seconds_remaining"],
+        "edge":              round(signal["edge"], 4),
+        "action":            signal["action"],
+        "neg_risk":          window["neg_risk"],
+    }
+
+
+async def scan_edges() -> list[dict]:
+    """Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner."""
     markets = await find_shortterm()
     if not markets:
-        print("Polymarket marketi gelmedi.")
         return []
 
-    candles = {}
-    for asset in ("BTC", "ETH"):
-        candles[asset] = await fetch_candles(asset, "1m", 20)
+    tasks = [_process_market(m) for m in markets]
+    results = await asyncio.gather(*tasks)
 
-    findings = []
-    for m in markets:
-        asset = _asset_of(m.get("question"))
-        if asset not in candles or not candles[asset]:
-            continue
-        iv = _interval_minutes(m.get("slug"))
-        if iv is None:
-            continue
-        prices = _parse(m.get("outcomePrices"))
-        if not prices or len(prices) < 2:
-            continue
-        pm_yes = float(prices[0])
-
-        # FILTRE 1: cozulmus market (kenarlar) -> ele
-        if pm_yes <= 0.10 or pm_yes >= 0.90:
-            continue
-
-        move = realized_move(candles[asset], iv)
-        if move is None:
-            continue
-
-        # FILTRE 2: Hyperliquid belirgin yon gostermiyorsa -> edge yok
-        if abs(move) < STRONG_MOVE_PCT:
-            continue
-
-        hl_direction = "UP" if move > 0 else "DOWN"
-
-        # GERCEK mispricing testi: HL yonu ile PM fiyati ZIT mi?
-        # HL UP diyor ama PM hala ucuz (yes<0.50) -> YES AL firsati
-        # HL DOWN diyor ama PM hala pahali (yes>0.50) -> NO AL firsati
-        edge = None
-        action = None
-        if hl_direction == "UP" and pm_yes < 0.50:
-            edge = 0.50 - pm_yes + min(abs(move) * 2, 0.20)   # PM ne kadar geride
-            action = "YES AL (HL yukari, PM ucuz)"
-        elif hl_direction == "DOWN" and pm_yes > 0.50:
-            edge = pm_yes - 0.50 + min(abs(move) * 2, 0.20)
-            action = "NO AL (HL asagi, PM pahali)"
-        else:
-            # HL ve PM ayni yonde -> hemfikir -> edge yok
-            continue
-
-        findings.append({
-            "question": (m.get("question") or "?")[:48],
-            "asset": asset, "iv": iv, "pm_yes": pm_yes,
-            "move": move, "hl_dir": hl_direction,
-            "edge": edge, "action": action,
-        })
+    findings = [r for r in results if r is not None]
+    findings.sort(key=lambda x: x["edge"], reverse=True)
     return findings
 
 
 async def main():
     print("=" * 70)
-    print("SCOUT — gercek mispricing taramasi (order YOK)")
-    print(f"Min edge: {config.MIN_EDGE_PCT:.0%} | guclu hareket esigi: {STRONG_MOVE_PCT}%")
+    print("SCOUT — gerçek fair value mispricing taraması (order YOK)")
+    print(f"Min edge: {config.MIN_EDGE_PCT:.0%} | Min kalan süre: {MIN_SECONDS}s")
     print("=" * 70)
+
     findings = await scan_edges()
     if not findings:
-        print("\nGercek mispricing yok.")
-        print("(Ya piyasa sakin, ya HL ile PM hemfikir -> beklemek dogru.)")
+        print("\nGerçek mispricing yok.")
+        print("(Piyasa sakin veya PM fair value'yu zaten yansıtıyor.)")
         return
-    findings.sort(key=lambda x: x["edge"], reverse=True)
+
     for f in findings:
-        flag = "  >>> ESIK USTU" if f["edge"] >= config.MIN_EDGE_PCT else ""
-        print(f"\n{f['question']}  [{f['asset']} {f['iv']}m]")
-        print(f"  HL gercek {f['iv']}dk hareket: {f['move']:+.3f}%  -> {f['hl_dir']}")
-        print(f"  Polymarket YES        : {f['pm_yes']:.3f}")
-        print(f"  EDGE                  : {f['edge']:+.3f}{flag}")
-        print(f"  Aksiyon               : {f['action']}")
-    n = sum(1 for f in findings if f["edge"] >= config.MIN_EDGE_PCT)
+        print(f"\n{f['question']}  [{f['asset']}]")
+        print(f"  Referans fiyat (pencere açılışı) : ${f['ref_price']:,.2f}")
+        print(f"  Şimdiki fiyat (HL live)          : ${f['cur_price']:,.2f}")
+        print(f"  Fair YES değeri                  : {f['fair_value']:.3f}")
+        print(f"  PM bestAsk / bestBid              : {f['best_ask']:.3f} / {f['best_bid']:.3f}")
+        print(f"  EDGE                             : {f['edge']:+.3f}  >>> EŞİK ÜSTÜ")
+        print(f"  Kalan süre                       : {f['seconds_remaining']:.0f}s")
+        print(f"  Aksiyon                          : {f['action']} AL")
+
     print("\n" + "=" * 70)
-    print(f"{len(findings)} aday, {n} esik ustu. Order verilmedi.")
+    print(f"{len(findings)} eşik üstü bulgu. Order verilmedi (DRY_RUN={config.DRY_RUN}).")
 
 
 if __name__ == "__main__":
