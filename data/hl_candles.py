@@ -36,6 +36,42 @@ def realized_move(candles, window_minutes):
     return (close_px - open_px) / open_px * 100.0
 
 
+async def fetch_candles_range(asset: str, interval: str, start_ms: int, end_ms: int):
+    """Belirli zaman aralığında mum çeker (ms epoch)."""
+    payload = {
+        "type": "candleSnapshot",
+        "req": {"coin": asset, "interval": interval,
+                "startTime": start_ms, "endTime": end_ms},
+    }
+    timeout = aiohttp.ClientTimeout(total=20)
+    async with aiohttp.ClientSession(timeout=timeout) as s:
+        async with s.post(INFO_URL, json=payload) as r:
+            r.raise_for_status()
+            return await r.json()
+
+
+async def price_at_timestamp(asset: str, ts_ms: int) -> float:
+    """
+    ts_ms anındaki HL spot fiyatını döner (en yakın 1m mumun open fiyatı).
+    Raises ValueError: o zaman için mum bulunamazsa.
+    """
+    start = ts_ms - 120_000  # 2 dk önce
+    end   = ts_ms + 120_000  # 2 dk sonra
+    candles = await fetch_candles_range(asset, "1m", start, end)
+    if not candles:
+        raise ValueError(f"{asset} için ts={ts_ms} civarında mum bulunamadı")
+    closest = min(candles, key=lambda c: abs(int(c["t"]) - ts_ms))
+    return float(closest["o"])
+
+
+async def current_price(asset: str) -> float:
+    """Şimdiki HL fiyatını döner (son 1m mumun close fiyatı)."""
+    candles = await fetch_candles(asset, "1m", minutes_back=2)
+    if not candles:
+        raise ValueError(f"{asset} için canlı fiyat alınamadı")
+    return float(candles[-1]["c"])
+
+
 async def main():
     for asset in ("BTC", "ETH"):
         candles = await fetch_candles(asset, "1m", 20)
