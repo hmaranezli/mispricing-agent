@@ -61,7 +61,7 @@ def parse_market_window(m: dict):
         return None
 
 
-def slugs_for_now(assets=("btc", "eth"), interval=15, lookback=4):
+def slugs_for_now(assets=("btc", "eth", "sol", "xrp"), interval=15, lookback=7):
     """Su an ve son birkac periyodun slug'larini uretir."""
     now = int(time.time())
     step = interval * 60

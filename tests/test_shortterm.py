@@ -157,3 +157,32 @@ async def test_find_shortterm_parse_market_window_works():
         assert "best_bid" in w
         assert "best_ask" in w
         assert isinstance(w["neg_risk"], bool)
+
+
+# ── Market kapsamı ────────────────────────────────────────────────────────────
+
+def test_slugs_cover_all_four_assets():
+    """slugs_for_now her interval için btc/eth/sol/xrp içermeli."""
+    from data.shortterm import slugs_for_now
+    for iv in [5, 15, 60]:
+        slugs = slugs_for_now(interval=iv)
+        slug_str = " ".join(slugs)
+        for asset in ["btc", "eth", "sol", "xrp"]:
+            assert asset in slug_str, f"{asset} interval={iv}m slug listesinde yok"
+
+
+def test_slugs_lookback_at_least_7():
+    """Her asset için en az 7 pencere sorgulanmalı."""
+    from data.shortterm import slugs_for_now
+    slugs = slugs_for_now(assets=("btc",), interval=15)
+    assert len(slugs) >= 7, f"Lookback yetersiz: {len(slugs)} slug (min 7 bekleniyor)"
+
+
+def test_total_slug_count_80_plus():
+    """4 asset × 3 interval × 7 lookback = 84 slug — 80+ hedefine ulaşmış olmalı."""
+    from data.shortterm import slugs_for_now
+    total = sum(
+        len(slugs_for_now(assets=("btc", "eth", "sol", "xrp"), interval=iv))
+        for iv in [5, 15, 60]
+    )
+    assert total >= 80, f"Toplam slug sayısı yetersiz: {total} (min 80 bekleniyor)"
