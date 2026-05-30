@@ -88,20 +88,32 @@ def test_log_has_all_required_fields(tmp_path):
 
 @pytest.mark.asyncio
 async def test_gate_fail_returns_none(tmp_path):
-    """gate_result pass=False → None döner."""
+    """gate_result pass=False → None döner, JSONL'da position_skipped yazar."""
+    log_file = tmp_path / "log.jsonl"
     result = await execute(
         _finding(), _gate(pass_=False), _risk(),
-        open_positions=[], log_file=tmp_path / "log.jsonl"
+        open_positions=[], log_file=log_file
     )
     assert result is None
+    lines = log_file.read_text().strip().splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["event"] == "position_skipped"
+    assert record["reason"] == "gate_vetoed"
 
 
 @pytest.mark.asyncio
 async def test_max_open_positions_returns_none(tmp_path):
-    """5 açık pozisyon varken → None döner."""
+    """5 açık pozisyon varken → None döner, JSONL'da position_skipped yazar."""
+    log_file = tmp_path / "log.jsonl"
     fake_positions = [{"position_id": str(i)} for i in range(5)]
     result = await execute(
         _finding(), _gate(), _risk(),
-        open_positions=fake_positions, log_file=tmp_path / "log.jsonl"
+        open_positions=fake_positions, log_file=log_file
     )
     assert result is None
+    lines = log_file.read_text().strip().splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["event"] == "position_skipped"
+    assert record["reason"] == "max_open_positions"
