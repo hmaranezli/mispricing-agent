@@ -71,4 +71,8 @@ def risk(
     if bankroll_usd > 0 and daily_loss_usd / bankroll_usd >= config.DAILY_LOSS_LIMIT_PCT:
         return _result(False, halt=True, reason="daily_loss_limit_hit")
 
+    # 2. Açık pozisyon limiti
+    if open_positions >= config.MAX_OPEN_POSITIONS:
+        return _result(False, reason="max_open_positions_reached")
+
     return _result(False, reason="not_implemented")
