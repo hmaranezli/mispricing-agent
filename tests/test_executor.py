@@ -117,3 +117,58 @@ async def test_max_open_positions_returns_none(tmp_path):
     record = json.loads(lines[0])
     assert record["event"] == "position_skipped"
     assert record["reason"] == "max_open_positions"
+
+
+# ── Task 3: Happy path ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_execute_returns_position_record(tmp_path):
+    """Guard'lar geçince tam pozisyon kaydı döner."""
+    result = await execute(
+        _finding(), _gate(), _risk(),
+        open_positions=[], log_file=tmp_path / "log.jsonl"
+    )
+    assert result is not None
+    assert result["status"] == "open"
+    for field in ["position_id", "asset", "action", "slug",
+                  "pm_entry_price", "fair_value", "ref_price",
+                  "position_usd", "kelly_f", "confidence_score",
+                  "seconds_remaining", "opened_at", "dry_run",
+                  "exit_reason", "closed_at"]:
+        assert field in result, f"Alan eksik: {field}"
+
+
+@pytest.mark.asyncio
+async def test_position_id_is_uuid4(tmp_path):
+    """position_id geçerli bir UUID4 string'i."""
+    result = await execute(
+        _finding(), _gate(), _risk(),
+        open_positions=[], log_file=tmp_path / "log.jsonl"
+    )
+    parsed = uuid.UUID(result["position_id"])
+    assert parsed.version == 4
+
+
+@pytest.mark.asyncio
+async def test_opened_at_is_valid_iso(tmp_path):
+    """opened_at geçerli ISO 8601 UTC timestamp."""
+    result = await execute(
+        _finding(), _gate(), _risk(),
+        open_positions=[], log_file=tmp_path / "log.jsonl"
+    )
+    dt = datetime.fromisoformat(result["opened_at"])
+    assert dt.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_two_calls_produce_different_position_ids(tmp_path):
+    """İki ardışık çağrı farklı position_id üretir."""
+    r1 = await execute(
+        _finding(), _gate(), _risk(),
+        open_positions=[], log_file=tmp_path / "log.jsonl"
+    )
+    r2 = await execute(
+        _finding(), _gate(), _risk(),
+        open_positions=[], log_file=tmp_path / "log.jsonl"
+    )
+    assert r1["position_id"] != r2["position_id"]

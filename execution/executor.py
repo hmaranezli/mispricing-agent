@@ -2,6 +2,7 @@
 import json
 import sys
 import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -39,4 +40,41 @@ async def execute(
         _log("position_skipped", {"reason": "max_open_positions", "dry_run": config.DRY_RUN}, log_file)
         return None
 
-    return None  # happy path — Task 3'te tamamlanacak
+    # Giriş fiyatı: YES için ask, NO için 1-bid
+    if finding["action"] == "YES":
+        pm_entry_price = finding["best_ask"]
+    else:
+        pm_entry_price = round(1 - finding["best_bid"], 4)
+
+    position = {
+        "position_id":       str(uuid.uuid4()),
+        "asset":             finding["asset"],
+        "action":            finding["action"],
+        "slug":              finding["slug"],
+        "pm_entry_price":    pm_entry_price,
+        "fair_value":        finding["fair_value"],
+        "ref_price":         finding["ref_price"],
+        "position_usd":      risk_result["position_usd"],
+        "kelly_f":           risk_result["kelly_f"],
+        "confidence_score":  gate_result["confidence_score"],
+        "seconds_remaining": finding["seconds_remaining"],
+        "opened_at":         datetime.now(timezone.utc).isoformat(),
+        "status":            "open",
+        "dry_run":           config.DRY_RUN,
+        "exit_reason":       None,
+        "closed_at":         None,
+    }
+
+    _log("position_opened", {
+        "position_id":      position["position_id"],
+        "asset":            position["asset"],
+        "action":           position["action"],
+        "slug":             position["slug"],
+        "pm_entry_price":   position["pm_entry_price"],
+        "fair_value":       position["fair_value"],
+        "position_usd":     position["position_usd"],
+        "confidence_score": position["confidence_score"],
+        "dry_run":          position["dry_run"],
+    }, log_file)
+
+    return position
