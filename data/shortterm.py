@@ -6,6 +6,7 @@ import asyncio
 import json
 import time
 import aiohttp
+from datetime import datetime, timezone
 
 GAMMA = "https://gamma-api.polymarket.com/markets"
 
@@ -16,6 +17,47 @@ def _parse(raw):
     try:
         return json.loads(raw)
     except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def parse_market_window(m: dict):
+    """
+    Ham Gamma market dict'inden scout'un ihtiyacı olan alanları çıkarır.
+    Returns dict veya None (zorunlu alan eksikse).
+
+    Dönen dict anahtarları:
+      start_ms          : eventStartTime (ms epoch)
+      end_ms            : endDate (ms epoch)
+      seconds_remaining : endDate - now (float, negatif = geçmiş)
+      best_bid          : YES token bestBid (float)
+      best_ask          : YES token bestAsk (float)
+      neg_risk          : bool
+    """
+    try:
+        start_str = m.get("eventStartTime") or m.get("startDate")
+        end_str   = m.get("endDate")
+        best_ask  = m.get("bestAsk")
+        best_bid  = m.get("bestBid")
+
+        if not start_str or not end_str or best_ask is None or best_bid is None:
+            return None
+
+        def _parse_dt(s):
+            return datetime.fromisoformat(s.rstrip("Z")).replace(tzinfo=timezone.utc)
+
+        start_dt = _parse_dt(start_str)
+        end_dt   = _parse_dt(end_str)
+        now      = datetime.now(timezone.utc)
+
+        return {
+            "start_ms":          int(start_dt.timestamp() * 1000),
+            "end_ms":            int(end_dt.timestamp() * 1000),
+            "seconds_remaining": (end_dt - now).total_seconds(),
+            "best_bid":          float(best_bid),
+            "best_ask":          float(best_ask),
+            "neg_risk":          bool(m.get("negRisk", False)),
+        }
+    except (ValueError, TypeError, AttributeError):
         return None
 
 
