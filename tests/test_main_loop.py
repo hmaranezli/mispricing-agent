@@ -94,6 +94,19 @@ async def test_scan_opens_position_on_full_council_pass():
     assert open_pos[0]["position_id"] == "abc-123"
 
 
+@pytest.mark.asyncio
+async def test_scan_skips_already_open_slug():
+    """Aynı slug için açık pozisyon varsa _run_council çağrılmaz."""
+    existing = {"position_id": "exist-001", "slug": "btc-up-15min-test", "status": "open"}
+    open_pos = [existing]
+    with patch("main_loop.scan_edges",   new_callable=AsyncMock) as mock_scan, \
+         patch("main_loop._run_council", new_callable=AsyncMock) as mock_council:
+        mock_scan.return_value = [_finding()]   # _finding() slug = "btc-up-test"
+        await _scan_and_execute(open_pos, [], bankroll_usd=1000.0)
+    mock_council.assert_not_called()
+    assert len(open_pos) == 1
+
+
 # ── Task 3: _monitor_positions() ─────────────────────────────────────────────
 
 def _open_position():

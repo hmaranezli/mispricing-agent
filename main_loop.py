@@ -91,10 +91,13 @@ async def _scan_and_execute(
 
     findings = await scan_edges()
     daily_loss = _daily_loss_usd(closed_today)
+    open_slugs = {p["slug"] for p in open_positions}
 
     for finding in findings:
         if len(open_positions) >= config.MAX_OPEN_POSITIONS:
             break
+        if finding["slug"] in open_slugs:
+            continue
 
         result = await _run_council(finding,
                                     bankroll_usd=bankroll_usd,
