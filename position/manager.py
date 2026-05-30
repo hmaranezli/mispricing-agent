@@ -81,4 +81,28 @@ def check_exit(
     if held_minutes >= config.MAX_HOLD_MINUTES:
         return "max_hold_time"
 
-    return None  # thesis + profit — Task 3'te eklenecek
+    # 3. Thesis kontrolü — HL tersine döndü mü?
+    new_fair = fair_yes(hl_price, position["ref_price"],
+                        time_to_expiry_secs, position["asset"])
+    if position["action"] == "YES":
+        thesis_broken = new_fair < pm_yes_price
+    else:
+        thesis_broken = new_fair > pm_yes_price
+
+    if thesis_broken:
+        return "thesis_invalidated"
+
+    # 4. Kâr hedefi — edge'in PROFIT_TARGET_FRACTION kadarı yakalandı mı?
+    if position["action"] == "YES":
+        current_val = pm_yes_price
+        target_val  = position["fair_value"]
+    else:
+        current_val = 1 - pm_yes_price
+        target_val  = 1 - position["fair_value"]
+
+    entry_price = position["pm_entry_price"]
+    edge = target_val - entry_price
+    if edge > 0 and (current_val - entry_price) / edge >= PROFIT_TARGET_FRACTION:
+        return "profit_target_hit"
+
+    return None

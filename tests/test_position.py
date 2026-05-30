@@ -99,3 +99,46 @@ def test_check_exit_holds_when_no_condition_met():
     result = check_exit(pos, hl_price=95000, pm_yes_price=0.38,
                         time_to_expiry_secs=900)
     assert result is None
+
+
+# ── Task 3: check_exit — thesis + kâr hedefi ─────────────────────────────────
+
+def test_check_exit_thesis_invalidated_yes():
+    """YES: HL düşünce fair_yes < pm_price → 'thesis_invalidated'."""
+    # fair_yes(94800, 95000, 900, 'BTC') = 0.3109 < pm_yes_price=0.35
+    pos = _position(action="YES", held_minutes=5)
+    result = check_exit(pos, hl_price=94800, pm_yes_price=0.35,
+                        time_to_expiry_secs=900)
+    assert result == "thesis_invalidated"
+
+
+def test_check_exit_thesis_invalidated_no():
+    """NO: HL yükselince fair_yes > pm_price → 'thesis_invalidated'."""
+    # fair_yes(95200, 95000, 900, 'BTC') = 0.6887 > pm_yes_price=0.30
+    pos = _position(action="NO", held_minutes=5)
+    result = check_exit(pos, hl_price=95200, pm_yes_price=0.30,
+                        time_to_expiry_secs=900)
+    assert result == "thesis_invalidated"
+
+
+def test_check_exit_profit_target_hit_yes():
+    """YES: pm_yes_price >= entry + 0.85*edge → 'profit_target_hit'."""
+    # entry=0.35, fair=0.55, edge=0.20, target=0.52 → pm_yes=0.53
+    # fair_yes(95500, 95000, 900, 'BTC') = 0.8904 >= 0.53 → thesis tutulur
+    # captured: (0.53-0.35)/0.20 = 0.90 >= 0.85 ✓
+    pos = _position(action="YES", held_minutes=5)
+    result = check_exit(pos, hl_price=95500, pm_yes_price=0.53,
+                        time_to_expiry_secs=900)
+    assert result == "profit_target_hit"
+
+
+def test_check_exit_profit_target_hit_no():
+    """NO: (1-pm_yes) >= entry + 0.85*(fair_NO-entry) → 'profit_target_hit'."""
+    # entry=0.33, fair_NO=0.65, edge=0.32, target=0.602
+    # pm_yes=0.38 → 1-pm=0.62 >= 0.602 ✓
+    # fair_yes(94800, 95000, 900, 'BTC') = 0.3109 <= pm_yes=0.38 → thesis tutulur
+    # captured: (0.62-0.33)/0.32 = 0.906 >= 0.85 ✓
+    pos = _position(action="NO", held_minutes=5)
+    result = check_exit(pos, hl_price=94800, pm_yes_price=0.38,
+                        time_to_expiry_secs=900)
+    assert result == "profit_target_hit"
