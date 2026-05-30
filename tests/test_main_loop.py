@@ -63,3 +63,32 @@ async def test_run_council_returns_gate_and_risk_on_success():
     gate_result, risk_result = result
     assert gate_result["pass"] is True
     assert risk_result["position_usd"] == 25.0
+
+
+# ── Task 2: _scan_and_execute() ──────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_scan_skips_when_max_positions_reached():
+    """MAX_OPEN_POSITIONS doluysa scan_edges hiç çağrılmaz."""
+    import config
+    open_pos = [{"position_id": str(i)} for i in range(config.MAX_OPEN_POSITIONS)]
+    with patch("main_loop.scan_edges", new_callable=AsyncMock) as mock_scan:
+        await _scan_and_execute(open_pos, [], bankroll_usd=1000.0)
+    mock_scan.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_scan_opens_position_on_full_council_pass():
+    """Konsey geçince execute() çağrılır, pozisyon open_positions'a eklenir."""
+    open_pos = []
+    fake_pos = {"position_id": "abc-123", "status": "open", "asset": "BTC",
+                "action": "YES", "slug": "btc-up-test"}
+    with patch("main_loop.scan_edges",   new_callable=AsyncMock) as mock_scan, \
+         patch("main_loop._run_council", new_callable=AsyncMock) as mock_council, \
+         patch("main_loop.execute",      new_callable=AsyncMock) as mock_exec:
+        mock_scan.return_value    = [_finding()]
+        mock_council.return_value = (_pass_gate(), _pass_risk())
+        mock_exec.return_value    = fake_pos
+        await _scan_and_execute(open_pos, [], bankroll_usd=1000.0)
+    assert len(open_pos) == 1
+    assert open_pos[0]["position_id"] == "abc-123"

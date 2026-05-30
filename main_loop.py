@@ -71,8 +71,28 @@ async def _scan_and_execute(
     closed_today:   list[dict],
     bankroll_usd:   float,
 ) -> None:
-    """Placeholder — Task 2'de implemente edilecek."""
-    pass
+    """Yeni fırsatları tarar, konsey geçenleri açar."""
+    if len(open_positions) >= config.MAX_OPEN_POSITIONS:
+        return
+
+    findings = await scan_edges()
+    daily_loss = _daily_loss_usd(closed_today)
+
+    for finding in findings:
+        if len(open_positions) >= config.MAX_OPEN_POSITIONS:
+            break
+
+        result = await _run_council(finding,
+                                    bankroll_usd=bankroll_usd,
+                                    n_open=len(open_positions),
+                                    daily_loss_usd=daily_loss)
+        if result is None:
+            continue
+
+        gate_result, risk_result = result
+        position = await execute(finding, gate_result, risk_result, open_positions)
+        if position:
+            open_positions.append(position)
 
 
 async def _monitor_positions(
