@@ -201,6 +201,17 @@ async def test_requires_human_approval_true_above_threshold(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_execute_position_includes_edge(tmp_path):
+    """execute() dönen position dict finding'deki edge değerini taşımalı."""
+    result = await execute(
+        _finding(), _gate(), _risk(),
+        open_positions=[], log_file=tmp_path / "log.jsonl"
+    )
+    assert "edge" in result, "position dict'te edge alanı yok"
+    assert result["edge"] == _finding()["edge"]
+
+
+@pytest.mark.asyncio
 async def test_two_calls_produce_different_position_ids(tmp_path):
     """İki ardışık çağrı farklı position_id üretir."""
     r1 = await execute(

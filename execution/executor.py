@@ -64,6 +64,7 @@ async def execute(
         "pm_entry_price":    pm_entry_price,
         "fair_value":        finding["fair_value"],
         "ref_price":         finding["ref_price"],
+        "edge":              finding["edge"],
         "position_usd":      risk_result["position_usd"],
         "kelly_f":           risk_result["kelly_f"],
         "confidence_score":  gate_result["confidence_score"],
