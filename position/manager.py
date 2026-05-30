@@ -62,5 +62,23 @@ def check_exit(
     pm_yes_price:        float,
     time_to_expiry_secs: int,
 ) -> str | None:
-    """Placeholder — Task 2'de implemente edilecek."""
-    return None
+    """
+    Pozisyon için çıkış kararı verir.
+
+    Returns:
+        "max_hold_time"      — MAX_HOLD_MINUTES doldu
+        "thesis_invalidated" — HL tersine döndü
+        "profit_target_hit"  — Edge'in %85'i yakalandı
+        None                 — tut
+    """
+    # 1. Market kapanışa yakın → dokunma, bırak çözümlensin
+    if time_to_expiry_secs < NEAR_EXPIRY_SECS:
+        return None
+
+    # 2. Zaman limiti
+    opened_at = datetime.fromisoformat(position["opened_at"])
+    held_minutes = (datetime.now(timezone.utc) - opened_at).total_seconds() / 60
+    if held_minutes >= config.MAX_HOLD_MINUTES:
+        return "max_hold_time"
+
+    return None  # thesis + profit — Task 3'te eklenecek

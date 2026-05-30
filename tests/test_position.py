@@ -71,3 +71,31 @@ def test_close_position_logs_jsonl(tmp_path):
     assert record["event"] == "position_closed"
     assert record["exit_reason"] == "thesis_invalidated"
     assert record["position_id"] == pos["position_id"]
+
+
+# ── Task 2: check_exit — zaman + expiry ──────────────────────────────────────
+
+def test_check_exit_near_expiry_returns_none():
+    """time_to_expiry_secs < 90 → None (market kapansın, dokunma)."""
+    pos = _position(held_minutes=15)  # Zaman dolsa bile
+    result = check_exit(pos, hl_price=95000, pm_yes_price=0.40,
+                        time_to_expiry_secs=80)
+    assert result is None
+
+
+def test_check_exit_max_hold_time():
+    """14+ dakika geçmişse → 'max_hold_time'."""
+    pos = _position(held_minutes=15)
+    result = check_exit(pos, hl_price=95000, pm_yes_price=0.40,
+                        time_to_expiry_secs=900)
+    assert result == "max_hold_time"
+
+
+def test_check_exit_holds_when_no_condition_met():
+    """Hiçbir koşul tetiklenmezse → None (tut)."""
+    # flat market: fair_yes(95000,95000,900,'BTC')=0.50 > pm=0.38 → thesis holds
+    # captured edge: (0.38-0.35)/0.20 = 0.15 < 0.85 → profit target yok
+    pos = _position(action="YES", held_minutes=5)
+    result = check_exit(pos, hl_price=95000, pm_yes_price=0.38,
+                        time_to_expiry_secs=900)
+    assert result is None
