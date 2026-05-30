@@ -45,9 +45,21 @@ def _confidence_score(redteam: dict, verification: dict) -> float:
 
 def _gate_decide(finding: dict, verification: dict,
                  redteam: dict, risk_result: dict) -> dict:
-    """Stub — Task 2'de implement edilecek."""
-    return {"pass": False, "confidence_score": 0.0,
-            "action_taken": "vetoed", "reason": "not_implemented"}
+    """Güven skoru hesapla, CONFIDENCE_THRESHOLD kontrolü yap."""
+    score = _confidence_score(redteam, verification)
+    if score < config.CONFIDENCE_THRESHOLD:
+        return {
+            "pass":             False,
+            "confidence_score": score,
+            "action_taken":     "vetoed",
+            "reason":           "confidence_below_threshold",
+        }
+    return {
+        "pass":             True,
+        "confidence_score": score,
+        "action_taken":     "pending",
+        "reason":           "",
+    }
 
 
 async def gate(finding: dict, verification: dict,
