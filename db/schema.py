@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS positions (
     action           TEXT NOT NULL,
     pm_entry_price   REAL,
     fair_value       REAL,
+    ref_price        REAL,
+    edge             REAL,
     position_usd     REAL,
     kelly_f          REAL,
     confidence_score REAL,
@@ -36,6 +38,17 @@ CREATE TABLE IF NOT EXISTS positions (
 """
 
 
+_MIGRATIONS = [
+    "ALTER TABLE positions ADD COLUMN ref_price REAL",
+    "ALTER TABLE positions ADD COLUMN edge REAL",
+]
+
+
 async def init_schema(conn) -> None:
     await conn.executescript(_SCHEMA)
+    for sql in _MIGRATIONS:
+        try:
+            await conn.execute(sql)
+        except Exception:
+            pass  # sütun zaten varsa hata verir, yok say
     await conn.commit()

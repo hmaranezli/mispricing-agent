@@ -56,8 +56,9 @@ async def log_position_open(conn, position: dict) -> None:
     await conn.execute(
         """INSERT OR IGNORE INTO positions
                (position_id, ts_open, slug, asset, action, pm_entry_price,
-                fair_value, position_usd, kelly_f, confidence_score, status, dry_run)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)""",
+                fair_value, ref_price, edge, position_usd, kelly_f,
+                confidence_score, status, dry_run)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)""",
         (
             position["position_id"],
             position.get("opened_at", datetime.now(timezone.utc).isoformat()),
@@ -66,6 +67,8 @@ async def log_position_open(conn, position: dict) -> None:
             position.get("action", ""),
             position.get("pm_entry_price"),
             position.get("fair_value"),
+            position.get("ref_price"),
+            position.get("edge"),
             position.get("position_usd"),
             position.get("kelly_f"),
             position.get("confidence_score"),

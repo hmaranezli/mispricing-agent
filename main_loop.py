@@ -24,6 +24,38 @@ SCAN_INTERVAL_SECS = 30
 BANKROLL_USD = 1000.0  # Başlangıç sermayesi — canlıya geçmeden önce ayarla
 
 
+async def _load_open_positions(conn) -> list[dict]:
+    """DB'deki status=open pozisyonları yükler — restart sonrası memory'yi geri doldurur."""
+    async with conn.execute(
+        "SELECT position_id, ts_open, slug, asset, action, pm_entry_price, "
+        "fair_value, ref_price, edge, position_usd, kelly_f, confidence_score, dry_run "
+        "FROM positions WHERE status='open'"
+    ) as cur:
+        rows = await cur.fetchall()
+    return [
+        {
+            "position_id":            r[0],
+            "opened_at":              r[1],
+            "slug":                   r[2],
+            "asset":                  r[3],
+            "action":                 r[4],
+            "pm_entry_price":         r[5],
+            "fair_value":             r[6],
+            "ref_price":              r[7],
+            "edge":                   r[8],
+            "position_usd":           r[9],
+            "kelly_f":                r[10],
+            "confidence_score":       r[11],
+            "status":                 "open",
+            "requires_human_approval": (r[9] or 0) > config.HUMAN_APPROVAL_USD,
+            "dry_run":                bool(r[12]),
+            "exit_reason":            None,
+            "closed_at":              None,
+        }
+        for r in rows
+    ]
+
+
 def _daily_loss_usd(closed_today: list[dict]) -> float:
     """Bugün kapanan pozisyonlardan gerçekleşen kaybı toplar."""
     today = date.today()
@@ -152,6 +184,9 @@ async def main() -> None:
     closed_today:   list[dict] = []
     print(f"[bot] Başladı — DRY_RUN={config.DRY_RUN}, tarama={SCAN_INTERVAL_SECS}s")
     conn = await get_connection()
+    open_positions = await _load_open_positions(conn)
+    if open_positions:
+        print(f"[bot] DB'den {len(open_positions)} açık pozisyon yüklendi.")
     try:
         while True:
             if kill_switch_check():

@@ -106,3 +106,29 @@ async def test_log_position_close(conn):
     assert row[0] == "closed"
     assert row[1] == "profit_target_hit"
     assert abs(row[2] - 0.45) < 1e-6
+
+
+@pytest.mark.asyncio
+async def test_positions_schema_has_ref_price_and_edge(conn):
+    """positions tablosu ref_price ve edge sütunlarına sahip olmalı."""
+    async with conn.execute("PRAGMA table_info(positions)") as cur:
+        cols = {row[1] for row in await cur.fetchall()}
+    assert "ref_price" in cols, "positions tablosunda ref_price sütunu yok"
+    assert "edge" in cols, "positions tablosunda edge sütunu yok"
+
+
+@pytest.mark.asyncio
+async def test_log_position_open_stores_ref_price_and_edge(conn):
+    """log_position_open ref_price ve edge değerlerini DB'ye yazar."""
+    pos = {"position_id": "pos-003", "slug": "sol-up-5min", "asset": "SOL",
+           "action": "YES", "pm_entry_price": 0.35, "fair_value": 0.55,
+           "ref_price": 150.0, "edge": 0.18,
+           "position_usd": 25.0, "kelly_f": 0.15, "confidence_score": 80.0,
+           "opened_at": "2026-05-30T10:00:00+00:00"}
+    await logger.log_position_open(conn, pos)
+    async with conn.execute(
+        "SELECT ref_price, edge FROM positions WHERE position_id='pos-003'"
+    ) as cur:
+        row = await cur.fetchone()
+    assert abs(row[0] - 150.0) < 1e-6, f"ref_price yanlış: {row[0]}"
+    assert abs(row[1] - 0.18) < 1e-6, f"edge yanlış: {row[1]}"

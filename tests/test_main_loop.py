@@ -5,7 +5,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
-from main_loop import _run_council, _scan_and_execute, _monitor_positions
+import pytest_asyncio
+import aiosqlite
+from db.schema import init_schema
+from db.logger import log_position_open
+from main_loop import _run_council, _scan_and_execute, _monitor_positions, _load_open_positions
 
 
 # ── Fixture'lar ──────────────────────────────────────────────────────────────
@@ -158,3 +162,44 @@ async def test_monitor_closes_on_missing_market():
     assert len(open_pos) == 0
     assert len(closed) == 1
     assert closed[0]["exit_reason"] == "market_expired"
+
+
+# ── _load_open_positions() ────────────────────────────────────────────────────
+
+@pytest_asyncio.fixture
+async def mem_db():
+    async with aiosqlite.connect(":memory:") as db:
+        await init_schema(db)
+        yield db
+
+
+@pytest.mark.asyncio
+async def test_load_open_positions_empty_db(mem_db):
+    """DB'de açık pozisyon yoksa boş liste döner."""
+    result = await _load_open_positions(mem_db)
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_load_open_positions_returns_open_ones(mem_db):
+    """DB'deki status=open pozisyonlar yüklenir, closed olanlar atlanır."""
+    open_pos = {
+        "position_id": "r-001", "slug": "btc-up-5min", "asset": "BTC",
+        "action": "YES", "pm_entry_price": 0.35, "fair_value": 0.55,
+        "ref_price": 95000.0, "edge": 0.18,
+        "position_usd": 25.0, "kelly_f": 0.15, "confidence_score": 82.0,
+        "opened_at": "2026-05-30T10:00:00+00:00",
+    }
+    closed_pos = {**open_pos, "position_id": "r-002", "slug": "eth-down-15min"}
+    await log_position_open(mem_db, open_pos)
+    await log_position_open(mem_db, closed_pos)
+    await mem_db.execute("UPDATE positions SET status='closed' WHERE position_id='r-002'")
+    await mem_db.commit()
+
+    result = await _load_open_positions(mem_db)
+    assert len(result) == 1
+    assert result[0]["position_id"] == "r-001"
+    assert result[0]["asset"] == "BTC"
+    assert result[0]["ref_price"] == 95000.0
+    assert result[0]["edge"] == 0.18
+    assert result[0]["opened_at"] == "2026-05-30T10:00:00+00:00"
