@@ -114,3 +114,50 @@ async def gate(finding: dict, verification: dict,
     decision["action_taken"] = "dry_run_logged"
     _log(finding, verification, redteam, decision, risk_result)
     return decision
+
+
+async def main():
+    """Manuel test: Scout→Verifier→RedTeam→Risk→Gate tam zinciri."""
+    from council.scout import scan_edges
+    from council.verifier import verify
+    from council.redteam import redteam as rt
+    from council.risk import risk
+
+    print("=" * 70)
+    print("GATE — son karar ve loglama")
+    print("=" * 70)
+
+    bankroll = getattr(config, "STARTING_CAPITAL_USD", 1000.0)
+
+    findings = await scan_edges()
+    if not findings:
+        print("Scout'tan bulgu yok.")
+        return
+
+    for f in findings:
+        v = await verify(f)
+        if not v["pass"]:
+            print(f"\n{f['question'][:50]} → Verifier: {v['reason']}")
+            continue
+        r = await rt(f, v)
+        if not r["pass"]:
+            print(f"\n{f['question'][:50]} → RedTeam veto: {r['vetoes']}")
+            continue
+        rk = risk(f, v, r, bankroll_usd=bankroll, open_positions=0, daily_loss_usd=0.0)
+        if not rk["pass"]:
+            print(f"\n{f['question'][:50]} → Risk veto: {rk['reason']}")
+            continue
+        g = await gate(f, v, r, rk)
+        icon = "GEÇER" if g["pass"] else f"VETO [{g['action_taken']}]"
+        print(f"\n{f['question'][:50]}")
+        print(f"  Güven skoru   : {g['confidence_score']:.1f} / 100")
+        print(f"  Pozisyon      : ${rk['position_usd']:.2f}")
+        print(f"  Aksiyon       : {g['action_taken']}")
+        print(f"  Karar         : {icon}")
+
+    print(f"\nLog: {LOG_FILE}")
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
