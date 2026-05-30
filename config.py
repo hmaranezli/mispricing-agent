@@ -1,0 +1,36 @@
+"""
+config.py — Mispricing Agent yapilandirmasi
+ANAYASA: Asagidaki guardrail sabitleri ajan tarafindan DEGISTIRILEMEZ.
+Degisiklik yalnizca insan eliyle, bu dosya elle duzenlenerek yapilir.
+"""
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# ── API anahtarlari (.env'den okunur, koda asla yazilmaz) ──
+ANTHROPIC_API_KEY       = os.getenv("ANTHROPIC_API_KEY")
+POLYMARKET_PRIVATE_KEY  = os.getenv("POLYMARKET_PRIVATE_KEY")
+POLYMARKET_API_KEY      = os.getenv("POLYMARKET_API_KEY")
+HYPERLIQUID_WALLET      = os.getenv("HYPERLIQUID_WALLET")
+HYPERLIQUID_PRIVATE_KEY = os.getenv("HYPERLIQUID_PRIVATE_KEY")
+TELEGRAM_BOT_TOKEN      = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID        = os.getenv("TELEGRAM_CHAT_ID")
+DATABASE_URL            = os.getenv("DATABASE_URL", "postgresql://localhost/mispricing")
+
+# ── KILITLI GUARDRAIL KURALLARI ──
+DRY_RUN              = True   # True iken HICBIR gercek order gitmez, sadece loglar
+MAX_TRADE_PCT        = 0.05   # Tek trade max sermayenin %5'i
+MAX_OPEN_POSITIONS   = 5      # Ayni anda max 5 acik pozisyon
+DAILY_LOSS_LIMIT_PCT = 0.10   # Gunluk kayip %10'a ulasinca SISTEM DURUR
+MIN_EDGE_PCT         = 0.08   # Min %8 edge yoksa trade onerilmez
+CONFIDENCE_THRESHOLD = 75     # Konsey guven skoru esigi (0-100)
+MAX_HOLD_MINUTES     = 14     # Ortalama tutus suresi
+HUMAN_APPROVAL_USD   = 50     # Bu tutar uzeri pozisyon insan onayi ister
+
+# ── Anti-hallucination kurallari ──
+REQUIRE_FRESH_API_DATA = True  # Her sayi API'den taze cekilir, hafizadan asla
+HALT_ON_API_MISMATCH   = True  # API ile ajan celisirse islem durur
+
+# ── Izlenecek varliklar (baslangic: sadece BTC + ETH) ──
+TRACKED_ASSETS = ["BTC", "ETH"]
