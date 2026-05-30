@@ -135,7 +135,7 @@ async def test_execute_returns_position_record(tmp_path):
                   "pm_entry_price", "fair_value", "ref_price",
                   "position_usd", "kelly_f", "confidence_score",
                   "seconds_remaining", "opened_at", "dry_run",
-                  "exit_reason", "closed_at"]:
+                  "requires_human_approval", "exit_reason", "closed_at"]:
         assert field in result, f"Alan eksik: {field}"
     lines = log_file.read_text().strip().splitlines()
     assert len(lines) == 1
@@ -176,6 +176,28 @@ async def test_opened_at_is_valid_iso(tmp_path):
     )
     dt = datetime.fromisoformat(result["opened_at"])
     assert dt.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_requires_human_approval_false_below_threshold(tmp_path):
+    """position_usd < HUMAN_APPROVAL_USD → requires_human_approval=False."""
+    result = await execute(
+        _finding(), _gate(), _risk(),  # _risk() → position_usd=25.0 < 50
+        open_positions=[], log_file=tmp_path / "log.jsonl"
+    )
+    assert result["requires_human_approval"] is False
+
+
+@pytest.mark.asyncio
+async def test_requires_human_approval_true_above_threshold(tmp_path):
+    """position_usd > HUMAN_APPROVAL_USD → requires_human_approval=True."""
+    big_risk = _risk()
+    big_risk["position_usd"] = 100.0  # > HUMAN_APPROVAL_USD=50
+    result = await execute(
+        _finding(), _gate(), big_risk,
+        open_positions=[], log_file=tmp_path / "log.jsonl"
+    )
+    assert result["requires_human_approval"] is True
 
 
 @pytest.mark.asyncio

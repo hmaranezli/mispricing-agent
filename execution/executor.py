@@ -33,11 +33,21 @@ async def execute(
 ) -> dict | None:
     """Gate onaylı bulguyu DRY_RUN'da loglar, pozisyon kaydı döndürür."""
     if not gate_result.get("pass"):
-        _log("position_skipped", {"reason": "gate_vetoed", "dry_run": config.DRY_RUN}, log_file)
+        _log("position_skipped", {
+            "reason":   "gate_vetoed",
+            "asset":    finding.get("asset"),
+            "slug":     finding.get("slug"),
+            "dry_run":  config.DRY_RUN,
+        }, log_file)
         return None
 
     if len(open_positions) >= config.MAX_OPEN_POSITIONS:
-        _log("position_skipped", {"reason": "max_open_positions", "dry_run": config.DRY_RUN}, log_file)
+        _log("position_skipped", {
+            "reason":   "max_open_positions",
+            "asset":    finding.get("asset"),
+            "slug":     finding.get("slug"),
+            "dry_run":  config.DRY_RUN,
+        }, log_file)
         return None
 
     # Giriş fiyatı: YES için ask, NO için 1-bid
@@ -59,24 +69,28 @@ async def execute(
         "confidence_score":  gate_result["confidence_score"],
         "seconds_remaining": finding["seconds_remaining"],
         "opened_at":         datetime.now(timezone.utc).isoformat(),
-        "status":            "open",
-        "dry_run":           config.DRY_RUN,
-        "exit_reason":       None,
-        "closed_at":         None,
+        "status":                  "open",
+        "requires_human_approval": risk_result["position_usd"] > config.HUMAN_APPROVAL_USD,
+        "dry_run":                 config.DRY_RUN,
+        "exit_reason":             None,
+        "closed_at":               None,
     }
 
     _log("position_opened", {
-        "position_id":      position["position_id"],
-        "asset":            position["asset"],
-        "action":           position["action"],
-        "slug":             position["slug"],
-        "pm_entry_price":   position["pm_entry_price"],
-        "fair_value":       position["fair_value"],
-        "ref_price":        position["ref_price"],
-        "position_usd":     position["position_usd"],
-        "confidence_score": position["confidence_score"],
-        "opened_at":        position["opened_at"],
-        "dry_run":          position["dry_run"],
+        "position_id":             position["position_id"],
+        "asset":                   position["asset"],
+        "action":                  position["action"],
+        "slug":                    position["slug"],
+        "pm_entry_price":          position["pm_entry_price"],
+        "fair_value":              position["fair_value"],
+        "ref_price":               position["ref_price"],
+        "position_usd":            position["position_usd"],
+        "kelly_f":                 position["kelly_f"],
+        "confidence_score":        position["confidence_score"],
+        "seconds_remaining":       position["seconds_remaining"],
+        "requires_human_approval": position["requires_human_approval"],
+        "opened_at":               position["opened_at"],
+        "dry_run":                 position["dry_run"],
     }, log_file)
 
     return position
