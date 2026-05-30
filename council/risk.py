@@ -103,3 +103,48 @@ def risk(
         requires_human_approval=requires_human_approval,
         reason="",
     )
+
+
+async def main():
+    """Manuel test: Scout→Verifier→RedTeam→Risk zincirini çalıştırır."""
+    import asyncio
+    from council.scout import scan_edges
+    from council.verifier import verify
+    from council.redteam import redteam as rt
+
+    print("=" * 70)
+    print("RISK — pozisyon boyutlandırma")
+    print("=" * 70)
+
+    bankroll = getattr(config, "STARTING_CAPITAL_USD", 1000.0)
+
+    findings = await scan_edges()
+    if not findings:
+        print("Scout'tan bulgu yok.")
+        return
+
+    for f in findings:
+        v = await verify(f)
+        if not v["pass"]:
+            print(f"\n{f['question'][:50]} → Verifier: {v['reason']}")
+            continue
+        r = await rt(f, v)
+        if not r["pass"]:
+            print(f"\n{f['question'][:50]} → RedTeam veto: {r['vetoes']}")
+            continue
+        rk = risk(f, v, r,
+                  bankroll_usd=bankroll, open_positions=0, daily_loss_usd=0.0)
+        icon = "PASS" if rk["pass"] else f"VETO [{rk['reason']}]"
+        print(f"\n{f['question'][:50]}")
+        print(f"  Kelly (ham)   : {rk['kelly_f']:.3f}")
+        print(f"  Pozisyon      : ${rk['position_usd']:.2f}")
+        if rk["requires_human_approval"]:
+            print("  *** İNSAN ONAYI GEREKLİ ***")
+        if rk["halt"]:
+            print("  *** SİSTEM DURDU — günlük kayıp limiti ***")
+        print(f"  Karar         : {icon}")
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
