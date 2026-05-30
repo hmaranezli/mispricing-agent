@@ -23,6 +23,20 @@ def _log(event: str, data: dict, log_file: Path = LOG_FILE) -> None:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-async def execute(finding: dict, gate_result: dict, risk_result: dict) -> dict:
-    """Placeholder — Task 2'de implemente edilecek."""
-    raise NotImplementedError("execute() henüz implemente edilmedi.")
+async def execute(
+    finding:        dict,
+    gate_result:    dict,
+    risk_result:    dict,
+    open_positions: list,
+    log_file:       Path = LOG_FILE,
+) -> dict | None:
+    """Gate onaylı bulguyu DRY_RUN'da loglar, pozisyon kaydı döndürür."""
+    if not gate_result.get("pass"):
+        _log("position_skipped", {"reason": "gate_vetoed", "dry_run": config.DRY_RUN}, log_file)
+        return None
+
+    if len(open_positions) >= config.MAX_OPEN_POSITIONS:
+        _log("position_skipped", {"reason": "max_open_positions", "dry_run": config.DRY_RUN}, log_file)
+        return None
+
+    return None  # happy path — Task 3'te tamamlanacak
