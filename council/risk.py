@@ -67,4 +67,8 @@ def risk(
         {pass, position_usd, kelly_f, kelly_fraction_applied,
          requires_human_approval, halt, reason}
     """
+    # 1. Günlük kayıp limiti — HALT
+    if bankroll_usd > 0 and daily_loss_usd / bankroll_usd >= config.DAILY_LOSS_LIMIT_PCT:
+        return _result(False, halt=True, reason="daily_loss_limit_hit")
+
     return _result(False, reason="not_implemented")
