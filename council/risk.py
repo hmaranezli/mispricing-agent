@@ -93,4 +93,13 @@ def risk(
     if position_usd < MIN_POSITION_USD:
         return _result(False, kelly_f=kelly_f, reason="position_too_small")
 
-    return _result(False, reason="not_implemented")
+    # 5. İnsan onayı bayrağı (veto değil — Gate handle eder)
+    requires_human_approval = position_usd > config.HUMAN_APPROVAL_USD
+
+    return _result(
+        pass_=True,
+        position_usd=position_usd,
+        kelly_f=kelly_f,
+        requires_human_approval=requires_human_approval,
+        reason="",
+    )
