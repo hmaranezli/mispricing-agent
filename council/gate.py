@@ -62,8 +62,55 @@ def _gate_decide(finding: dict, verification: dict,
     }
 
 
+def _log(finding: dict, verification: dict, redteam: dict,
+         decision: dict, risk_result: dict) -> None:
+    """Kararı LOG_FILE'a yaz. Dizin yoksa oluşturur."""
+    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    entry = {
+        "ts":                      datetime.now(timezone.utc).isoformat(),
+        "dry_run":                 config.DRY_RUN,
+        "pass":                    decision["pass"],
+        "action":                  finding.get("action", ""),
+        "slug":                    finding.get("slug", ""),
+        "asset":                   finding.get("asset", ""),
+        "position_usd":            risk_result.get("position_usd", 0.0),
+        "confidence_score":        decision["confidence_score"],
+        "fee_adj_edge":            redteam.get("fee_adj_edge", 0.0),
+        "liquidity_usd":           redteam.get("liquidity_usd", 0.0),
+        "fresh_seconds":           verification.get("fresh_seconds", 0),
+        "spread":                  redteam.get("spread", 0.0),
+        "action_taken":            decision["action_taken"],
+        "requires_human_approval": risk_result.get("requires_human_approval", False),
+        "reason":                  decision["reason"],
+    }
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
 async def gate(finding: dict, verification: dict,
                redteam: dict, risk_result: dict) -> dict:
-    """Stub — Task 3'te implement edilecek."""
-    return {"pass": False, "confidence_score": 0.0,
-            "action_taken": "vetoed", "reason": "not_implemented"}
+    """
+    Son karar: güven skoru → insan onayı → log → aksiyon.
+
+    Returns:
+        {pass, confidence_score, action_taken, reason}
+    """
+    decision = _gate_decide(finding, verification, redteam, risk_result)
+
+    if not decision["pass"]:
+        _log(finding, verification, redteam, decision, risk_result)
+        return decision
+
+    # İnsan onayı bayrağı
+    if risk_result.get("requires_human_approval", False) and not config.DRY_RUN:
+        # Canlı modda Telegram + timeout (şimdilik timeout döner)
+        decision["action_taken"] = "approval_timeout"
+        decision["pass"] = False
+        decision["reason"] = "human_approval_timeout"
+        _log(finding, verification, redteam, decision, risk_result)
+        return decision
+
+    # DRY_RUN: logla ve dön
+    decision["action_taken"] = "dry_run_logged"
+    _log(finding, verification, redteam, decision, risk_result)
+    return decision
