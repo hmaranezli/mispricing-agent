@@ -105,6 +105,7 @@ async def test_scan_edges_findings_have_required_fields():
     required = {
         "question", "asset", "fair_value", "best_ask", "best_bid",
         "edge", "action", "ref_price", "cur_price", "seconds_remaining",
+        "slug",
     }
     for f in findings:
         missing = required - set(f.keys())

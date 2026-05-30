@@ -100,6 +100,7 @@ async def _process_market(m: dict) -> dict | None:
         "edge":              round(signal["edge"], 4),
         "action":            signal["action"],
         "neg_risk":          window["neg_risk"],
+        "slug":              m.get("slug", ""),
     }
 
 
