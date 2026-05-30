@@ -16,6 +16,8 @@ from execution.executor import execute
 from position.manager import check_exit, close_position
 from data.hl_candles import current_price
 from data.shortterm import fetch_by_slug, parse_market_window
+from monitor.notifier import notify_open, notify_close, notify_halt
+from monitor.kill_switch import check as kill_switch_check
 
 SCAN_INTERVAL_SECS = 30
 BANKROLL_USD = 1000.0  # Başlangıç sermayesi — canlıya geçmeden önce ayarla
@@ -130,9 +132,22 @@ async def main() -> None:
     closed_today:   list[dict] = []
     print(f"[bot] Başladı — DRY_RUN={config.DRY_RUN}, tarama={SCAN_INTERVAL_SECS}s")
     while True:
+        if kill_switch_check():
+            notify_halt("kill_switch")
+            print("[bot] Kill switch etkin — sistem durdu.")
+            break
         try:
+            n_open_before = len(open_positions)
+            n_closed_before = len(closed_today)
+
             await _monitor_positions(open_positions, closed_today)
+            for pos in closed_today[n_closed_before:]:
+                notify_close(pos)
+
             await _scan_and_execute(open_positions, closed_today, BANKROLL_USD)
+            for pos in open_positions[n_open_before:]:
+                notify_open(pos)
+
         except Exception as e:
             print(f"[bot] Döngü hatası: {e}")
         await asyncio.sleep(SCAN_INTERVAL_SECS)
