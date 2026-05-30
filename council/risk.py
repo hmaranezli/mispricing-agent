@@ -22,7 +22,12 @@ MIN_POSITION_USD = 5.0   # Bu altı → fee'ye değmez → veto
 def _kelly(action: str, fee_adj_edge: float,
            fresh_ask: float, fresh_bid: float) -> float:
     """Ham Kelly fraksiyonu. Bölme sıfırı (payda < 0.01) → 0.0."""
-    return 0.0  # Task 2'de implement edilecek
+    if action == "YES":
+        denom = 1.0 - fresh_ask
+        return fee_adj_edge / denom if denom >= 0.01 else 0.0
+    else:  # NO
+        denom = fresh_bid
+        return fee_adj_edge / denom if denom >= 0.01 else 0.0
 
 
 def _result(pass_: bool, position_usd: float = 0.0, kelly_f: float = 0.0,
