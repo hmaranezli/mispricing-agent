@@ -178,6 +178,14 @@ def test_slugs_lookback_at_least_7():
     assert len(slugs) >= 7, f"Lookback yetersiz: {len(slugs)} slug (min 7 bekleniyor)"
 
 
+def test_fetch_by_slug_takes_single_arg():
+    """fetch_by_slug(slug) — session parametresi olmadan çağrılabilmeli (main_loop kullanımı)."""
+    import inspect
+    from data.shortterm import fetch_by_slug
+    params = list(inspect.signature(fetch_by_slug).parameters.keys())
+    assert params == ["slug"], f"fetch_by_slug imzası yanlış: {params} (main_loop session'sız çağırıyor)"
+
+
 def test_total_slug_count_80_plus():
     """4 asset × 3 interval × 7 lookback = 84 slug — 80+ hedefine ulaşmış olmalı."""
     from data.shortterm import slugs_for_now

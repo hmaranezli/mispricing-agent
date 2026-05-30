@@ -74,7 +74,8 @@ def slugs_for_now(assets=("btc", "eth", "sol", "xrp"), interval=15, lookback=7):
     return out
 
 
-async def fetch_by_slug(session, slug):
+async def _fetch_slug(session, slug):
+    """Paylaşılan session ile tek slug sorgular (find_shortterm içi)."""
     try:
         async with session.get(GAMMA, params={"slug": slug}) as r:
             if r.status != 200:
@@ -86,6 +87,13 @@ async def fetch_by_slug(session, slug):
     return arr[0] if arr else None
 
 
+async def fetch_by_slug(slug):
+    """Tek slug için bağımsız sorgu — main_loop._monitor_positions kullanır."""
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(timeout=timeout) as s:
+        return await _fetch_slug(s, slug)
+
+
 async def find_shortterm(intervals=(5, 15, 60)):
     found = []
     timeout = aiohttp.ClientTimeout(total=20)
@@ -93,7 +101,7 @@ async def find_shortterm(intervals=(5, 15, 60)):
         tasks = []
         for iv in intervals:
             for slug in slugs_for_now(interval=iv):
-                tasks.append(fetch_by_slug(s, slug))
+                tasks.append(_fetch_slug(s, slug))
         results = await asyncio.gather(*tasks)
     for m in results:
         if m:
