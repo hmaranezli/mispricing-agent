@@ -18,6 +18,7 @@ from data.hl_candles import current_price
 from data.shortterm import fetch_by_slug, parse_market_window
 from monitor.notifier import notify_open, notify_close, notify_halt
 from monitor.kill_switch import check as kill_switch_check
+from db.logger import log_candidate, log_position_open, log_position_close, get_connection
 
 SCAN_INTERVAL_SECS = 30
 BANKROLL_USD = 1000.0  # Başlangıç sermayesi — canlıya geçmeden önce ayarla
@@ -44,14 +45,19 @@ async def _run_council(
     bankroll_usd:   float,
     n_open:         int,
     daily_loss_usd: float,
+    conn=None,
 ) -> tuple | None:
     """Finding'i 5 katmandan geçirir. Herhangi biri düşerse None."""
     verification = await verify(finding)
     if not verification["pass"]:
+        await log_candidate(conn, finding, passed=False,
+                            veto_layer="verifier", veto_reason=verification.get("reason"))
         return None
 
     rt = await redteam_eval(finding, verification)
     if not rt["pass"]:
+        await log_candidate(conn, finding, passed=False,
+                            veto_layer="redteam", veto_reason=str(rt.get("vetoes", [])))
         return None
 
     rk = risk_eval(finding, verification, rt,
@@ -59,12 +65,17 @@ async def _run_council(
                    open_positions=n_open,
                    daily_loss_usd=daily_loss_usd)
     if not rk["pass"]:
+        await log_candidate(conn, finding, passed=False,
+                            veto_layer="risk", veto_reason=rk.get("reason"))
         return None
 
     gate_result = await gate(finding, verification, rt, rk)
     if not gate_result["pass"]:
+        await log_candidate(conn, finding, passed=False,
+                            veto_layer="gate", veto_reason=gate_result.get("reason"))
         return None
 
+    await log_candidate(conn, finding, passed=True)
     return gate_result, rk
 
 
@@ -72,6 +83,7 @@ async def _scan_and_execute(
     open_positions: list[dict],
     closed_today:   list[dict],
     bankroll_usd:   float,
+    conn=None,
 ) -> None:
     """Yeni fırsatları tarar, konsey geçenleri açar."""
     if len(open_positions) >= config.MAX_OPEN_POSITIONS:
@@ -87,19 +99,22 @@ async def _scan_and_execute(
         result = await _run_council(finding,
                                     bankroll_usd=bankroll_usd,
                                     n_open=len(open_positions),
-                                    daily_loss_usd=daily_loss)
+                                    daily_loss_usd=daily_loss,
+                                    conn=conn)
         if result is None:
             continue
 
         gate_result, risk_result = result
         position = await execute(finding, gate_result, risk_result, open_positions)
         if position:
+            await log_position_open(conn, position)
             open_positions.append(position)
 
 
 async def _monitor_positions(
     open_positions: list[dict],
     closed_today:   list[dict],
+    conn=None,
 ) -> None:
     """Açık pozisyonları izler, çıkış koşulu varsa kapatır."""
     for pos in list(open_positions):
@@ -110,6 +125,7 @@ async def _monitor_positions(
 
             if window is None:
                 closed = close_position(pos, "market_expired")
+                await log_position_close(conn, closed)
                 open_positions.remove(pos)
                 closed_today.append(closed)
                 continue
@@ -120,6 +136,7 @@ async def _monitor_positions(
             if exit_reason:
                 closed = close_position(pos, exit_reason,
                                         pm_exit_price=window["best_ask"])
+                await log_position_close(conn, closed)
                 open_positions.remove(pos)
                 closed_today.append(closed)
 
@@ -131,26 +148,30 @@ async def main() -> None:
     open_positions: list[dict] = []
     closed_today:   list[dict] = []
     print(f"[bot] Başladı — DRY_RUN={config.DRY_RUN}, tarama={SCAN_INTERVAL_SECS}s")
-    while True:
-        if kill_switch_check():
-            notify_halt("kill_switch")
-            print("[bot] Kill switch etkin — sistem durdu.")
-            break
-        try:
-            n_open_before = len(open_positions)
-            n_closed_before = len(closed_today)
+    conn = await get_connection()
+    try:
+        while True:
+            if kill_switch_check():
+                notify_halt("kill_switch")
+                print("[bot] Kill switch etkin — sistem durdu.")
+                break
+            try:
+                n_open_before   = len(open_positions)
+                n_closed_before = len(closed_today)
 
-            await _monitor_positions(open_positions, closed_today)
-            for pos in closed_today[n_closed_before:]:
-                notify_close(pos)
+                await _monitor_positions(open_positions, closed_today, conn=conn)
+                for pos in closed_today[n_closed_before:]:
+                    notify_close(pos)
 
-            await _scan_and_execute(open_positions, closed_today, BANKROLL_USD)
-            for pos in open_positions[n_open_before:]:
-                notify_open(pos)
+                await _scan_and_execute(open_positions, closed_today, BANKROLL_USD, conn=conn)
+                for pos in open_positions[n_open_before:]:
+                    notify_open(pos)
 
-        except Exception as e:
-            print(f"[bot] Döngü hatası: {e}")
-        await asyncio.sleep(SCAN_INTERVAL_SECS)
+            except Exception as e:
+                print(f"[bot] Döngü hatası: {e}")
+            await asyncio.sleep(SCAN_INTERVAL_SECS)
+    finally:
+        await conn.close()
 
 
 if __name__ == "__main__":
