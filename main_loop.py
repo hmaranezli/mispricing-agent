@@ -99,8 +99,30 @@ async def _monitor_positions(
     open_positions: list[dict],
     closed_today:   list[dict],
 ) -> None:
-    """Placeholder — Task 3'te implemente edilecek."""
-    pass
+    """Açık pozisyonları izler, çıkış koşulu varsa kapatır."""
+    for pos in list(open_positions):
+        try:
+            hl_price   = await current_price(pos["asset"])
+            market_raw = await fetch_by_slug(pos["slug"])
+            window     = parse_market_window(market_raw)
+
+            if window is None:
+                closed = close_position(pos, "market_expired")
+                open_positions.remove(pos)
+                closed_today.append(closed)
+                continue
+
+            exit_reason = check_exit(pos, hl_price,
+                                     window["best_ask"],
+                                     window["seconds_remaining"])
+            if exit_reason:
+                closed = close_position(pos, exit_reason,
+                                        pm_exit_price=window["best_ask"])
+                open_positions.remove(pos)
+                closed_today.append(closed)
+
+        except Exception as e:
+            print(f"[monitor] {pos['slug']} hata: {e}")
 
 
 async def main() -> None:

@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from main_loop import _run_council, _scan_and_execute, _monitor_positions
 
@@ -92,3 +92,56 @@ async def test_scan_opens_position_on_full_council_pass():
         await _scan_and_execute(open_pos, [], bankroll_usd=1000.0)
     assert len(open_pos) == 1
     assert open_pos[0]["position_id"] == "abc-123"
+
+
+# ── Task 3: _monitor_positions() ─────────────────────────────────────────────
+
+def _open_position():
+    """Açık pozisyon fixture'ı."""
+    opened_at = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    return {
+        "position_id": "pos-xyz", "asset": "BTC", "action": "YES",
+        "slug": "btc-up-test", "pm_entry_price": 0.35, "fair_value": 0.55,
+        "ref_price": 95000.0, "position_usd": 25.0, "kelly_f": 0.15,
+        "confidence_score": 82.5, "seconds_remaining": 900,
+        "opened_at": opened_at, "status": "open",
+        "requires_human_approval": False, "dry_run": True,
+        "exit_reason": None, "closed_at": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_monitor_closes_position_on_exit_signal():
+    """check_exit sinyal verince pozisyon open'dan closed'a geçer."""
+    pos = _open_position()
+    open_pos = [pos]
+    closed = []
+    fake_window = {"best_ask": 0.52, "best_bid": 0.50,
+                   "seconds_remaining": 900, "neg_risk": False}
+    with patch("main_loop.current_price",     new_callable=AsyncMock) as mock_hl, \
+         patch("main_loop.fetch_by_slug",     new_callable=AsyncMock) as mock_pm, \
+         patch("main_loop.parse_market_window", return_value=fake_window), \
+         patch("main_loop.check_exit",        return_value="max_hold_time"):
+        mock_hl.return_value = 95000.0
+        mock_pm.return_value = {}
+        await _monitor_positions(open_pos, closed)
+    assert len(open_pos) == 0
+    assert len(closed) == 1
+    assert closed[0]["exit_reason"] == "max_hold_time"
+    assert closed[0]["status"] == "closed"
+
+
+@pytest.mark.asyncio
+async def test_monitor_closes_on_missing_market():
+    """parse_market_window None dönerse market_expired ile kapatılır."""
+    open_pos = [_open_position()]
+    closed = []
+    with patch("main_loop.current_price",     new_callable=AsyncMock) as mock_hl, \
+         patch("main_loop.fetch_by_slug",     new_callable=AsyncMock) as mock_pm, \
+         patch("main_loop.parse_market_window", return_value=None):
+        mock_hl.return_value = 95000.0
+        mock_pm.return_value = {}
+        await _monitor_positions(open_pos, closed)
+    assert len(open_pos) == 0
+    assert len(closed) == 1
+    assert closed[0]["exit_reason"] == "market_expired"
