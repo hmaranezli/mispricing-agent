@@ -75,4 +75,9 @@ def risk(
     if open_positions >= config.MAX_OPEN_POSITIONS:
         return _result(False, reason="max_open_positions_reached")
 
+    # 3. Edge geçerlilik — çift emniyet (RedTeam zaten kontrol etti)
+    fee_adj_edge = redteam["fee_adj_edge"]
+    if fee_adj_edge < config.MIN_EDGE_PCT:
+        return _result(False, reason="edge_below_minimum")
+
     return _result(False, reason="not_implemented")
