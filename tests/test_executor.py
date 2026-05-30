@@ -123,10 +123,11 @@ async def test_max_open_positions_returns_none(tmp_path):
 
 @pytest.mark.asyncio
 async def test_execute_returns_position_record(tmp_path):
-    """Guard'lar geçince tam pozisyon kaydı döner."""
+    """Guard'lar geçince tam pozisyon kaydı döner ve JSONL'a position_opened yazar."""
+    log_file = tmp_path / "log.jsonl"
     result = await execute(
         _finding(), _gate(), _risk(),
-        open_positions=[], log_file=tmp_path / "log.jsonl"
+        open_positions=[], log_file=log_file
     )
     assert result is not None
     assert result["status"] == "open"
@@ -136,6 +137,23 @@ async def test_execute_returns_position_record(tmp_path):
                   "seconds_remaining", "opened_at", "dry_run",
                   "exit_reason", "closed_at"]:
         assert field in result, f"Alan eksik: {field}"
+    lines = log_file.read_text().strip().splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["event"] == "position_opened"
+    assert record["position_id"] == result["position_id"]
+
+
+@pytest.mark.asyncio
+async def test_no_action_entry_price(tmp_path):
+    """action=NO için pm_entry_price = round(1 - best_bid, 4)."""
+    finding = _finding()
+    finding["action"] = "NO"
+    result = await execute(
+        finding, _gate(), _risk(),
+        open_positions=[], log_file=tmp_path / "log.jsonl"
+    )
+    assert result["pm_entry_price"] == round(1 - finding["best_bid"], 4)
 
 
 @pytest.mark.asyncio

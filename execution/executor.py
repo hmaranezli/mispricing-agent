@@ -72,8 +72,10 @@ async def execute(
         "slug":             position["slug"],
         "pm_entry_price":   position["pm_entry_price"],
         "fair_value":       position["fair_value"],
+        "ref_price":        position["ref_price"],
         "position_usd":     position["position_usd"],
         "confidence_score": position["confidence_score"],
+        "opened_at":        position["opened_at"],
         "dry_run":          position["dry_run"],
     }, log_file)
 
