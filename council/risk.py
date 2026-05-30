@@ -80,4 +80,17 @@ def risk(
     if fee_adj_edge < config.MIN_EDGE_PCT:
         return _result(False, reason="edge_below_minimum")
 
+    # 4. Kelly hesabı ve minimum pozisyon
+    kelly_f = _kelly(
+        action=finding["action"],
+        fee_adj_edge=fee_adj_edge,
+        fresh_ask=verification["fresh_best_ask"],
+        fresh_bid=verification["fresh_best_bid"],
+    )
+    capped_f     = min(kelly_f * KELLY_FRACTION, config.MAX_TRADE_PCT)
+    position_usd = capped_f * bankroll_usd
+
+    if position_usd < MIN_POSITION_USD:
+        return _result(False, kelly_f=kelly_f, reason="position_too_small")
+
     return _result(False, reason="not_implemented")
