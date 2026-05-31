@@ -52,18 +52,18 @@ async def verify(finding: dict) -> dict:
                        fresh_cur=fresh_cur, hl_drift_pct=hl_drift)
 
     # ── 3. PM taze fiyat ─────────────────────────────────────────────────────
+    window = None
     try:
         market = await fetch_by_slug(slug)
-    except Exception as e:
-        return _result(False, "fetch_error", False,
-                       fresh_cur=fresh_cur, hl_drift_pct=hl_drift,
-                       extra={"error": str(e)})
+        if market is not None:
+            window = parse_market_window(market)
+    except Exception:
+        pass
 
-    if market is None:
-        return _result(False, "fetch_error", False,
-                       fresh_cur=fresh_cur, hl_drift_pct=hl_drift)
+    # PM fetch başarısız → Scout'un cached _window'u fallback (saniyeler önce çekildi)
+    if window is None:
+        window = finding.get("_window")
 
-    window = parse_market_window(market)
     if window is None:
         return _result(False, "fetch_error", False,
                        fresh_cur=fresh_cur, hl_drift_pct=hl_drift)

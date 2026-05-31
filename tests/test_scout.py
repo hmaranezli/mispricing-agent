@@ -162,3 +162,16 @@ async def test_scan_edges_sorted_by_edge_desc():
     if len(findings) >= 2:
         for i in range(len(findings) - 1):
             assert findings[i]["edge"] >= findings[i + 1]["edge"]
+
+
+@pytest.mark.asyncio
+async def test_scan_edges_findings_include_window_cache():
+    """Her bulgu _window içeriyor — Verifier PM fallback için."""
+    findings = await scan_edges()
+    if not findings:
+        pytest.skip("Şu an aktif mispricing yok")
+    for f in findings:
+        assert "_window" in f, "Bulguda _window yok"
+        assert "best_ask" in f["_window"]
+        assert "best_bid" in f["_window"]
+        assert "seconds_remaining" in f["_window"]

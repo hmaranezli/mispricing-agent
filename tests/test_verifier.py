@@ -145,6 +145,23 @@ async def test_verify_invalid_slug_fetch_error_no_halt():
 
 
 @pytest.mark.asyncio
+async def test_verify_uses_window_cache_when_pm_fetch_fails():
+    """PM fetch None döndürünce finding._window fallback kullanır — fetch_error olmaz."""
+    cached_window = {
+        "best_ask": 0.35, "best_bid": 0.34,
+        "seconds_remaining": 300.0, "neg_risk": False,
+    }
+    finding = _fake_finding(cur_price=105_000.0, ref_price=104_000.0)
+    finding["_window"] = cached_window
+    with patch("council.verifier.current_price", return_value=105_000.0), \
+         patch("council.verifier.fetch_by_slug", new_callable=AsyncMock, return_value=None):
+        result = await verify(finding)
+    assert result["reason"] != "fetch_error", f"_window varken fetch_error döndü: {result}"
+    assert result["fresh_best_ask"] == 0.35
+    assert result["fresh_seconds"] == 300.0
+
+
+@pytest.mark.asyncio
 async def test_verify_real_scout_finding_has_valid_structure():
     """Gerçek Scout bulgusu → Verifier geçerli yapıda sonuç döndürür."""
     findings = await scan_edges()
