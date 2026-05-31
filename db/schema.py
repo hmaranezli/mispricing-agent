@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS positions (
 _MIGRATIONS = [
     "ALTER TABLE positions ADD COLUMN ref_price REAL",
     "ALTER TABLE positions ADD COLUMN edge REAL",
+    "ALTER TABLE positions ADD COLUMN realized_pnl REAL",
 ]
 
 

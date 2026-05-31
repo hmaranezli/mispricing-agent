@@ -132,3 +132,11 @@ async def test_log_position_open_stores_ref_price_and_edge(conn):
         row = await cur.fetchone()
     assert abs(row[0] - 150.0) < 1e-6, f"ref_price yanlış: {row[0]}"
     assert abs(row[1] - 0.18) < 1e-6, f"edge yanlış: {row[1]}"
+
+
+@pytest.mark.asyncio
+async def test_positions_schema_has_realized_pnl(conn):
+    """positions tablosu realized_pnl sütununa sahip olmalı."""
+    async with conn.execute("PRAGMA table_info(positions)") as cur:
+        cols = {row[1] for row in await cur.fetchall()}
+    assert "realized_pnl" in cols, "positions tablosunda realized_pnl sütunu yok"
