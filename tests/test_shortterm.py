@@ -194,3 +194,25 @@ def test_total_slug_count_80_plus():
         for iv in [5, 15, 60]
     )
     assert total >= 80, f"Toplam slug sayısı yetersiz: {total} (min 80 bekleniyor)"
+
+
+# ── Resolution ────────────────────────────────────────────────────────────────
+
+def test_parse_resolution_up_wins():
+    """outcomePrices["1","0"] → yes_exit=1.0, no_exit=0.0."""
+    from data.shortterm import _parse_resolution
+    result = _parse_resolution({"outcomePrices": '["1", "0"]'})
+    assert result == {"yes_exit": 1.0, "no_exit": 0.0}
+
+
+def test_parse_resolution_down_wins():
+    """outcomePrices["0","1"] → yes_exit=0.0, no_exit=1.0."""
+    from data.shortterm import _parse_resolution
+    result = _parse_resolution({"outcomePrices": '["0", "1"]'})
+    assert result == {"yes_exit": 0.0, "no_exit": 1.0}
+
+
+def test_parse_resolution_missing_prices_returns_none():
+    """outcomePrices alanı yoksa None döner."""
+    from data.shortterm import _parse_resolution
+    assert _parse_resolution({"closed": True}) is None
