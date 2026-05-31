@@ -102,3 +102,34 @@ async def log_position_close(conn, position: dict) -> None:
         ),
     )
     await conn.commit()
+
+
+async def load_closed_today(conn) -> list[dict]:
+    """Bugünün UTC kapanan pozisyonlarını yükler — restart sonrası daily_loss recovery."""
+    today_prefix = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    async with conn.execute(
+        """SELECT position_id, ts_open, ts_close, slug, asset, action,
+                  pm_entry_price, pm_exit_price, position_usd, realized_pnl,
+                  exit_reason, dry_run
+           FROM positions
+           WHERE status='closed' AND ts_close LIKE ?""",
+        (f"{today_prefix}%",),
+    ) as cur:
+        rows = await cur.fetchall()
+    return [
+        {
+            "position_id":    r[0],
+            "opened_at":      r[1],
+            "closed_at":      r[2],
+            "slug":           r[3],
+            "asset":          r[4],
+            "action":         r[5],
+            "pm_entry_price": r[6],
+            "pm_exit_price":  r[7],
+            "position_usd":   r[8],
+            "realized_pnl":   r[9],
+            "exit_reason":    r[10],
+            "dry_run":        bool(r[11]),
+        }
+        for r in rows
+    ]

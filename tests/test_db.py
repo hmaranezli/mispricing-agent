@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest
 import pytest_asyncio
 import aiosqlite
+from datetime import date, timedelta
 from db.schema import init_schema
 from db import logger
 
@@ -187,3 +188,43 @@ async def test_log_position_close_realized_pnl_none_when_no_exit_price(conn):
     ) as cur:
         row = await cur.fetchone()
     assert row[0] is None
+
+
+@pytest.mark.asyncio
+async def test_load_closed_today_returns_only_todays(conn):
+    """load_closed_today yalnızca bugünün UTC kapanışlarını döndürür, önceki günleri değil."""
+    from db.logger import load_closed_today
+
+    today     = date.today().isoformat()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+
+    base = {
+        "slug": "btc-up-5min", "asset": "BTC", "action": "YES",
+        "pm_entry_price": 0.35, "fair_value": 0.55,
+        "ref_price": 95000.0, "edge": 0.20,
+        "position_usd": 25.0, "kelly_f": 0.15, "confidence_score": 82.0,
+    }
+
+    # Bugün kapanan
+    pos_today = {**base, "position_id": "today-001",
+                 "opened_at": f"{today}T09:00:00+00:00"}
+    await logger.log_position_open(conn, pos_today)
+    await logger.log_position_close(conn, {
+        **pos_today, "pm_exit_price": 0.5, "exit_reason": "profit_target_hit",
+        "closed_at": f"{today}T09:14:00+00:00", "status": "closed",
+    })
+
+    # Dün kapanan
+    pos_yesterday = {**base, "position_id": "yest-001",
+                     "opened_at": f"{yesterday}T09:00:00+00:00"}
+    await logger.log_position_open(conn, pos_yesterday)
+    await logger.log_position_close(conn, {
+        **pos_yesterday, "pm_exit_price": 0.3, "exit_reason": "max_hold_time",
+        "closed_at": f"{yesterday}T09:14:00+00:00", "status": "closed",
+    })
+
+    result = await load_closed_today(conn)
+    assert len(result) == 1
+    assert result[0]["position_id"] == "today-001"
+    assert result[0]["closed_at"].startswith(today)
+    assert result[0]["pm_exit_price"] == 0.5
