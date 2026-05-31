@@ -15,7 +15,7 @@ from council.gate import gate
 from execution.executor import execute
 from position.manager import check_exit, close_position
 from data.hl_candles import current_price
-from data.shortterm import fetch_by_slug, parse_market_window
+from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window
 from monitor.notifier import notify_open, notify_close, notify_halt
 from monitor.kill_switch import check as kill_switch_check
 from db.logger import log_candidate, log_position_open, log_position_close, get_connection
@@ -159,7 +159,12 @@ async def _monitor_positions(
             window     = parse_market_window(market_raw)
 
             if window is None:
-                closed = close_position(pos, "market_expired")
+                resolution = await fetch_resolved(pos["slug"])
+                if resolution:
+                    pm_exit = resolution["yes_exit"] if pos["action"] == "YES" else resolution["no_exit"]
+                    closed = close_position(pos, "market_resolved", pm_exit_price=pm_exit)
+                else:
+                    closed = close_position(pos, "market_expired")
                 await log_position_close(conn, closed)
                 open_positions.remove(pos)
                 closed_today.append(closed)

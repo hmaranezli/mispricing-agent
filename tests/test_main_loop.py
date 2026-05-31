@@ -9,7 +9,7 @@ import pytest_asyncio
 import aiosqlite
 from db.schema import init_schema
 from db.logger import log_position_open
-from main_loop import _run_council, _scan_and_execute, _monitor_positions, _load_open_positions
+from main_loop import _run_council, _scan_and_execute, _monitor_positions, _load_open_positions, fetch_resolved
 
 
 # ── Fixture'lar ──────────────────────────────────────────────────────────────
@@ -150,18 +150,40 @@ async def test_monitor_closes_position_on_exit_signal():
 
 @pytest.mark.asyncio
 async def test_monitor_closes_on_missing_market():
-    """parse_market_window None dönerse market_expired ile kapatılır."""
+    """parse_market_window None + fetch_resolved None → market_expired ile kapatılır."""
     open_pos = [_open_position()]
     closed = []
-    with patch("main_loop.current_price",     new_callable=AsyncMock) as mock_hl, \
-         patch("main_loop.fetch_by_slug",     new_callable=AsyncMock) as mock_pm, \
-         patch("main_loop.parse_market_window", return_value=None):
-        mock_hl.return_value = 95000.0
-        mock_pm.return_value = {}
+    with patch("main_loop.current_price",       new_callable=AsyncMock) as mock_hl, \
+         patch("main_loop.fetch_by_slug",       new_callable=AsyncMock) as mock_pm, \
+         patch("main_loop.parse_market_window", return_value=None), \
+         patch("main_loop.fetch_resolved",      new_callable=AsyncMock) as mock_res:
+        mock_hl.return_value  = 95000.0
+        mock_pm.return_value  = {}
+        mock_res.return_value = None
         await _monitor_positions(open_pos, closed)
     assert len(open_pos) == 0
     assert len(closed) == 1
     assert closed[0]["exit_reason"] == "market_expired"
+
+
+@pytest.mark.asyncio
+async def test_monitor_closes_with_resolution_price_on_yes():
+    """window=None iken fetch_resolved sonuç verirse pm_exit_price dolu kapanır (YES)."""
+    pos = {**_open_position(), "action": "YES"}
+    open_pos = [pos]
+    closed = []
+    with patch("main_loop.current_price",       new_callable=AsyncMock) as mock_hl, \
+         patch("main_loop.fetch_by_slug",       new_callable=AsyncMock) as mock_pm, \
+         patch("main_loop.parse_market_window", return_value=None), \
+         patch("main_loop.fetch_resolved",      new_callable=AsyncMock) as mock_res:
+        mock_hl.return_value  = 95000.0
+        mock_pm.return_value  = {}
+        mock_res.return_value = {"yes_exit": 1.0, "no_exit": 0.0}
+        await _monitor_positions(open_pos, closed)
+    assert len(open_pos) == 0
+    assert len(closed) == 1
+    assert closed[0]["pm_exit_price"] == 1.0
+    assert closed[0]["exit_reason"] == "market_resolved"
 
 
 # ── _load_open_positions() ────────────────────────────────────────────────────
