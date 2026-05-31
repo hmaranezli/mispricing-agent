@@ -8,6 +8,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from unittest.mock import patch, AsyncMock
 import config
 from council.verifier import verify, PRICE_DRIFT_HALT_PCT, PM_DRIFT_HALT
 from council.scout import scan_edges
@@ -89,16 +90,29 @@ def test_pass_result_structure():
     assert r["fresh_edge"] == 0.25
 
 
+# ── Unit: fetch_by_slug imza kontrolü ────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_verifier_calls_fetch_by_slug_with_slug_only():
+    """verifier PM adımında fetch_by_slug'ı session olmadan çağırmalı."""
+    with patch("council.verifier.current_price", return_value=73_000.0), \
+         patch("council.verifier.fetch_by_slug", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = None
+        await verify(_fake_finding(cur_price=73_000.0, ref_price=73_000.0))
+    mock_fetch.assert_called_once_with(_fake_finding()["slug"])
+
+
 # ── Integration testler (gerçek API) ─────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_verify_hl_drift_triggers_halt():
     """
-    Scout cur_price=1.0 (imkansız) verilince gerçek HL fiyatıyla drift >%2 → api_mismatch.
-    Gerçek BTC fiyatı ~$70k+. Fark %2'yi kat kat aşar.
+    Scout cur_price=1.0 (imkansız) iken HL taze fiyat ~73k → drift devasa → api_mismatch.
+    current_price mock'lu — HL rate limit'ten bağımsız.
     """
-    finding = _fake_finding(cur_price=1.0, ref_price=1.0)
-    result = await verify(finding)
+    with patch("council.verifier.current_price", return_value=73_000.0):
+        finding = _fake_finding(cur_price=1.0, ref_price=1.0)
+        result = await verify(finding)
     assert result["pass"] is False
     assert result["reason"] == "api_mismatch"
     assert result["halt"] == config.HALT_ON_API_MISMATCH
@@ -108,15 +122,13 @@ async def test_verify_hl_drift_triggers_halt():
 @pytest.mark.asyncio
 async def test_verify_expired_soft_fail():
     """
-    seconds_remaining=0 → HL drift kontrolü sonrası expired veya fetch_error.
-    Scout cur_price gerçeğe yakın verilirse drift geçer; slug geçersizse fetch_error.
-    Her iki durumda da halt=False.
+    seconds_remaining=0 → expired veya fetch_error, halt=False.
+    current_price mock'lu — HL rate limit'ten bağımsız.
     """
-    from data.hl_candles import current_price
-    real_cur = await current_price("BTC")
-    finding = _fake_finding(cur_price=real_cur, ref_price=real_cur * 0.99,
-                            seconds_remaining=0.0)
-    result = await verify(finding)
+    with patch("council.verifier.current_price", return_value=73_000.0):
+        finding = _fake_finding(cur_price=73_000.0, ref_price=73_000.0 * 0.99,
+                                seconds_remaining=0.0)
+        result = await verify(finding)
     assert result["pass"] is False
     assert result["halt"] is False
     assert result["reason"] in ("expired", "fetch_error")

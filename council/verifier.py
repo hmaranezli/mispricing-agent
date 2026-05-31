@@ -8,7 +8,6 @@ Scout bulgusunu taze API verisiyle teyit eder.
 import asyncio
 import sys
 import os
-import aiohttp
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -54,9 +53,7 @@ async def verify(finding: dict) -> dict:
 
     # ── 3. PM taze fiyat ─────────────────────────────────────────────────────
     try:
-        timeout = aiohttp.ClientTimeout(total=20)
-        async with aiohttp.ClientSession(timeout=timeout) as s:
-            market = await fetch_by_slug(s, slug)
+        market = await fetch_by_slug(slug)
     except Exception as e:
         return _result(False, "fetch_error", False,
                        fresh_cur=fresh_cur, hl_drift_pct=hl_drift,
