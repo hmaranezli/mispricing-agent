@@ -228,6 +228,31 @@ async def test_load_open_positions_returns_open_ones(mem_db):
 
 
 @pytest.mark.asyncio
+async def test_monitor_no_position_exit_uses_no_price():
+    """NO pozisyon erken çıkışta pm_exit_price = 1 - YES_ask (NO bid fiyatı, YES ask değil)."""
+    pos = {**_open_position(), "action": "NO", "pm_entry_price": 0.46}
+    open_pos = [pos]
+    closed = []
+    fake_window = {
+        "best_ask": 0.10,  # YES ask=0.10 → NO bid = 1-0.10 = 0.90
+        "best_bid": 0.09,
+        "seconds_remaining": 500,
+        "neg_risk": False,
+    }
+    with patch("main_loop.current_price",       new_callable=AsyncMock) as mock_hl, \
+         patch("main_loop.fetch_by_slug",       new_callable=AsyncMock) as mock_pm, \
+         patch("main_loop.parse_market_window", return_value=fake_window), \
+         patch("main_loop.fetch_resolved",      new_callable=AsyncMock, return_value=None), \
+         patch("main_loop.check_exit",          return_value="thesis_invalidated"):
+        mock_hl.return_value = 95000.0
+        mock_pm.return_value = {}
+        await _monitor_positions(open_pos, closed)
+    assert len(closed) == 1
+    assert abs(closed[0]["pm_exit_price"] - 0.90) < 1e-4, \
+        f"NO çıkış fiyatı yanlış: {closed[0]['pm_exit_price']:.4f} — YES_ask=0.10 iken NO_bid=0.90 olmalı"
+
+
+@pytest.mark.asyncio
 async def test_daily_loss_includes_recovered_closed_positions(mem_db):
     """Restart sonrası DB'den yüklenen bugünün kapanan pozisyonları _daily_loss_usd'e dahil edilir."""
     from datetime import date

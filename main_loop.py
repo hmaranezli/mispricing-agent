@@ -174,8 +174,12 @@ async def _monitor_positions(
                                      window["best_ask"],
                                      window["seconds_remaining"])
             if exit_reason:
-                closed = close_position(pos, exit_reason,
-                                        pm_exit_price=window["best_ask"])
+                # NO: 1 - YES_ask = NO bid (sattığımız fiyat). YES: doğrudan YES ask.
+                if pos["action"] == "NO":
+                    pm_exit = round(1 - window["best_ask"], 4)
+                else:
+                    pm_exit = window["best_ask"]
+                closed = close_position(pos, exit_reason, pm_exit_price=pm_exit)
                 await log_position_close(conn, closed)
                 open_positions.remove(pos)
                 closed_today.append(closed)

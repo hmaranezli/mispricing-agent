@@ -79,6 +79,27 @@ def test_notify_close_shows_pnl_when_exit_price_known():
     assert "-" in msg  # kayıp
 
 
+def test_notify_close_shows_exit_amount_and_pct():
+    """notify_close çıkış tutarını ve yüzdeyi gösterir — '50 giriyor 90 çıkıyor' formatı."""
+    with patch("monitor.notifier.send_telegram") as mock_send:
+        notifier.notify_close({
+            "asset": "BTC", "action": "NO",
+            "exit_reason": "thesis_invalidated",
+            "pm_entry_price": 0.49,
+            "pm_exit_price": 0.89,   # NO bid, doğru fiyat
+            "position_usd": 50.0,
+        })
+    msg = mock_send.call_args[0][0]
+    # Giriş $50 görünmeli
+    assert "$50" in msg
+    # Çıkış ~$90.82 görünmeli (50 * 0.89/0.49)
+    assert "90" in msg
+    # Yüzde görünmeli
+    assert "%" in msg
+    # Kar olduğu için + işareti
+    assert "+" in msg
+
+
 def test_notify_close_no_pnl_when_exit_price_missing():
     """pm_exit_price yoksa P&L satırı olmaz."""
     with patch("monitor.notifier.send_telegram") as mock_send:
