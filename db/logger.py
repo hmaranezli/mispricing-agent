@@ -81,14 +81,23 @@ async def log_position_open(conn, position: dict) -> None:
 async def log_position_close(conn, position: dict) -> None:
     if conn is None:
         return
+    entry   = position.get("pm_entry_price")
+    exit_p  = position.get("pm_exit_price")
+    pos_usd = position.get("position_usd", 0)
+    if entry and exit_p is not None:
+        realized_pnl = (exit_p - entry) / entry * pos_usd
+    else:
+        realized_pnl = None
     await conn.execute(
         """UPDATE positions
-           SET status='closed', ts_close=?, pm_exit_price=?, exit_reason=?
+           SET status='closed', ts_close=?, pm_exit_price=?,
+               exit_reason=?, realized_pnl=?
            WHERE position_id=?""",
         (
             position.get("closed_at", datetime.now(timezone.utc).isoformat()),
-            position.get("pm_exit_price"),
+            exit_p,
             position.get("exit_reason"),
+            realized_pnl,
             position["position_id"],
         ),
     )

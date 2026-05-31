@@ -140,3 +140,50 @@ async def test_positions_schema_has_realized_pnl(conn):
     async with conn.execute("PRAGMA table_info(positions)") as cur:
         cols = {row[1] for row in await cur.fetchall()}
     assert "realized_pnl" in cols, "positions tablosunda realized_pnl sütunu yok"
+
+
+@pytest.mark.asyncio
+async def test_log_position_close_stores_realized_pnl(conn):
+    """Kapanan pozisyonda realized_pnl hesaplanıp DB'ye yazılır.
+    entry=0.40, exit=0.0, position_usd=50 → pnl = (0.0-0.40)/0.40*50 = -50.0
+    """
+    pos = {
+        "position_id": "pos-pnl", "slug": "eth-down-15min", "asset": "ETH",
+        "action": "NO", "pm_entry_price": 0.40, "fair_value": 0.55,
+        "ref_price": 3000.0, "edge": 0.15,
+        "position_usd": 50.0, "kelly_f": 0.12, "confidence_score": 78.0,
+        "opened_at": "2026-05-31T10:00:00+00:00",
+    }
+    await logger.log_position_open(conn, pos)
+    closed = {**pos, "pm_exit_price": 0.0, "exit_reason": "market_resolved",
+              "closed_at": "2026-05-31T10:14:00+00:00", "status": "closed"}
+    await logger.log_position_close(conn, closed)
+
+    async with conn.execute(
+        "SELECT realized_pnl FROM positions WHERE position_id='pos-pnl'"
+    ) as cur:
+        row = await cur.fetchone()
+    assert row[0] is not None
+    assert abs(row[0] - (-50.0)) < 1e-4
+
+
+@pytest.mark.asyncio
+async def test_log_position_close_realized_pnl_none_when_no_exit_price(conn):
+    """pm_exit_price=None (market_expired) → realized_pnl=None."""
+    pos = {
+        "position_id": "pos-noexit", "slug": "btc-up-5min", "asset": "BTC",
+        "action": "YES", "pm_entry_price": 0.35, "fair_value": 0.55,
+        "ref_price": 95000.0, "edge": 0.20,
+        "position_usd": 25.0, "kelly_f": 0.15, "confidence_score": 82.0,
+        "opened_at": "2026-05-31T10:00:00+00:00",
+    }
+    await logger.log_position_open(conn, pos)
+    closed = {**pos, "pm_exit_price": None, "exit_reason": "market_expired",
+              "closed_at": "2026-05-31T10:14:00+00:00", "status": "closed"}
+    await logger.log_position_close(conn, closed)
+
+    async with conn.execute(
+        "SELECT realized_pnl FROM positions WHERE position_id='pos-noexit'"
+    ) as cur:
+        row = await cur.fetchone()
+    assert row[0] is None
