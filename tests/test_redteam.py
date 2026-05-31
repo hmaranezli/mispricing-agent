@@ -170,6 +170,29 @@ async def test_real_pipeline_result_structure():
 
 
 @pytest.mark.asyncio
+async def test_redteam_calls_fetch_by_slug_with_slug_only():
+    """RedTeam fetch_by_slug'ı yalnızca slug ile çağırmalı — session parametresi olmamalı.
+    Bug: redteam(s, slug) yerine redteam(slug) çağrılmalı.
+    """
+    from unittest.mock import patch, AsyncMock
+
+    fake_market = {
+        "spread": "0.02",
+        "liquidityClob": "5000",
+        "volume24hr": "100",
+        "takerBaseFee": "1000",
+    }
+    with patch("council.redteam.fetch_by_slug", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = fake_market
+        result = await redteam(
+            _fake_finding(slug="btc-updown-15m-test"),
+            _fake_verification(fresh_seconds=300.0, fresh_edge=0.15),
+        )
+    mock_fetch.assert_called_once_with("btc-updown-15m-test")
+    assert "market_data_unavailable" not in result["vetoes"]
+
+
+@pytest.mark.asyncio
 async def test_fee_adj_edge_lte_gross_edge():
     """fee_adj_edge her zaman fresh_edge'den küçük veya eşit."""
     findings = await scan_edges()

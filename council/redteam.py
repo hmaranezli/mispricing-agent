@@ -7,8 +7,6 @@ Herhangi bir veto → pass=False. Warning'ler loglanır, bloklamaz.
 import asyncio
 import sys
 import os
-import aiohttp
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.shortterm import fetch_by_slug
@@ -81,9 +79,7 @@ async def redteam(finding: dict, verification: dict) -> dict:
 
     # ── Gamma'dan taze market verisi ─────────────────────────────────────────
     try:
-        timeout = aiohttp.ClientTimeout(total=20)
-        async with aiohttp.ClientSession(timeout=timeout) as s:
-            market = await fetch_by_slug(s, finding["slug"])
+        market = await fetch_by_slug(finding["slug"])
     except Exception:
         market = None
 
