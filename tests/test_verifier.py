@@ -136,11 +136,10 @@ async def test_verify_expired_soft_fail():
 
 @pytest.mark.asyncio
 async def test_verify_invalid_slug_fetch_error_no_halt():
-    """Geçersiz slug → fetch_error, halt=False."""
-    from data.hl_candles import current_price
-    real_cur = await current_price("BTC")
-    finding = _fake_finding(cur_price=real_cur, slug="tamamen-gecersiz-slug-xyz")
-    result = await verify(finding)
+    """Geçersiz slug → fetch_error, halt=False. HL mock'lu — rate limit'ten bağımsız."""
+    with patch("council.verifier.current_price", return_value=95_000.0):
+        finding = _fake_finding(cur_price=95_000.0, slug="tamamen-gecersiz-slug-xyz")
+        result = await verify(finding)
     assert result["pass"] is False
     assert result["halt"] is False
 
