@@ -170,6 +170,25 @@ async def test_real_pipeline_result_structure():
 
 
 @pytest.mark.asyncio
+async def test_redteam_uses_raw_market_fallback_when_pm_fetch_fails():
+    """PM fetch None döndürünce _raw_market fallback kullanır — market_data_unavailable olmaz."""
+    from unittest.mock import patch, AsyncMock
+
+    fake_raw = {
+        "spread": "0.02",
+        "liquidityClob": "5000",
+        "volume24hr": "200",
+        "takerBaseFee": "1000",
+    }
+    finding = _fake_finding(slug="btc-updown-15m-test")
+    finding["_raw_market"] = fake_raw
+    with patch("council.redteam.fetch_by_slug", new_callable=AsyncMock, return_value=None):
+        result = await redteam(finding, _fake_verification(fresh_seconds=300.0))
+    assert "market_data_unavailable" not in result["vetoes"], \
+        f"_raw_market varken market_data_unavailable çıktı: {result['vetoes']}"
+
+
+@pytest.mark.asyncio
 async def test_redteam_calls_fetch_by_slug_with_slug_only():
     """RedTeam fetch_by_slug'ı yalnızca slug ile çağırmalı — session parametresi olmamalı.
     Bug: redteam(s, slug) yerine redteam(slug) çağrılmalı.

@@ -175,3 +175,23 @@ async def test_scan_edges_findings_include_window_cache():
         assert "best_ask" in f["_window"]
         assert "best_bid" in f["_window"]
         assert "seconds_remaining" in f["_window"]
+
+
+@pytest.mark.asyncio
+async def test_scan_edges_findings_include_raw_market():
+    """Her bulgu _raw_market içeriyor — RedTeam spread/liquidity/fee fallback için."""
+    findings = await scan_edges()
+    if not findings:
+        pytest.skip("Şu an aktif mispricing yok")
+    for f in findings:
+        assert "_raw_market" in f, "Bulguda _raw_market yok"
+        assert isinstance(f["_raw_market"], dict)
+
+
+@pytest.mark.asyncio
+async def test_scan_edges_min_seconds_above_thesis_threshold():
+    """seconds_remaining >= 180 — RedTeam'in 120s eşiğine 60s buffer."""
+    findings = await scan_edges()
+    for f in findings:
+        assert f["seconds_remaining"] >= 180, \
+            f"Eşik altı market geçmiş: {f['seconds_remaining']:.0f}s < 180s"

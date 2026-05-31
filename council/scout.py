@@ -20,7 +20,7 @@ from data.hl_candles import price_at_timestamp, current_price
 from data.fair_value import fair_yes
 import config
 
-MIN_SECONDS = 60   # Çözüme bu kadar saniyeden az kalmışsa atla
+MIN_SECONDS = 180  # Çözüme bu kadar saniyeden az kalmışsa atla (RedTeam 120s eşiği + 60s buffer)
 
 
 def _asset_of(question) -> str | None:
@@ -102,6 +102,7 @@ async def _process_market(m: dict) -> dict | None:
         "neg_risk":          window["neg_risk"],
         "slug":              m.get("slug", ""),
         "_window":           window,
+        "_raw_market":       m,
     }
 
 

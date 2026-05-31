@@ -83,8 +83,12 @@ async def redteam(finding: dict, verification: dict) -> dict:
     except Exception:
         market = None
 
+    # PM fetch başarısız → Scout'un cached _raw_market'i fallback
     if market is None:
-        # Market verisi alınamadı — fee default ile hesapla
+        market = finding.get("_raw_market")
+
+    if market is None:
+        # Hiçbir kaynak yok — fee default ile hesapla
         taker_fee = 0.02
         fee_adj = _fee_adjusted_edge(
             fair=verification["fresh_fair"],
