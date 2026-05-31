@@ -18,7 +18,7 @@ from data.hl_candles import current_price
 from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window
 from monitor.notifier import notify_open, notify_close, notify_halt
 from monitor.kill_switch import check as kill_switch_check
-from db.logger import log_candidate, log_position_open, log_position_close, get_connection
+from db.logger import log_candidate, log_position_open, log_position_close, load_closed_today, get_connection
 
 SCAN_INTERVAL_SECS = 30
 BANKROLL_USD = 1000.0  # Başlangıç sermayesi — canlıya geçmeden önce ayarla
@@ -190,8 +190,12 @@ async def main() -> None:
     print(f"[bot] Başladı — DRY_RUN={config.DRY_RUN}, tarama={SCAN_INTERVAL_SECS}s")
     conn = await get_connection()
     open_positions = await _load_open_positions(conn)
+    closed_today   = await load_closed_today(conn)
     if open_positions:
         print(f"[bot] DB'den {len(open_positions)} açık pozisyon yüklendi.")
+    if closed_today:
+        daily_loss = _daily_loss_usd(closed_today)
+        print(f"[bot] Bugün {len(closed_today)} kapanan pozisyon geri yüklendi, günlük kayıp: ${daily_loss:.2f}")
     try:
         while True:
             if kill_switch_check():

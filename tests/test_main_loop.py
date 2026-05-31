@@ -225,3 +225,33 @@ async def test_load_open_positions_returns_open_ones(mem_db):
     assert result[0]["ref_price"] == 95000.0
     assert result[0]["edge"] == 0.18
     assert result[0]["opened_at"] == "2026-05-30T10:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_daily_loss_includes_recovered_closed_positions(mem_db):
+    """Restart sonrası DB'den yüklenen bugünün kapanan pozisyonları _daily_loss_usd'e dahil edilir."""
+    from datetime import date
+    from db.logger import log_position_open, log_position_close, load_closed_today
+    from main_loop import _daily_loss_usd
+
+    today = date.today().isoformat()
+    pos = {
+        "position_id": "recovery-001", "slug": "btc-up-test", "asset": "BTC",
+        "action": "YES", "pm_entry_price": 0.40, "fair_value": 0.60,
+        "ref_price": 95000.0, "edge": 0.20, "position_usd": 50.0,
+        "kelly_f": 0.15, "confidence_score": 82.0,
+        "opened_at": f"{today}T10:00:00+00:00",
+    }
+    await log_position_open(mem_db, pos)
+
+    closed = {**pos, "pm_exit_price": 0.0, "exit_reason": "market_resolved",
+              "closed_at": f"{today}T10:14:00+00:00", "status": "closed"}
+    await log_position_close(mem_db, closed)
+
+    # Restart simülasyonu: bellekte hiçbir şey yok, DB'den yükle
+    recovered = await load_closed_today(mem_db)
+    assert len(recovered) == 1
+
+    # (0.0 - 0.40) / 0.40 * 50 = -50 → kayıp 50.0
+    loss = _daily_loss_usd(recovered)
+    assert abs(loss - 50.0) < 1e-4
