@@ -33,10 +33,19 @@ def notify_open(pos: dict) -> None:
 
 
 def notify_close(pos: dict) -> None:
-    send_telegram(
+    msg = (
         f"KAPANDI {pos['asset']} {pos['action']}\n"
         f"Sebep: {pos.get('exit_reason', '?')}"
     )
+    entry   = pos.get("pm_entry_price")
+    exit_p  = pos.get("pm_exit_price")
+    pos_usd = pos.get("position_usd", 0)
+    if entry and exit_p is not None:
+        pnl  = (exit_p - entry) / entry * pos_usd
+        sign = "+" if pnl >= 0 else ""
+        icon = "✅" if pnl >= 0 else "❌"
+        msg += f"\nP&L: {sign}${pnl:.2f} {icon}"
+    send_telegram(msg)
 
 
 def notify_halt(reason: str) -> None:

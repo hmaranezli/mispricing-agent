@@ -64,6 +64,35 @@ def test_notify_halt_contains_reason():
     assert "daily_loss_limit" in msg
 
 
+def test_notify_close_shows_pnl_when_exit_price_known():
+    """pm_exit_price bilinince mesajda P&L satırı görünür."""
+    with patch("monitor.notifier.send_telegram") as mock_send:
+        notifier.notify_close({
+            "asset": "ETH", "action": "NO",
+            "exit_reason": "market_resolved",
+            "pm_entry_price": 0.31,
+            "pm_exit_price": 0.0,
+            "position_usd": 50.0,
+        })
+    msg = mock_send.call_args[0][0]
+    assert "P&L" in msg
+    assert "-" in msg  # kayıp
+
+
+def test_notify_close_no_pnl_when_exit_price_missing():
+    """pm_exit_price yoksa P&L satırı olmaz."""
+    with patch("monitor.notifier.send_telegram") as mock_send:
+        notifier.notify_close({
+            "asset": "BTC", "action": "YES",
+            "exit_reason": "market_expired",
+            "pm_entry_price": 0.35,
+            "pm_exit_price": None,
+            "position_usd": 25.0,
+        })
+    msg = mock_send.call_args[0][0]
+    assert "P&L" not in msg
+
+
 # ── Kill Switch ───────────────────────────────────────────────────────────────
 
 def test_kill_switch_true_when_file_exists(tmp_path, monkeypatch):
