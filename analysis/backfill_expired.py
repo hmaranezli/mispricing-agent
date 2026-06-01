@@ -19,8 +19,9 @@ from data.shortterm import fetch_resolved
 
 
 async def backfill() -> None:
-    conn = await get_connection()
+    conn = None
     try:
+        conn = await get_connection()
         async with conn.execute(
             """SELECT position_id, slug, action, pm_entry_price, position_usd
                FROM positions
@@ -33,20 +34,27 @@ async def backfill() -> None:
 
         recovered = 0
         for position_id, slug, action, pm_entry_price, position_usd in rows:
-            resolution = await fetch_resolved(slug)
-            if resolution is None:
-                print(f"  — {slug}: hâlâ resolve yok (iptal market?)")
-                continue
-            pm_exit = resolution["yes_exit"] if action == "YES" else resolution["no_exit"]
-            realized_pnl = (pm_exit - pm_entry_price) / pm_entry_price * position_usd
-            await patch_position_resolution(conn, position_id, pm_exit, realized_pnl, "market_resolved_late")
-            print(f"  ✓ {slug} {action}: exit={pm_exit:.4f}, pnl={realized_pnl:+.2f}")
-            recovered += 1
+            try:
+                resolution = await fetch_resolved(slug)
+                if resolution is None:
+                    print(f"  — {slug}: hâlâ resolve yok (iptal market?)")
+                    continue
+                if not pm_entry_price:
+                    print(f"  — {slug}: pm_entry_price=0, skipping")
+                    continue
+                pm_exit = resolution["yes_exit"] if action == "YES" else resolution["no_exit"]
+                realized_pnl = (pm_exit - pm_entry_price) / pm_entry_price * position_usd
+                await patch_position_resolution(conn, position_id, pm_exit, realized_pnl, "market_resolved_late")
+                print(f"  ✓ {slug} {action}: exit={pm_exit:.4f}, pnl={realized_pnl:+.2f}")
+                recovered += 1
+            except Exception as e:
+                print(f"  ✗ {slug}: hata — {e}")
 
         still_null = total - recovered
         print(f"\nSonuç: {recovered} recovered, {still_null} still null")
     finally:
-        await conn.close()
+        if conn:
+            await conn.close()
 
 
 if __name__ == "__main__":
