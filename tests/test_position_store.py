@@ -67,3 +67,17 @@ async def test_sell_position_returns_fallback_on_failure():
         from execution.position_store import sell_position
         fill = await sell_position(pos)
     assert abs(fill - 0.87) < 0.001
+
+
+@pytest.mark.asyncio
+async def test_sell_position_returns_fallback_on_unmatched():
+    """UNMATCHED status → current_bid fallback döner, exception yok."""
+    fake_client = MagicMock()
+    fake_client.create_and_post_order.return_value = {
+        "status": "UNMATCHED", "price": "0.90", "sizeFilled": "0",
+    }
+    pos = _open_pos("YES", bid=0.87)
+    with patch("execution.position_store.get_client", return_value=fake_client):
+        from execution.position_store import sell_position
+        fill = await sell_position(pos)
+    assert abs(fill - 0.87) < 0.001

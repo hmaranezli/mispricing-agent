@@ -15,7 +15,8 @@ async def sell_position(pos: dict) -> float:
     action   = pos["action"]
     token_id = pos["yes_token_id"] if action == "YES" else pos["no_token_id"]
     shares   = pos.get("shares") or 0
-    fallback = float(pos.get("current_bid") or 0)
+    bid      = pos.get("current_bid")
+    fallback = float(bid) if bid is not None else 0.0
 
     if not token_id or shares <= 0:
         print(f"[sell] {pos.get('slug')}: token_id veya shares eksik/sıfır, fallback={fallback:.4f}")
