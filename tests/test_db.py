@@ -228,3 +228,34 @@ async def test_load_closed_today_returns_only_todays(conn):
     assert result[0]["position_id"] == "today-001"
     assert result[0]["closed_at"].startswith(today)
     assert result[0]["pm_exit_price"] == 0.5
+
+
+@pytest.mark.asyncio
+async def test_patch_position_resolution_writes_db(conn):
+    """patch_position_resolution sonrası DB'de pm_exit_price, realized_pnl, exit_reason doğru."""
+    await conn.execute(
+        """INSERT INTO positions
+               (position_id, ts_open, slug, asset, action, pm_entry_price,
+                position_usd, kelly_f, confidence_score, status, dry_run)
+           VALUES ('pid-heal-001', '2026-06-01T10:00:00+00:00', 'btc-up-5m',
+                   'BTC', 'YES', 0.20, 50.0, 0.10, 75.0, 'closed', 1)"""
+    )
+    await conn.commit()
+
+    from db.logger import patch_position_resolution
+    await patch_position_resolution(conn, "pid-heal-001", 1.0, 200.0, "market_resolved_late")
+
+    async with conn.execute(
+        "SELECT pm_exit_price, realized_pnl, exit_reason FROM positions WHERE position_id='pid-heal-001'"
+    ) as cur:
+        row = await cur.fetchone()
+    assert row[0] == 1.0
+    assert abs(row[1] - 200.0) < 0.01
+    assert row[2] == "market_resolved_late"
+
+
+@pytest.mark.asyncio
+async def test_patch_position_resolution_conn_none_is_noop():
+    """conn=None → sessizce atlanır, exception yok."""
+    from db.logger import patch_position_resolution
+    await patch_position_resolution(None, "x", 1.0, 10.0, "market_resolved_late")  # no raise
