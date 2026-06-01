@@ -169,6 +169,9 @@ async def _heal_pending_resolutions(
             if resolution is None:
                 continue
             pm_exit      = resolution["yes_exit"] if action == "YES" else resolution["no_exit"]
+            if not pm_entry_price:
+                print(f"[heal] {slug} pm_entry_price=0, skipping")
+                continue
             realized_pnl = (pm_exit - pm_entry_price) / pm_entry_price * position_usd
             await patch_position_resolution(conn, position_id, pm_exit, realized_pnl)
             for pos in closed_today:

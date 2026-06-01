@@ -336,6 +336,7 @@ async def test_heal_fixes_null_pnl_when_api_returns(mem_db):
     assert row[2] == "market_resolved_late"
     assert closed_today[0]["pm_exit_price"] == 1.0
     assert closed_today[0]["exit_reason"] == "market_resolved_late"
+    assert abs(closed_today[0]["realized_pnl"] - 200.0) < 0.01
 
 
 @pytest.mark.asyncio
