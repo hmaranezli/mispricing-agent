@@ -260,8 +260,8 @@ async def main() -> None:
     if open_positions:
         print(f"[bot] DB'den {len(open_positions)} açık pozisyon yüklendi.")
     if closed_today:
-        daily_loss = _daily_loss_usd(closed_today)
-        print(f"[bot] Bugün {len(closed_today)} kapanan pozisyon geri yüklendi, günlük kayıp: ${daily_loss:.2f}")
+        display_loss = 0.0 if config.DRY_RUN else _daily_loss_usd(closed_today)
+        print(f"[bot] Bugün {len(closed_today)} kapanan pozisyon geri yüklendi, günlük kayıp: ${display_loss:.2f} (DRY_RUN={config.DRY_RUN})")
     try:
         while True:
             if kill_switch_check():

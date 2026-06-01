@@ -25,9 +25,9 @@ except ImportError:
 
 from execution.clob_client import get_client, reset_client
 from data.shortterm import find_shortterm
-from py_clob_client.clob_types import BalanceAllowanceParams, AssetType, OrderArgs
+from py_clob_client_v2.clob_types import BalanceAllowanceParams, AssetType, OrderArgs
 
-MIN_TEST_USD   = 1.0   # $1 test pozisyon
+MIN_TEST_USD   = 0.80  # $0.80 test — fee (~$0.03) dahil $1.00 bakiyeye sığar
 TEST_ASSET     = "btc" # BTC marketlerinde test
 
 

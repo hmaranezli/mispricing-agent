@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import datetime, timezone
 from uuid import uuid4
 from execution.clob_client import get_client
-from py_clob_client.clob_types import OrderArgs
+from py_clob_client_v2.clob_types import OrderArgs
 
 
 async def execute(
