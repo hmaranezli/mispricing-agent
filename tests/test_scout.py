@@ -254,3 +254,32 @@ async def test_finding_token_ids_none_when_absent():
     if findings:
         assert findings[0].get("yes_token_id") is None
         assert findings[0].get("no_token_id")  is None
+
+
+@pytest.mark.asyncio
+async def test_finding_token_ids_single_element_no_crash():
+    """clobTokenIds sadece 1 eleman içeriyorsa yes_token_id set, no_token_id None — crash yok."""
+    from unittest.mock import AsyncMock, patch
+
+    fake_market = {
+        "question": "Will BTC go up?",
+        "slug": "btc-updown-5m-789",
+        "bestAsk": "0.35",
+        "bestBid": "0.33",
+        "eventStartTime": "2026-06-01T10:00:00Z",
+        "endDate": "2026-06-01T10:15:00Z",
+        "negRisk": False,
+        "clobTokenIds": ["only-yes-token"],  # sadece 1 eleman
+    }
+    with patch("council.scout.find_shortterm", new_callable=AsyncMock) as mock_find, \
+         patch("council.scout.price_at_timestamp", new_callable=AsyncMock) as mock_ref, \
+         patch("council.scout.current_price", new_callable=AsyncMock) as mock_cur, \
+         patch("council.scout.fair_yes", return_value=0.60):
+        mock_find.return_value = [fake_market]
+        mock_ref.return_value = 95000.0
+        mock_cur.return_value = 96000.0
+        findings = await scan_edges()
+
+    if findings:
+        assert findings[0].get("yes_token_id") == "only-yes-token"
+        assert findings[0].get("no_token_id") is None

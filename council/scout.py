@@ -103,8 +103,8 @@ async def _process_market(m: dict) -> dict | None:
         "slug":              m.get("slug", ""),
         "_window":           window,
         "_raw_market":       m,
-        "yes_token_id":      (m.get("clobTokenIds") or [None, None])[0],
-        "no_token_id":       (m.get("clobTokenIds") or [None, None])[1],
+        "yes_token_id":      next(iter((m.get("clobTokenIds") or [])[0:1]), None),
+        "no_token_id":       next(iter((m.get("clobTokenIds") or [])[1:2]), None),
     }
 
 
