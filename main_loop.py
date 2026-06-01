@@ -28,7 +28,8 @@ async def _load_open_positions(conn) -> list[dict]:
     """DB'deki status=open pozisyonları yükler — restart sonrası memory'yi geri doldurur."""
     async with conn.execute(
         "SELECT position_id, ts_open, slug, asset, action, pm_entry_price, "
-        "fair_value, ref_price, edge, position_usd, kelly_f, confidence_score, dry_run "
+        "fair_value, ref_price, edge, position_usd, kelly_f, confidence_score, dry_run, "
+        "shares, order_id, yes_token_id, no_token_id "
         "FROM positions WHERE status='open'"
     ) as cur:
         rows = await cur.fetchall()
@@ -49,6 +50,10 @@ async def _load_open_positions(conn) -> list[dict]:
             "status":                 "open",
             "requires_human_approval": (r[9] or 0) > config.HUMAN_APPROVAL_USD,
             "dry_run":                bool(r[12]),
+            "shares":                 r[13],
+            "order_id":               r[14],
+            "yes_token_id":           r[15],
+            "no_token_id":            r[16],
             "exit_reason":            None,
             "closed_at":              None,
         }

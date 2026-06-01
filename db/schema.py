@@ -42,6 +42,11 @@ _MIGRATIONS = [
     "ALTER TABLE positions ADD COLUMN ref_price REAL",
     "ALTER TABLE positions ADD COLUMN edge REAL",
     "ALTER TABLE positions ADD COLUMN realized_pnl REAL",
+    # CLOB API kolonları:
+    "ALTER TABLE positions ADD COLUMN shares REAL",
+    "ALTER TABLE positions ADD COLUMN order_id TEXT",
+    "ALTER TABLE positions ADD COLUMN yes_token_id TEXT",
+    "ALTER TABLE positions ADD COLUMN no_token_id TEXT",
 ]
 
 

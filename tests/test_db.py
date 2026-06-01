@@ -259,3 +259,37 @@ async def test_patch_position_resolution_conn_none_is_noop():
     """conn=None → sessizce atlanır, exception yok."""
     from db.logger import patch_position_resolution
     await patch_position_resolution(None, "x", 1.0, 10.0, "market_resolved_late")  # no raise
+
+
+@pytest.mark.asyncio
+async def test_positions_schema_has_clob_columns(conn):
+    """positions tablosu shares, order_id, yes_token_id, no_token_id sütunlarına sahip olmalı."""
+    async with conn.execute("PRAGMA table_info(positions)") as cur:
+        cols = {row[1] for row in await cur.fetchall()}
+    assert "shares"       in cols, "shares sütunu yok"
+    assert "order_id"     in cols, "order_id sütunu yok"
+    assert "yes_token_id" in cols, "yes_token_id sütunu yok"
+    assert "no_token_id"  in cols, "no_token_id sütunu yok"
+
+
+@pytest.mark.asyncio
+async def test_log_position_open_stores_clob_fields(conn):
+    """log_position_open shares, order_id, yes_token_id, no_token_id alanlarını yazar."""
+    pos = {
+        "position_id": "clob-001", "slug": "btc-up-5min", "asset": "BTC",
+        "action": "YES", "pm_entry_price": 0.35, "fair_value": 0.55,
+        "ref_price": 95000.0, "edge": 0.20,
+        "position_usd": 25.0, "kelly_f": 0.15, "confidence_score": 82.0,
+        "opened_at": "2026-06-01T10:00:00+00:00",
+        "shares": 71.43, "order_id": "ord-abc123",
+        "yes_token_id": "yes-tok-111", "no_token_id": "no-tok-222",
+    }
+    await logger.log_position_open(conn, pos)
+    async with conn.execute(
+        "SELECT shares, order_id, yes_token_id, no_token_id FROM positions WHERE position_id='clob-001'"
+    ) as cur:
+        row = await cur.fetchone()
+    assert abs(row[0] - 71.43) < 0.01
+    assert row[1] == "ord-abc123"
+    assert row[2] == "yes-tok-111"
+    assert row[3] == "no-tok-222"

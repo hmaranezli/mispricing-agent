@@ -57,8 +57,9 @@ async def log_position_open(conn, position: dict) -> None:
         """INSERT OR IGNORE INTO positions
                (position_id, ts_open, slug, asset, action, pm_entry_price,
                 fair_value, ref_price, edge, position_usd, kelly_f,
-                confidence_score, status, dry_run)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)""",
+                confidence_score, status, dry_run,
+                shares, order_id, yes_token_id, no_token_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?)""",
         (
             position["position_id"],
             position.get("opened_at", datetime.now(timezone.utc).isoformat()),
@@ -73,6 +74,10 @@ async def log_position_open(conn, position: dict) -> None:
             position.get("kelly_f"),
             position.get("confidence_score"),
             1 if config.DRY_RUN else 0,
+            position.get("shares"),
+            position.get("order_id"),
+            position.get("yes_token_id"),
+            position.get("no_token_id"),
         ),
     )
     await conn.commit()
