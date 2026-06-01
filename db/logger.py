@@ -149,4 +149,6 @@ async def patch_position_resolution(
         "UPDATE positions SET pm_exit_price=?, realized_pnl=?, exit_reason=? WHERE position_id=?",
         (pm_exit_price, realized_pnl, exit_reason, position_id),
     )
+    if conn.total_changes == 0:
+        print(f"[patch] WARN: no row found for position_id={position_id!r} — nothing updated")
     await conn.commit()
