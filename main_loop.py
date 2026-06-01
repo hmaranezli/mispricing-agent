@@ -12,7 +12,10 @@ from council.verifier import verify
 from council.redteam import redteam as redteam_eval
 from council.risk import risk as risk_eval
 from council.gate import gate
-from execution.executor import execute
+import os
+from execution.executor       import execute as _dry_execute
+from execution.clob_executor  import execute as _clob_execute
+from execution.position_store import sell_position
 from position.manager import check_exit, close_position
 from data.hl_candles import current_price
 from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window
@@ -21,7 +24,14 @@ from monitor.kill_switch import check as kill_switch_check
 from db.logger import log_candidate, log_position_open, log_position_close, load_closed_today, get_connection, patch_position_resolution
 
 SCAN_INTERVAL_SECS = 30
-BANKROLL_USD = 1000.0  # Başlangıç sermayesi — canlıya geçmeden önce ayarla
+BANKROLL_USD = float(os.getenv("BANKROLL_USD", "1000.0"))
+
+
+async def execute(finding, gate_result, risk_result, open_positions):
+    """DRY_RUN flag'ine göre executor seç. Runtime'da değerlendirilir."""
+    if config.DRY_RUN:
+        return await _dry_execute(finding, gate_result, risk_result, open_positions)
+    return await _clob_execute(finding, gate_result, risk_result, open_positions)
 
 
 async def _load_open_positions(conn) -> list[dict]:
@@ -217,11 +227,20 @@ async def _monitor_positions(
                                      window["best_ask"],
                                      window["seconds_remaining"])
             if exit_reason:
-                # NO: 1 - YES_ask = NO bid (sattığımız fiyat). YES: doğrudan YES ask.
-                if pos["action"] == "NO":
-                    pm_exit = round(1 - window["best_ask"], 4)
+                if config.DRY_RUN:
+                    # DRY_RUN: modelled exit fiyatı
+                    if pos["action"] == "NO":
+                        pm_exit = round(1 - window["best_ask"], 4)
+                    else:
+                        pm_exit = window["best_ask"]
                 else:
-                    pm_exit = window["best_ask"]
+                    # LIVE: gerçek SELL order gönder
+                    pos["current_bid"] = (
+                        round(1 - window["best_ask"], 4)
+                        if pos["action"] == "NO"
+                        else window["best_bid"]
+                    )
+                    pm_exit = await sell_position(pos)
                 closed = close_position(pos, exit_reason, pm_exit_price=pm_exit)
                 await log_position_close(conn, closed)
                 open_positions.remove(pos)

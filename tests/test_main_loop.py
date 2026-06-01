@@ -386,3 +386,50 @@ async def test_heal_respects_limit(mem_db):
     ) as cur:
         remaining = (await cur.fetchone())[0]
     assert remaining == 3  # 5 - 2 = 3 hâlâ null
+
+
+# ── Task 7: CLOB router + sell path ──────────────────────────────────────────
+
+def test_bankroll_reads_from_env(monkeypatch):
+    """BANKROLL_USD env değişkeni set edilince main_loop bu değeri kullanır."""
+    monkeypatch.setenv("BANKROLL_USD", "50.0")
+    import importlib
+    import main_loop as ml
+    importlib.reload(ml)
+    assert abs(ml.BANKROLL_USD - 50.0) < 0.01
+    importlib.reload(ml)  # restore defaults
+
+
+@pytest.mark.asyncio
+async def test_live_monitor_calls_sell_position_on_exit():
+    """DRY_RUN=False iken _monitor_positions çıkışta sell_position çağırır."""
+    import config
+    from datetime import datetime, timedelta, timezone
+    opened_at = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    pos = {
+        "position_id": "live-pos-001", "asset": "BTC", "action": "YES",
+        "slug": "btc-up-test", "pm_entry_price": 0.35, "fair_value": 0.55,
+        "ref_price": 95000.0, "position_usd": 25.0, "kelly_f": 0.15,
+        "confidence_score": 82.5, "seconds_remaining": 900,
+        "opened_at": opened_at, "status": "open",
+        "requires_human_approval": False, "dry_run": False,
+        "exit_reason": None, "closed_at": None,
+        "shares": 71.43, "order_id": "ord-001",
+        "yes_token_id": "yes-tok-111", "no_token_id": "no-tok-222",
+    }
+    open_pos = [pos]
+    closed   = []
+    fake_window = {"best_ask": 0.08, "best_bid": 0.90,
+                   "seconds_remaining": 900, "neg_risk": False}
+
+    with patch.object(config, "DRY_RUN", False), \
+         patch("main_loop.current_price",      new_callable=AsyncMock, return_value=95000.0), \
+         patch("main_loop.fetch_by_slug",      new_callable=AsyncMock, return_value={}), \
+         patch("main_loop.parse_market_window", return_value=fake_window), \
+         patch("main_loop.check_exit",          return_value="profit_target_hit"), \
+         patch("main_loop.sell_position",       new_callable=AsyncMock, return_value=0.91) as mock_sell:
+        await _monitor_positions(open_pos, closed)
+
+    mock_sell.assert_called_once()
+    assert len(closed) == 1
+    assert abs(closed[0]["pm_exit_price"] - 0.91) < 0.001
