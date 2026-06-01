@@ -22,7 +22,7 @@ from monitor.notifier import notify_open, notify_close, notify_halt
 from monitor.kill_switch import check as kill_switch_check
 from db.logger import log_candidate, log_position_open, log_position_close, load_closed_today, get_connection, patch_position_resolution
 
-SCAN_INTERVAL_SECS = 30
+SCAN_INTERVAL_SECS = 15
 BANKROLL_USD = float(os.getenv("BANKROLL_USD", "1000.0"))
 
 
