@@ -8,7 +8,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datetime import datetime, timezone
 from uuid import uuid4
-import config
 from execution.clob_client import get_client
 
 
@@ -65,6 +64,13 @@ async def execute(
 
     fill_price  = float(fill_price_s or entry_price)
     fill_shares = float(size_filled or shares)
+
+    if fill_shares <= 0:
+        print(f"[clob] {finding['slug']}: fill_shares=0, pozisyon açılmadı")
+        return None
+
+    if fill_shares < shares * 0.99:
+        print(f"[clob] {finding['slug']}: kısmi dolma — beklenen={shares:.4f}, gerçek={fill_shares:.4f}")
 
     return {
         "position_id":             str(uuid4()),
