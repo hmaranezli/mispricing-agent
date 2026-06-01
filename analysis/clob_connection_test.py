@@ -49,8 +49,12 @@ async def run_canary() -> bool:
     # 2. Wallet bakiyesi
     print("\n[2] Wallet bakiyesi okunuyor...")
     try:
-        balance = client.get_balance()
-        print(f"    ✓ Bakiye: {balance}")
+        from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
+        bal = client.get_balance_allowance(
+            params=BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
+        )
+        usdc = bal.get("balance", "?")
+        print(f"    ✓ USDC bakiye: {usdc} (0 = henüz yüklenmemiş)")
     except Exception as e:
         print(f"    ✗ Bakiye okunamadı: {e}")
         print("      Bu hata authentication sorunu işareti olabilir.")

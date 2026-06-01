@@ -13,9 +13,11 @@ def get_client() -> ClobClient:
     """Singleton ClobClient döndür. İlk çağrıda oluşturulur."""
     global _client
     if _client is None:
+        raw_key = os.environ["POLY_PRIVATE_KEY"]
+        key = raw_key if raw_key.startswith("0x") else "0x" + raw_key
         _client = ClobClient(
             host=POLY_HOST,
-            key=os.environ["POLY_PRIVATE_KEY"],
+            key=key,
             chain_id=POLYGON_CHAIN_ID,
             creds=ApiCreds(
                 api_key=os.environ["POLY_API_KEY"],
