@@ -29,6 +29,9 @@ async def execute(
     entry_price  = finding["best_ask"]
     if entry_price <= 0:
         return None
+    if position_usd < 1.0:
+        print(f"[clob] {finding['slug']}: position_usd={position_usd:.2f} < $1 minimum, atlandı")
+        return None
     shares = round(position_usd / entry_price, 4)
 
     order_args = {

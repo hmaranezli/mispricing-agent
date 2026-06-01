@@ -39,7 +39,8 @@ async def _load_open_positions(conn) -> list[dict]:
         "SELECT position_id, ts_open, slug, asset, action, pm_entry_price, "
         "fair_value, ref_price, edge, position_usd, kelly_f, confidence_score, dry_run, "
         "shares, order_id, yes_token_id, no_token_id "
-        "FROM positions WHERE status='open'"
+        "FROM positions WHERE status='open' AND dry_run=?",
+        (1 if config.DRY_RUN else 0,),
     ) as cur:
         rows = await cur.fetchall()
     return [
