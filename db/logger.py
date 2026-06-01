@@ -133,3 +133,20 @@ async def load_closed_today(conn) -> list[dict]:
         }
         for r in rows
     ]
+
+
+async def patch_position_resolution(
+    conn,
+    position_id:   str,
+    pm_exit_price: float,
+    realized_pnl:  float,
+    exit_reason:   str = "market_resolved_late",
+) -> None:
+    """Kapanmış pozisyonun exit fiyatı ve P&L'ini günceller (market_expired → resolved_late)."""
+    if conn is None:
+        return
+    await conn.execute(
+        "UPDATE positions SET pm_exit_price=?, realized_pnl=?, exit_reason=? WHERE position_id=?",
+        (pm_exit_price, realized_pnl, exit_reason, position_id),
+    )
+    await conn.commit()
