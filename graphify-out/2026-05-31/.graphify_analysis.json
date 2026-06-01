@@ -1,0 +1,375 @@
+{
+  "communities": {
+    "0": [
+      "council_scout_asset_of",
+      "council_scout_edge_signal",
+      "council_scout_py_float",
+      "council_scout_py_str",
+      "council_scout_rationale_40",
+      "tests_test_scout_py",
+      "tests_test_scout_rationale_1",
+      "tests_test_scout_rationale_103",
+      "tests_test_scout_rationale_117",
+      "tests_test_scout_rationale_126",
+      "tests_test_scout_rationale_134",
+      "tests_test_scout_rationale_143",
+      "tests_test_scout_rationale_151",
+      "tests_test_scout_rationale_160",
+      "tests_test_scout_rationale_50",
+      "tests_test_scout_rationale_58",
+      "tests_test_scout_rationale_66",
+      "tests_test_scout_rationale_72",
+      "tests_test_scout_rationale_79",
+      "tests_test_scout_rationale_86",
+      "tests_test_scout_test_asset_of_bitcoin",
+      "tests_test_scout_test_asset_of_btc_short",
+      "tests_test_scout_test_asset_of_empty_returns_none",
+      "tests_test_scout_test_asset_of_ethereum",
+      "tests_test_scout_test_asset_of_none_returns_none",
+      "tests_test_scout_test_asset_of_solana",
+      "tests_test_scout_test_asset_of_unknown_returns_none",
+      "tests_test_scout_test_asset_of_xrp",
+      "tests_test_scout_test_edge_signal_below_min_threshold_no",
+      "tests_test_scout_test_edge_signal_exact_min_threshold",
+      "tests_test_scout_test_edge_signal_no_cheap",
+      "tests_test_scout_test_edge_signal_no_edge_when_fair",
+      "tests_test_scout_test_edge_signal_yes_cheap",
+      "tests_test_scout_test_scan_edges_edge_above_min",
+      "tests_test_scout_test_scan_edges_fair_value_in_range",
+      "tests_test_scout_test_scan_edges_findings_have_required_fields",
+      "tests_test_scout_test_scan_edges_neg_risk_filtered",
+      "tests_test_scout_test_scan_edges_prices_positive",
+      "tests_test_scout_test_scan_edges_returns_list",
+      "tests_test_scout_test_scan_edges_sorted_by_edge_desc",
+      "tests_test_scout_test_scan_edges_time_filter"
+    ],
+    "1": [
+      "bool",
+      "council_scout_rationale_108",
+      "council_scout_scan_edges",
+      "council_verifier_main",
+      "council_verifier_py",
+      "council_verifier_py_float",
+      "council_verifier_py_str",
+      "council_verifier_rationale_1",
+      "council_verifier_rationale_26",
+      "council_verifier_result",
+      "council_verifier_verify",
+      "tests_test_verifier_fake_finding",
+      "tests_test_verifier_py",
+      "tests_test_verifier_rationale_1",
+      "tests_test_verifier_rationale_110",
+      "tests_test_verifier_rationale_127",
+      "tests_test_verifier_rationale_138",
+      "tests_test_verifier_rationale_150",
+      "tests_test_verifier_rationale_164",
+      "tests_test_verifier_rationale_22",
+      "tests_test_verifier_rationale_42",
+      "tests_test_verifier_rationale_55",
+      "tests_test_verifier_rationale_64",
+      "tests_test_verifier_rationale_79",
+      "tests_test_verifier_rationale_96",
+      "tests_test_verifier_test_hard_fail_halt_matches_config",
+      "tests_test_verifier_test_pass_result_structure",
+      "tests_test_verifier_test_pm_drift_threshold_is_positive",
+      "tests_test_verifier_test_price_drift_threshold_is_positive",
+      "tests_test_verifier_test_result_has_required_fields",
+      "tests_test_verifier_test_soft_fail_halt_is_false",
+      "tests_test_verifier_test_verify_expired_soft_fail",
+      "tests_test_verifier_test_verify_fresh_prices_positive_on_non_fetch_error",
+      "tests_test_verifier_test_verify_hl_drift_triggers_halt",
+      "tests_test_verifier_test_verify_invalid_slug_fetch_error_no_halt",
+      "tests_test_verifier_test_verify_pass_edge_above_min",
+      "tests_test_verifier_test_verify_real_scout_finding_has_valid_structure"
+    ],
+    "2": [
+      "data_fair_value_fair_yes",
+      "data_fair_value_py",
+      "data_fair_value_py_float",
+      "data_fair_value_py_str",
+      "data_fair_value_rationale_1",
+      "data_fair_value_rationale_19",
+      "tests_test_fair_value_py",
+      "tests_test_fair_value_rationale_1",
+      "tests_test_fair_value_rationale_104",
+      "tests_test_fair_value_rationale_111",
+      "tests_test_fair_value_rationale_119",
+      "tests_test_fair_value_rationale_16",
+      "tests_test_fair_value_rationale_22",
+      "tests_test_fair_value_rationale_28",
+      "tests_test_fair_value_rationale_34",
+      "tests_test_fair_value_rationale_39",
+      "tests_test_fair_value_rationale_44",
+      "tests_test_fair_value_rationale_49",
+      "tests_test_fair_value_rationale_63",
+      "tests_test_fair_value_rationale_73",
+      "tests_test_fair_value_rationale_79",
+      "tests_test_fair_value_rationale_85",
+      "tests_test_fair_value_rationale_91",
+      "tests_test_fair_value_test_asset_vol_keys_exist",
+      "tests_test_fair_value_test_fair_yes_above_reference_is_above_half",
+      "tests_test_fair_value_test_fair_yes_at_reference_price_is_half",
+      "tests_test_fair_value_test_fair_yes_below_reference_is_below_half",
+      "tests_test_fair_value_test_fair_yes_concrete_example",
+      "tests_test_fair_value_test_fair_yes_eth_uses_higher_vol",
+      "tests_test_fair_value_test_fair_yes_expired_above",
+      "tests_test_fair_value_test_fair_yes_expired_below",
+      "tests_test_fair_value_test_fair_yes_expired_equal",
+      "tests_test_fair_value_test_fair_yes_invalid_negative_price",
+      "tests_test_fair_value_test_fair_yes_invalid_zero_ref",
+      "tests_test_fair_value_test_fair_yes_more_time_means_closer_to_half",
+      "tests_test_fair_value_test_fair_yes_output_range",
+      "tests_test_fair_value_test_fair_yes_symmetry"
+    ],
+    "3": [
+      "council_scout_main",
+      "council_scout_process_market",
+      "council_scout_py",
+      "council_scout_rationale_1",
+      "council_scout_rationale_62",
+      "data_hl_candles_current_price",
+      "data_hl_candles_fetch_candles",
+      "data_hl_candles_fetch_candles_range",
+      "data_hl_candles_main",
+      "data_hl_candles_price_at_timestamp",
+      "data_hl_candles_py",
+      "data_hl_candles_py_float",
+      "data_hl_candles_py_str",
+      "data_hl_candles_rationale_1",
+      "data_hl_candles_rationale_28",
+      "data_hl_candles_rationale_40",
+      "data_hl_candles_rationale_54",
+      "data_hl_candles_rationale_68",
+      "data_hl_candles_realized_move",
+      "int",
+      "tests_test_hl_candles_py",
+      "tests_test_hl_candles_rationale_1",
+      "tests_test_hl_candles_rationale_63",
+      "tests_test_hl_candles_rationale_72",
+      "tests_test_hl_candles_rationale_82",
+      "tests_test_hl_candles_test_current_price_btc_is_positive",
+      "tests_test_hl_candles_test_current_price_eth_is_positive",
+      "tests_test_hl_candles_test_price_at_timestamp_5min_ago",
+      "tests_test_hl_candles_test_price_at_timestamp_close_to_current",
+      "tests_test_hl_candles_test_price_at_timestamp_too_old_raises",
+      "tests_test_hl_candles_test_realized_move_calculates_pct",
+      "tests_test_hl_candles_test_realized_move_empty",
+      "tests_test_hl_candles_test_realized_move_negative",
+      "tests_test_hl_candles_test_realized_move_single_candle",
+      "tests_test_hl_candles_test_realized_move_zero_open_returns_none"
+    ],
+    "4": [
+      "data_shortterm_fetch_by_slug",
+      "data_shortterm_find_shortterm",
+      "data_shortterm_main",
+      "data_shortterm_parse",
+      "data_shortterm_parse_market_window",
+      "data_shortterm_py",
+      "data_shortterm_rationale_1",
+      "data_shortterm_rationale_24",
+      "data_shortterm_rationale_65",
+      "data_shortterm_slugs_for_now",
+      "tests_test_shortterm_py",
+      "tests_test_shortterm_rationale_1",
+      "tests_test_shortterm_rationale_106",
+      "tests_test_shortterm_rationale_115",
+      "tests_test_shortterm_rationale_128",
+      "tests_test_shortterm_rationale_149",
+      "tests_test_shortterm_rationale_37",
+      "tests_test_shortterm_rationale_58",
+      "tests_test_shortterm_rationale_72",
+      "tests_test_shortterm_rationale_87",
+      "tests_test_shortterm_rationale_96",
+      "tests_test_shortterm_test_find_shortterm_parse_market_window_works",
+      "tests_test_shortterm_test_find_shortterm_returns_list",
+      "tests_test_shortterm_test_parse_invalid",
+      "tests_test_shortterm_test_parse_json_string",
+      "tests_test_shortterm_test_parse_list",
+      "tests_test_shortterm_test_parse_market_window_full",
+      "tests_test_shortterm_test_parse_market_window_missing_best_ask_returns_none",
+      "tests_test_shortterm_test_parse_market_window_missing_event_start_returns_none",
+      "tests_test_shortterm_test_parse_market_window_neg_risk_defaults_false",
+      "tests_test_shortterm_test_parse_market_window_neg_risk_true",
+      "tests_test_shortterm_test_parse_market_window_seconds_remaining_past",
+      "tests_test_shortterm_test_parse_none"
+    ],
+    "5": [
+      "data_hyperliquid_fetch_market_state",
+      "data_hyperliquid_main",
+      "data_hyperliquid_post",
+      "data_hyperliquid_py",
+      "data_hyperliquid_rationale_1",
+      "data_hyperliquid_rationale_38",
+      "data_hyperliquid_signal"
+    ],
+    "6": [
+      "data_polymarket_fetch_crypto_markets",
+      "data_polymarket_fmt",
+      "data_polymarket_main",
+      "data_polymarket_parse",
+      "data_polymarket_py",
+      "data_polymarket_rationale_1"
+    ],
+    "7": [
+      "claude_md",
+      "config_py",
+      "mispricing_agent_config_rationale_1",
+      "scout_rewrite_plan_md",
+      "verifier_design_md",
+      "verifier_plan_md"
+    ],
+    "8": [
+      "claude_settings_local_json",
+      "claude_settings_local_permissions",
+      "claude_settings_local_permissions_allow"
+    ],
+    "9": [
+      "execution_init_py"
+    ],
+    "10": [
+      "db_init_py"
+    ],
+    "11": [
+      "council_init_py"
+    ],
+    "12": [
+      "monitor_init_py"
+    ],
+    "13": [
+      "position_init_py"
+    ],
+    "14": [
+      "data_init_py"
+    ]
+  },
+  "cohesion": {
+    "0": 0.06463414634146342,
+    "1": 0.08558558558558559,
+    "2": 0.07357357357357357,
+    "3": 0.09915966386554621,
+    "4": 0.09848484848484848,
+    "5": 0.42857142857142855,
+    "6": 0.5333333333333333,
+    "7": 0.4,
+    "8": 0.6666666666666666,
+    "9": 1.0,
+    "10": 1.0,
+    "11": 1.0,
+    "12": 1.0,
+    "13": 1.0,
+    "14": 1.0
+  },
+  "gods": [
+    {
+      "id": "data_fair_value_fair_yes",
+      "label": "fair_yes()",
+      "degree": 22
+    },
+    {
+      "id": "council_scout_scan_edges",
+      "label": "scan_edges()",
+      "degree": 20
+    },
+    {
+      "id": "data_hl_candles_current_price",
+      "label": "current_price()",
+      "degree": 16
+    },
+    {
+      "id": "council_verifier_verify",
+      "label": "verify()",
+      "degree": 15
+    },
+    {
+      "id": "data_shortterm_parse_market_window",
+      "label": "parse_market_window()",
+      "degree": 14
+    },
+    {
+      "id": "council_scout_asset_of",
+      "label": "_asset_of()",
+      "degree": 12
+    },
+    {
+      "id": "data_hl_candles_price_at_timestamp",
+      "label": "price_at_timestamp()",
+      "degree": 12
+    },
+    {
+      "id": "council_verifier_result",
+      "label": "_result()",
+      "degree": 10
+    },
+    {
+      "id": "council_scout_edge_signal",
+      "label": "_edge_signal()",
+      "degree": 10
+    },
+    {
+      "id": "council_scout_process_market",
+      "label": "_process_market()",
+      "degree": 9
+    }
+  ],
+  "surprises": [
+    {
+      "source": "test_scan_edges_returns_list()",
+      "target": "scan_edges()",
+      "source_files": [
+        "tests/test_scout.py",
+        "council/scout.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; bridges separate communities; peripheral node `test_scan_edges_returns_list()` unexpectedly reaches hub `scan_edges()`"
+    },
+    {
+      "source": "test_parse_list()",
+      "target": "_parse()",
+      "source_files": [
+        "tests/test_shortterm.py",
+        "data/shortterm.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; peripheral node `test_parse_list()` unexpectedly reaches hub `_parse()`"
+    },
+    {
+      "source": "test_parse_json_string()",
+      "target": "_parse()",
+      "source_files": [
+        "tests/test_shortterm.py",
+        "data/shortterm.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; peripheral node `test_parse_json_string()` unexpectedly reaches hub `_parse()`"
+    },
+    {
+      "source": "test_parse_invalid()",
+      "target": "_parse()",
+      "source_files": [
+        "tests/test_shortterm.py",
+        "data/shortterm.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; peripheral node `test_parse_invalid()` unexpectedly reaches hub `_parse()`"
+    },
+    {
+      "source": "test_parse_none()",
+      "target": "_parse()",
+      "source_files": [
+        "tests/test_shortterm.py",
+        "data/shortterm.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "connects across different repos/directories; peripheral node `test_parse_none()` unexpectedly reaches hub `_parse()`"
+    }
+  ],
+  "tokens": {
+    "input": 15879,
+    "output": 981
+  }
+}

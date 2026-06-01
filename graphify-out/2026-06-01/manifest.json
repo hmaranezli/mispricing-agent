@@ -100,8 +100,8 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/main_loop.py": {
-    "mtime": 1780285321.3258715,
-    "ast_hash": "b3db63ba820454f40fefc2e6ca0a1100",
+    "mtime": 1780252098.1892495,
+    "ast_hash": "a5df98b4ece5117ed7dc09a2045d3a85",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/tests/test_monitor.py": {
@@ -110,8 +110,8 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/tests/test_db.py": {
-    "mtime": 1780280557.1372304,
-    "ast_hash": "a00ac8236d342a66939bbe5f94738931",
+    "mtime": 1780230268.5573246,
+    "ast_hash": "71fdc737b9f6457bb7a801fab269ccf9",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/tests/test_position.py": {
@@ -120,8 +120,8 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/tests/test_main_loop.py": {
-    "mtime": 1780285324.1818962,
-    "ast_hash": "48a711e534ebaaa125985a8c22bf7517",
+    "mtime": 1780251716.361997,
+    "ast_hash": "401667ed1affd1f3e473701ed572d5a5",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/tests/test_executor.py": {
@@ -160,8 +160,8 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/db/logger.py": {
-    "mtime": 1780283569.128442,
-    "ast_hash": "97ad0649b0ea39aba0d550f02588c24e",
+    "mtime": 1780230288.7805092,
+    "ast_hash": "48d968e15a7cb1538fafa2d34c0de7d1",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/council/risk.py": {
@@ -282,41 +282,6 @@
   "/root/mispricing_agent/docs/superpowers/plans/2026-05-30-scout-fair-value-rewrite.md": {
     "mtime": 1780116476.0243287,
     "ast_hash": "307306354f5aef878450b2cc83c7ddd4",
-    "semantic_hash": ""
-  },
-  "/root/mispricing_agent/analysis/__init__.py": {
-    "mtime": 1780256532.2926745,
-    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
-    "semantic_hash": ""
-  },
-  "/root/mispricing_agent/analysis/backfill_expired.py": {
-    "mtime": 1780283803.7879598,
-    "ast_hash": "2e5763de9184e53eaeab8279a6c088d5",
-    "semantic_hash": ""
-  },
-  "/root/mispricing_agent/analysis/performance.py": {
-    "mtime": 1780256558.0188909,
-    "ast_hash": "9251ce7004b71a9173979750068fd4d9",
-    "semantic_hash": ""
-  },
-  "/root/mispricing_agent/docs/superpowers/specs/2026-06-01-market-expired-heal-design.md": {
-    "mtime": 1780279855.8903587,
-    "ast_hash": "cbbab63749142a006482b4f781d397b9",
-    "semantic_hash": ""
-  },
-  "/root/mispricing_agent/docs/superpowers/specs/2026-05-31-performance-analysis-design.md": {
-    "mtime": 1780256440.218901,
-    "ast_hash": "e272b04c26c9aabbab7c07c9635a086e",
-    "semantic_hash": ""
-  },
-  "/root/mispricing_agent/docs/superpowers/plans/2026-06-01-market-expired-heal-plan.md": {
-    "mtime": 1780280018.7067046,
-    "ast_hash": "3ef5b4f196b297cc18c1f40019905137",
-    "semantic_hash": ""
-  },
-  "/root/mispricing_agent/docs/superpowers/plans/2026-05-31-performance-analysis.md": {
-    "mtime": 1780256523.0455968,
-    "ast_hash": "b677ef6ac418b7b4572c58a8d88ca8e6",
     "semantic_hash": ""
   }
 }

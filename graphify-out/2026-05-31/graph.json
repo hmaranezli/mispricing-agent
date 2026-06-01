@@ -1,0 +1,5352 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {},
+  "nodes": [
+    {
+      "label": "config.py",
+      "file_type": "code",
+      "source_file": "config.py",
+      "source_location": "L1",
+      "id": "config_py",
+      "community": 7,
+      "norm_label": "config.py"
+    },
+    {
+      "label": "config.py \u2014 Mispricing Agent yapilandirmasi ANAYASA: Asagidaki guardrail sabitle",
+      "file_type": "rationale",
+      "source_file": "config.py",
+      "source_location": "L1",
+      "id": "mispricing_agent_config_rationale_1",
+      "community": 7,
+      "norm_label": "config.py \u2014 mispricing agent yapilandirmasi anayasa: asagidaki guardrail sabitle"
+    },
+    {
+      "label": "test_shortterm.py",
+      "file_type": "code",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L1",
+      "id": "tests_test_shortterm_py",
+      "community": 4,
+      "norm_label": "test_shortterm.py"
+    },
+    {
+      "label": "test_parse_list()",
+      "file_type": "code",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L18",
+      "id": "tests_test_shortterm_test_parse_list",
+      "community": 4,
+      "norm_label": "test_parse_list()"
+    },
+    {
+      "label": "test_parse_json_string()",
+      "file_type": "code",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L22",
+      "id": "tests_test_shortterm_test_parse_json_string",
+      "community": 4,
+      "norm_label": "test_parse_json_string()"
+    },
+    {
+      "label": "test_parse_invalid()",
+      "file_type": "code",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L26",
+      "id": "tests_test_shortterm_test_parse_invalid",
+      "community": 4,
+      "norm_label": "test_parse_invalid()"
+    },
+    {
+      "label": "test_parse_none()",
+      "file_type": "code",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L30",
+      "id": "tests_test_shortterm_test_parse_none",
+      "community": 4,
+      "norm_label": "test_parse_none()"
+    },
+    {
+      "label": "test_parse_market_window_full()",
+      "file_type": "code",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L36",
+      "id": "tests_test_shortterm_test_parse_market_window_full",
+      "community": 4,
+      "norm_label": "test_parse_market_window_full()"
+    },
+    {
+      "label": "test_parse_market_window_seconds_remaining_past()",
+      "file_type": "code",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L71",
+      "id": "tests_test_shortterm_test_parse_market_window_seconds_remaining_past",
+      "community": 4,
+      "norm_label": "test_parse_market_window_seconds_remaining_past()"
+    },
+    {
+      "label": "test_parse_market_window_missing_event_start_returns_none()",
+      "file_type": "code",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L86",
+      "id": "tests_test_shortterm_test_parse_market_window_missing_event_start_returns_none",
+      "community": 4,
+      "norm_label": "test_parse_market_window_missing_event_start_returns_none()"
+    },
+    {
+      "label": "test_parse_market_window_missing_best_ask_returns_none()",
+      "file_type": "code",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L95",
+      "id": "tests_test_shortterm_test_parse_market_window_missing_best_ask_returns_none",
+      "community": 4,
+      "norm_label": "test_parse_market_window_missing_best_ask_returns_none()"
+    },
+    {
+      "label": "test_parse_market_window_neg_risk_true()",
+      "file_type": "code",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L114",
+      "id": "tests_test_shortterm_test_parse_market_window_neg_risk_true",
+      "community": 4,
+      "norm_label": "test_parse_market_window_neg_risk_true()"
+    },
+    {
+      "label": "test_parse_market_window_neg_risk_defaults_false()",
+      "file_type": "code",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L127",
+      "id": "tests_test_shortterm_test_parse_market_window_neg_risk_defaults_false",
+      "community": 4,
+      "norm_label": "test_parse_market_window_neg_risk_defaults_false()"
+    },
+    {
+      "label": "test_find_shortterm_returns_list()",
+      "file_type": "code",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L142",
+      "id": "tests_test_shortterm_test_find_shortterm_returns_list",
+      "community": 4,
+      "norm_label": "test_find_shortterm_returns_list()"
+    },
+    {
+      "label": "test_find_shortterm_parse_market_window_works()",
+      "file_type": "code",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L148",
+      "id": "tests_test_shortterm_test_find_shortterm_parse_market_window_works",
+      "community": 4,
+      "norm_label": "test_find_shortterm_parse_market_window_works()"
+    },
+    {
+      "label": "tests/test_shortterm.py \u2014 data/shortterm.py testleri. parse_market_window unit t",
+      "file_type": "rationale",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L1",
+      "id": "tests_test_shortterm_rationale_1",
+      "community": 4,
+      "norm_label": "tests/test_shortterm.py \u2014 data/shortterm.py testleri. parse_market_window unit t"
+    },
+    {
+      "label": "T\u00fcm alanlar dolu market dict'inden do\u011fru \u00e7\u0131kar\u0131m.",
+      "file_type": "rationale",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L37",
+      "id": "tests_test_shortterm_rationale_37",
+      "community": 4,
+      "norm_label": "tum alanlar dolu market dict'inden dogru c\u0131kar\u0131m."
+    },
+    {
+      "label": "Gelecekteki bir market i\u00e7in seconds_remaining > 0.",
+      "file_type": "rationale",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L58",
+      "id": "tests_test_shortterm_rationale_58",
+      "community": 4,
+      "norm_label": "gelecekteki bir market icin seconds_remaining > 0."
+    },
+    {
+      "label": "Ge\u00e7mi\u015fteki bir market i\u00e7in seconds_remaining < 0.",
+      "file_type": "rationale",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L72",
+      "id": "tests_test_shortterm_rationale_72",
+      "community": 4,
+      "norm_label": "gecmisteki bir market icin seconds_remaining < 0."
+    },
+    {
+      "label": "eventStartTime yoksa None d\u00f6ner.",
+      "file_type": "rationale",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L87",
+      "id": "tests_test_shortterm_rationale_87",
+      "community": 4,
+      "norm_label": "eventstarttime yoksa none doner."
+    },
+    {
+      "label": "bestAsk yoksa None d\u00f6ner.",
+      "file_type": "rationale",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L96",
+      "id": "tests_test_shortterm_rationale_96",
+      "community": 4,
+      "norm_label": "bestask yoksa none doner."
+    },
+    {
+      "label": "endDate yoksa None d\u00f6ner.",
+      "file_type": "rationale",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L106",
+      "id": "tests_test_shortterm_rationale_106",
+      "community": 4,
+      "norm_label": "enddate yoksa none doner."
+    },
+    {
+      "label": "negRisk=True do\u011fru parse edilir.",
+      "file_type": "rationale",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L115",
+      "id": "tests_test_shortterm_rationale_115",
+      "community": 4,
+      "norm_label": "negrisk=true dogru parse edilir."
+    },
+    {
+      "label": "negRisk alan\u0131 yoksa False varsay\u0131l\u0131r.",
+      "file_type": "rationale",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L128",
+      "id": "tests_test_shortterm_rationale_128",
+      "community": 4,
+      "norm_label": "negrisk alan\u0131 yoksa false varsay\u0131l\u0131r."
+    },
+    {
+      "label": "D\u00f6nen marketlerde parse_market_window \u00e7al\u0131\u015f\u0131yor (None d\u00f6nmeyenlerde alanlar var)",
+      "file_type": "rationale",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L149",
+      "id": "tests_test_shortterm_rationale_149",
+      "community": 4,
+      "norm_label": "donen marketlerde parse_market_window cal\u0131s\u0131yor (none donmeyenlerde alanlar var)"
+    },
+    {
+      "label": "test_hl_candles.py",
+      "file_type": "code",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L1",
+      "id": "tests_test_hl_candles_py",
+      "community": 3,
+      "norm_label": "test_hl_candles.py"
+    },
+    {
+      "label": "test_realized_move_empty()",
+      "file_type": "code",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L18",
+      "id": "tests_test_hl_candles_test_realized_move_empty",
+      "community": 3,
+      "norm_label": "test_realized_move_empty()"
+    },
+    {
+      "label": "test_realized_move_single_candle()",
+      "file_type": "code",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L22",
+      "id": "tests_test_hl_candles_test_realized_move_single_candle",
+      "community": 3,
+      "norm_label": "test_realized_move_single_candle()"
+    },
+    {
+      "label": "test_realized_move_calculates_pct()",
+      "file_type": "code",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L26",
+      "id": "tests_test_hl_candles_test_realized_move_calculates_pct",
+      "community": 3,
+      "norm_label": "test_realized_move_calculates_pct()"
+    },
+    {
+      "label": "test_realized_move_negative()",
+      "file_type": "code",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L33",
+      "id": "tests_test_hl_candles_test_realized_move_negative",
+      "community": 3,
+      "norm_label": "test_realized_move_negative()"
+    },
+    {
+      "label": "test_realized_move_zero_open_returns_none()",
+      "file_type": "code",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L40",
+      "id": "tests_test_hl_candles_test_realized_move_zero_open_returns_none",
+      "community": 3,
+      "norm_label": "test_realized_move_zero_open_returns_none()"
+    },
+    {
+      "label": "test_current_price_btc_is_positive()",
+      "file_type": "code",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L48",
+      "id": "tests_test_hl_candles_test_current_price_btc_is_positive",
+      "community": 3,
+      "norm_label": "test_current_price_btc_is_positive()"
+    },
+    {
+      "label": "test_current_price_eth_is_positive()",
+      "file_type": "code",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L55",
+      "id": "tests_test_hl_candles_test_current_price_eth_is_positive",
+      "community": 3,
+      "norm_label": "test_current_price_eth_is_positive()"
+    },
+    {
+      "label": "test_price_at_timestamp_5min_ago()",
+      "file_type": "code",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L62",
+      "id": "tests_test_hl_candles_test_price_at_timestamp_5min_ago",
+      "community": 3,
+      "norm_label": "test_price_at_timestamp_5min_ago()"
+    },
+    {
+      "label": "test_price_at_timestamp_close_to_current()",
+      "file_type": "code",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L71",
+      "id": "tests_test_hl_candles_test_price_at_timestamp_close_to_current",
+      "community": 3,
+      "norm_label": "test_price_at_timestamp_close_to_current()"
+    },
+    {
+      "label": "test_price_at_timestamp_too_old_raises()",
+      "file_type": "code",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L81",
+      "id": "tests_test_hl_candles_test_price_at_timestamp_too_old_raises",
+      "community": 3,
+      "norm_label": "test_price_at_timestamp_too_old_raises()"
+    },
+    {
+      "label": "tests/test_hl_candles.py \u2014 data/hl_candles.py testleri. Mevcut fonksiyonlar i\u00e7in",
+      "file_type": "rationale",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L1",
+      "id": "tests_test_hl_candles_rationale_1",
+      "community": 3,
+      "norm_label": "tests/test_hl_candles.py \u2014 data/hl_candles.py testleri. mevcut fonksiyonlar icin"
+    },
+    {
+      "label": "5 dakika \u00f6nceki fiyat ger\u00e7ek ve pozitif d\u00f6ner.",
+      "file_type": "rationale",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L63",
+      "id": "tests_test_hl_candles_rationale_63",
+      "community": 3,
+      "norm_label": "5 dakika onceki fiyat gercek ve pozitif doner."
+    },
+    {
+      "label": "1 dakika \u00f6nceki fiyat \u015fimdikine yak\u0131n (\u00b1%5 i\u00e7inde).",
+      "file_type": "rationale",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L72",
+      "id": "tests_test_hl_candles_rationale_72",
+      "community": 3,
+      "norm_label": "1 dakika onceki fiyat simdikine yak\u0131n (\u00b1%5 icinde)."
+    },
+    {
+      "label": "8 g\u00fcnden eski timestamp i\u00e7in ValueError f\u0131rlat\u0131r.",
+      "file_type": "rationale",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L82",
+      "id": "tests_test_hl_candles_rationale_82",
+      "community": 3,
+      "norm_label": "8 gunden eski timestamp icin valueerror f\u0131rlat\u0131r."
+    },
+    {
+      "label": "test_verifier.py",
+      "file_type": "code",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L1",
+      "id": "tests_test_verifier_py",
+      "community": 1,
+      "norm_label": "test_verifier.py"
+    },
+    {
+      "label": "_fake_finding()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L18",
+      "id": "tests_test_verifier_fake_finding",
+      "community": 1,
+      "norm_label": "_fake_finding()"
+    },
+    {
+      "label": "test_result_has_required_fields()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L41",
+      "id": "tests_test_verifier_test_result_has_required_fields",
+      "community": 1,
+      "norm_label": "test_result_has_required_fields()"
+    },
+    {
+      "label": "test_soft_fail_halt_is_false()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L54",
+      "id": "tests_test_verifier_test_soft_fail_halt_is_false",
+      "community": 1,
+      "norm_label": "test_soft_fail_halt_is_false()"
+    },
+    {
+      "label": "test_hard_fail_halt_matches_config()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L63",
+      "id": "tests_test_verifier_test_hard_fail_halt_matches_config",
+      "community": 1,
+      "norm_label": "test_hard_fail_halt_matches_config()"
+    },
+    {
+      "label": "test_price_drift_threshold_is_positive()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L70",
+      "id": "tests_test_verifier_test_price_drift_threshold_is_positive",
+      "community": 1,
+      "norm_label": "test_price_drift_threshold_is_positive()"
+    },
+    {
+      "label": "test_pm_drift_threshold_is_positive()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L74",
+      "id": "tests_test_verifier_test_pm_drift_threshold_is_positive",
+      "community": 1,
+      "norm_label": "test_pm_drift_threshold_is_positive()"
+    },
+    {
+      "label": "test_pass_result_structure()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L78",
+      "id": "tests_test_verifier_test_pass_result_structure",
+      "community": 1,
+      "norm_label": "test_pass_result_structure()"
+    },
+    {
+      "label": "test_verify_hl_drift_triggers_halt()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L95",
+      "id": "tests_test_verifier_test_verify_hl_drift_triggers_halt",
+      "community": 1,
+      "norm_label": "test_verify_hl_drift_triggers_halt()"
+    },
+    {
+      "label": "test_verify_expired_soft_fail()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L109",
+      "id": "tests_test_verifier_test_verify_expired_soft_fail",
+      "community": 1,
+      "norm_label": "test_verify_expired_soft_fail()"
+    },
+    {
+      "label": "test_verify_invalid_slug_fetch_error_no_halt()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L126",
+      "id": "tests_test_verifier_test_verify_invalid_slug_fetch_error_no_halt",
+      "community": 1,
+      "norm_label": "test_verify_invalid_slug_fetch_error_no_halt()"
+    },
+    {
+      "label": "test_verify_real_scout_finding_has_valid_structure()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L137",
+      "id": "tests_test_verifier_test_verify_real_scout_finding_has_valid_structure",
+      "community": 1,
+      "norm_label": "test_verify_real_scout_finding_has_valid_structure()"
+    },
+    {
+      "label": "test_verify_pass_edge_above_min()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L149",
+      "id": "tests_test_verifier_test_verify_pass_edge_above_min",
+      "community": 1,
+      "norm_label": "test_verify_pass_edge_above_min()"
+    },
+    {
+      "label": "test_verify_fresh_prices_positive_on_non_fetch_error()",
+      "file_type": "code",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L163",
+      "id": "tests_test_verifier_test_verify_fresh_prices_positive_on_non_fetch_error",
+      "community": 1,
+      "norm_label": "test_verify_fresh_prices_positive_on_non_fetch_error()"
+    },
+    {
+      "label": "council/verifier.py testleri. Ger\u00e7ek API kullan\u0131l\u0131r \u2014 mock yok.",
+      "file_type": "rationale",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L1",
+      "id": "tests_test_verifier_rationale_1",
+      "community": 1,
+      "norm_label": "council/verifier.py testleri. gercek api kullan\u0131l\u0131r \u2014 mock yok."
+    },
+    {
+      "label": "Test i\u00e7in sahte Scout bulgusu. slug kas\u0131tl\u0131 ge\u00e7ersiz (fetch_error tetikler).",
+      "file_type": "rationale",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L22",
+      "id": "tests_test_verifier_rationale_22",
+      "community": 1,
+      "norm_label": "test icin sahte scout bulgusu. slug kas\u0131tl\u0131 gecersiz (fetch_error tetikler)."
+    },
+    {
+      "label": "_result() her zaman gerekli alanlar\u0131 d\u00f6nd\u00fcr\u00fcr.",
+      "file_type": "rationale",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L42",
+      "id": "tests_test_verifier_rationale_42",
+      "community": 1,
+      "norm_label": "_result() her zaman gerekli alanlar\u0131 dondurur."
+    },
+    {
+      "label": "Soft fail'de (edge_gone, expired, fetch_error) halt=False.",
+      "file_type": "rationale",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L55",
+      "id": "tests_test_verifier_rationale_55",
+      "community": 1,
+      "norm_label": "soft fail'de (edge_gone, expired, fetch_error) halt=false."
+    },
+    {
+      "label": "api_mismatch'te halt de\u011feri HALT_ON_API_MISMATCH config'ine e\u015fit.",
+      "file_type": "rationale",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L64",
+      "id": "tests_test_verifier_rationale_64",
+      "community": 1,
+      "norm_label": "api_mismatch'te halt degeri halt_on_api_mismatch config'ine esit."
+    },
+    {
+      "label": "PASS durumu pass=True, halt=False, reason='ok'.",
+      "file_type": "rationale",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L79",
+      "id": "tests_test_verifier_rationale_79",
+      "community": 1,
+      "norm_label": "pass durumu pass=true, halt=false, reason='ok'."
+    },
+    {
+      "label": "Scout cur_price=1.0 (imkans\u0131z) verilince ger\u00e7ek HL fiyat\u0131yla drift >%2 \u2192 api_mis",
+      "file_type": "rationale",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L96",
+      "id": "tests_test_verifier_rationale_96",
+      "community": 1,
+      "norm_label": "scout cur_price=1.0 (imkans\u0131z) verilince gercek hl fiyat\u0131yla drift >%2 \u2192 api_mis"
+    },
+    {
+      "label": "seconds_remaining=0 \u2192 HL drift kontrol\u00fc sonras\u0131 expired veya fetch_error.     Sc",
+      "file_type": "rationale",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L110",
+      "id": "tests_test_verifier_rationale_110",
+      "community": 1,
+      "norm_label": "seconds_remaining=0 \u2192 hl drift kontrolu sonras\u0131 expired veya fetch_error.     sc"
+    },
+    {
+      "label": "Ge\u00e7ersiz slug \u2192 fetch_error, halt=False.",
+      "file_type": "rationale",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L127",
+      "id": "tests_test_verifier_rationale_127",
+      "community": 1,
+      "norm_label": "gecersiz slug \u2192 fetch_error, halt=false."
+    },
+    {
+      "label": "Ger\u00e7ek Scout bulgusu \u2192 Verifier ge\u00e7erli yap\u0131da sonu\u00e7 d\u00f6nd\u00fcr\u00fcr.",
+      "file_type": "rationale",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L138",
+      "id": "tests_test_verifier_rationale_138",
+      "community": 1,
+      "norm_label": "gercek scout bulgusu \u2192 verifier gecerli yap\u0131da sonuc dondurur."
+    },
+    {
+      "label": "PASS durumunda fresh_edge >= MIN_EDGE_PCT.",
+      "file_type": "rationale",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L150",
+      "id": "tests_test_verifier_rationale_150",
+      "community": 1,
+      "norm_label": "pass durumunda fresh_edge >= min_edge_pct."
+    },
+    {
+      "label": "fetch_error d\u0131\u015f\u0131ndaki sonu\u00e7larda fresh_cur_price > 0.",
+      "file_type": "rationale",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L164",
+      "id": "tests_test_verifier_rationale_164",
+      "community": 1,
+      "norm_label": "fetch_error d\u0131s\u0131ndaki sonuclarda fresh_cur_price > 0."
+    },
+    {
+      "label": "test_scout.py",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L1",
+      "id": "tests_test_scout_py",
+      "community": 0,
+      "norm_label": "test_scout.py"
+    },
+    {
+      "label": "test_asset_of_bitcoin()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L17",
+      "id": "tests_test_scout_test_asset_of_bitcoin",
+      "community": 0,
+      "norm_label": "test_asset_of_bitcoin()"
+    },
+    {
+      "label": "test_asset_of_ethereum()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L21",
+      "id": "tests_test_scout_test_asset_of_ethereum",
+      "community": 0,
+      "norm_label": "test_asset_of_ethereum()"
+    },
+    {
+      "label": "test_asset_of_btc_short()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L25",
+      "id": "tests_test_scout_test_asset_of_btc_short",
+      "community": 0,
+      "norm_label": "test_asset_of_btc_short()"
+    },
+    {
+      "label": "test_asset_of_solana()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L29",
+      "id": "tests_test_scout_test_asset_of_solana",
+      "community": 0,
+      "norm_label": "test_asset_of_solana()"
+    },
+    {
+      "label": "test_asset_of_xrp()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L33",
+      "id": "tests_test_scout_test_asset_of_xrp",
+      "community": 0,
+      "norm_label": "test_asset_of_xrp()"
+    },
+    {
+      "label": "test_asset_of_unknown_returns_none()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L37",
+      "id": "tests_test_scout_test_asset_of_unknown_returns_none",
+      "community": 0,
+      "norm_label": "test_asset_of_unknown_returns_none()"
+    },
+    {
+      "label": "test_asset_of_empty_returns_none()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L41",
+      "id": "tests_test_scout_test_asset_of_empty_returns_none",
+      "community": 0,
+      "norm_label": "test_asset_of_empty_returns_none()"
+    },
+    {
+      "label": "test_asset_of_none_returns_none()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L45",
+      "id": "tests_test_scout_test_asset_of_none_returns_none",
+      "community": 0,
+      "norm_label": "test_asset_of_none_returns_none()"
+    },
+    {
+      "label": "test_edge_signal_yes_cheap()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L49",
+      "id": "tests_test_scout_test_edge_signal_yes_cheap",
+      "community": 0,
+      "norm_label": "test_edge_signal_yes_cheap()"
+    },
+    {
+      "label": "test_edge_signal_no_cheap()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L57",
+      "id": "tests_test_scout_test_edge_signal_no_cheap",
+      "community": 0,
+      "norm_label": "test_edge_signal_no_cheap()"
+    },
+    {
+      "label": "test_edge_signal_no_edge_when_fair()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L65",
+      "id": "tests_test_scout_test_edge_signal_no_edge_when_fair",
+      "community": 0,
+      "norm_label": "test_edge_signal_no_edge_when_fair()"
+    },
+    {
+      "label": "test_edge_signal_below_min_threshold_no()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L78",
+      "id": "tests_test_scout_test_edge_signal_below_min_threshold_no",
+      "community": 0,
+      "norm_label": "test_edge_signal_below_min_threshold_no()"
+    },
+    {
+      "label": "test_edge_signal_exact_min_threshold()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L85",
+      "id": "tests_test_scout_test_edge_signal_exact_min_threshold",
+      "community": 0,
+      "norm_label": "test_edge_signal_exact_min_threshold()"
+    },
+    {
+      "label": "test_scan_edges_returns_list()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L96",
+      "id": "tests_test_scout_test_scan_edges_returns_list",
+      "community": 0,
+      "norm_label": "test_scan_edges_returns_list()"
+    },
+    {
+      "label": "test_scan_edges_findings_have_required_fields()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L102",
+      "id": "tests_test_scout_test_scan_edges_findings_have_required_fields",
+      "community": 0,
+      "norm_label": "test_scan_edges_findings_have_required_fields()"
+    },
+    {
+      "label": "test_scan_edges_edge_above_min()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L116",
+      "id": "tests_test_scout_test_scan_edges_edge_above_min",
+      "community": 0,
+      "norm_label": "test_scan_edges_edge_above_min()"
+    },
+    {
+      "label": "test_scan_edges_neg_risk_filtered()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L125",
+      "id": "tests_test_scout_test_scan_edges_neg_risk_filtered",
+      "community": 0,
+      "norm_label": "test_scan_edges_neg_risk_filtered()"
+    },
+    {
+      "label": "test_scan_edges_time_filter()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L133",
+      "id": "tests_test_scout_test_scan_edges_time_filter",
+      "community": 0,
+      "norm_label": "test_scan_edges_time_filter()"
+    },
+    {
+      "label": "test_scan_edges_fair_value_in_range()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L142",
+      "id": "tests_test_scout_test_scan_edges_fair_value_in_range",
+      "community": 0,
+      "norm_label": "test_scan_edges_fair_value_in_range()"
+    },
+    {
+      "label": "test_scan_edges_prices_positive()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L150",
+      "id": "tests_test_scout_test_scan_edges_prices_positive",
+      "community": 0,
+      "norm_label": "test_scan_edges_prices_positive()"
+    },
+    {
+      "label": "test_scan_edges_sorted_by_edge_desc()",
+      "file_type": "code",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L159",
+      "id": "tests_test_scout_test_scan_edges_sorted_by_edge_desc",
+      "community": 0,
+      "norm_label": "test_scan_edges_sorted_by_edge_desc()"
+    },
+    {
+      "label": "tests/test_scout.py \u2014 council/scout.py testleri. Unit testler (_asset_of, _edge_",
+      "file_type": "rationale",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L1",
+      "id": "tests_test_scout_rationale_1",
+      "community": 0,
+      "norm_label": "tests/test_scout.py \u2014 council/scout.py testleri. unit testler (_asset_of, _edge_"
+    },
+    {
+      "label": "fair > ask yeterince \u2192 YES al.",
+      "file_type": "rationale",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L50",
+      "id": "tests_test_scout_rationale_50",
+      "community": 0,
+      "norm_label": "fair > ask yeterince \u2192 yes al."
+    },
+    {
+      "label": "bid > fair yeterince \u2192 NO al.",
+      "file_type": "rationale",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L58",
+      "id": "tests_test_scout_rationale_58",
+      "community": 0,
+      "norm_label": "bid > fair yeterince \u2192 no al."
+    },
+    {
+      "label": "fair \u2248 fiyat \u2192 edge yok \u2192 None.",
+      "file_type": "rationale",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L66",
+      "id": "tests_test_scout_rationale_66",
+      "community": 0,
+      "norm_label": "fair \u2248 fiyat \u2192 edge yok \u2192 none."
+    },
+    {
+      "label": "Edge var ama MIN_EDGE_PCT alt\u0131nda \u2192 None. (MIN_EDGE_PCT=0.08)",
+      "file_type": "rationale",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L72",
+      "id": "tests_test_scout_rationale_72",
+      "community": 0,
+      "norm_label": "edge var ama min_edge_pct alt\u0131nda \u2192 none. (min_edge_pct=0.08)"
+    },
+    {
+      "label": "NO edge ama MIN_EDGE_PCT alt\u0131nda \u2192 None.",
+      "file_type": "rationale",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L79",
+      "id": "tests_test_scout_rationale_79",
+      "community": 0,
+      "norm_label": "no edge ama min_edge_pct alt\u0131nda \u2192 none."
+    },
+    {
+      "label": "MIN_EDGE_PCT (0.08) \u00fcst\u00fcnde edge \u2192 ge\u00e7er. Float kesinli\u011finden ka\u00e7\u0131nmak i\u00e7in 0.10",
+      "file_type": "rationale",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L86",
+      "id": "tests_test_scout_rationale_86",
+      "community": 0,
+      "norm_label": "min_edge_pct (0.08) ustunde edge \u2192 gecer. float kesinliginden kac\u0131nmak icin 0.10"
+    },
+    {
+      "label": "Her bulgu zorunlu alanlar\u0131 i\u00e7eriyor.",
+      "file_type": "rationale",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L103",
+      "id": "tests_test_scout_rationale_103",
+      "community": 0,
+      "norm_label": "her bulgu zorunlu alanlar\u0131 iceriyor."
+    },
+    {
+      "label": "D\u00f6nen t\u00fcm bulgular MIN_EDGE_PCT e\u015fi\u011fi \u00fcst\u00fcnde.",
+      "file_type": "rationale",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L117",
+      "id": "tests_test_scout_rationale_117",
+      "community": 0,
+      "norm_label": "donen tum bulgular min_edge_pct esigi ustunde."
+    },
+    {
+      "label": "negRisk=True marketler sonu\u00e7larda olmamal\u0131.",
+      "file_type": "rationale",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L126",
+      "id": "tests_test_scout_rationale_126",
+      "community": 0,
+      "norm_label": "negrisk=true marketler sonuclarda olmamal\u0131."
+    },
+    {
+      "label": "60 saniyeden az kalan marketler olmamal\u0131.",
+      "file_type": "rationale",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L134",
+      "id": "tests_test_scout_rationale_134",
+      "community": 0,
+      "norm_label": "60 saniyeden az kalan marketler olmamal\u0131."
+    },
+    {
+      "label": "fair_value her zaman [0, 1] aras\u0131nda.",
+      "file_type": "rationale",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L143",
+      "id": "tests_test_scout_rationale_143",
+      "community": 0,
+      "norm_label": "fair_value her zaman [0, 1] aras\u0131nda."
+    },
+    {
+      "label": "ref_price ve cur_price pozitif.",
+      "file_type": "rationale",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L151",
+      "id": "tests_test_scout_rationale_151",
+      "community": 0,
+      "norm_label": "ref_price ve cur_price pozitif."
+    },
+    {
+      "label": "Bulgular edge'e g\u00f6re b\u00fcy\u00fckten k\u00fc\u00e7\u00fc\u011fe s\u0131ral\u0131.",
+      "file_type": "rationale",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L160",
+      "id": "tests_test_scout_rationale_160",
+      "community": 0,
+      "norm_label": "bulgular edge'e gore buyukten kucuge s\u0131ral\u0131."
+    },
+    {
+      "label": "test_fair_value.py",
+      "file_type": "code",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L1",
+      "id": "tests_test_fair_value_py",
+      "community": 2,
+      "norm_label": "test_fair_value.py"
+    },
+    {
+      "label": "test_fair_yes_at_reference_price_is_half()",
+      "file_type": "code",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L15",
+      "id": "tests_test_fair_value_test_fair_yes_at_reference_price_is_half",
+      "community": 2,
+      "norm_label": "test_fair_yes_at_reference_price_is_half()"
+    },
+    {
+      "label": "test_fair_yes_above_reference_is_above_half()",
+      "file_type": "code",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L21",
+      "id": "tests_test_fair_value_test_fair_yes_above_reference_is_above_half",
+      "community": 2,
+      "norm_label": "test_fair_yes_above_reference_is_above_half()"
+    },
+    {
+      "label": "test_fair_yes_below_reference_is_below_half()",
+      "file_type": "code",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L27",
+      "id": "tests_test_fair_value_test_fair_yes_below_reference_is_below_half",
+      "community": 2,
+      "norm_label": "test_fair_yes_below_reference_is_below_half()"
+    },
+    {
+      "label": "test_fair_yes_expired_above()",
+      "file_type": "code",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L33",
+      "id": "tests_test_fair_value_test_fair_yes_expired_above",
+      "community": 2,
+      "norm_label": "test_fair_yes_expired_above()"
+    },
+    {
+      "label": "test_fair_yes_expired_below()",
+      "file_type": "code",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L38",
+      "id": "tests_test_fair_value_test_fair_yes_expired_below",
+      "community": 2,
+      "norm_label": "test_fair_yes_expired_below()"
+    },
+    {
+      "label": "test_fair_yes_expired_equal()",
+      "file_type": "code",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L43",
+      "id": "tests_test_fair_value_test_fair_yes_expired_equal",
+      "community": 2,
+      "norm_label": "test_fair_yes_expired_equal()"
+    },
+    {
+      "label": "test_fair_yes_concrete_example()",
+      "file_type": "code",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L48",
+      "id": "tests_test_fair_value_test_fair_yes_concrete_example",
+      "community": 2,
+      "norm_label": "test_fair_yes_concrete_example()"
+    },
+    {
+      "label": "test_fair_yes_symmetry()",
+      "file_type": "code",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L62",
+      "id": "tests_test_fair_value_test_fair_yes_symmetry",
+      "community": 2,
+      "norm_label": "test_fair_yes_symmetry()"
+    },
+    {
+      "label": "test_fair_yes_invalid_negative_price()",
+      "file_type": "code",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L78",
+      "id": "tests_test_fair_value_test_fair_yes_invalid_negative_price",
+      "community": 2,
+      "norm_label": "test_fair_yes_invalid_negative_price()"
+    },
+    {
+      "label": "test_fair_yes_invalid_zero_ref()",
+      "file_type": "code",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L84",
+      "id": "tests_test_fair_value_test_fair_yes_invalid_zero_ref",
+      "community": 2,
+      "norm_label": "test_fair_yes_invalid_zero_ref()"
+    },
+    {
+      "label": "test_fair_yes_output_range()",
+      "file_type": "code",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L90",
+      "id": "tests_test_fair_value_test_fair_yes_output_range",
+      "community": 2,
+      "norm_label": "test_fair_yes_output_range()"
+    },
+    {
+      "label": "test_asset_vol_keys_exist()",
+      "file_type": "code",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L103",
+      "id": "tests_test_fair_value_test_asset_vol_keys_exist",
+      "community": 2,
+      "norm_label": "test_asset_vol_keys_exist()"
+    },
+    {
+      "label": "test_fair_yes_eth_uses_higher_vol()",
+      "file_type": "code",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L110",
+      "id": "tests_test_fair_value_test_fair_yes_eth_uses_higher_vol",
+      "community": 2,
+      "norm_label": "test_fair_yes_eth_uses_higher_vol()"
+    },
+    {
+      "label": "test_fair_yes_more_time_means_closer_to_half()",
+      "file_type": "code",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L118",
+      "id": "tests_test_fair_value_test_fair_yes_more_time_means_closer_to_half",
+      "community": 2,
+      "norm_label": "test_fair_yes_more_time_means_closer_to_half()"
+    },
+    {
+      "label": "tests/test_fair_value.py \u2014 data/fair_value.py unit testleri Ger\u00e7ek API \u00e7a\u011fr\u0131s\u0131 y",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L1",
+      "id": "tests_test_fair_value_rationale_1",
+      "community": 2,
+      "norm_label": "tests/test_fair_value.py \u2014 data/fair_value.py unit testleri gercek api cagr\u0131s\u0131 y"
+    },
+    {
+      "label": "Fiyat tam referanstayken, s\u00fcre varsa \u2192 0.50.",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L16",
+      "id": "tests_test_fair_value_rationale_16",
+      "community": 2,
+      "norm_label": "fiyat tam referanstayken, sure varsa \u2192 0.50."
+    },
+    {
+      "label": "Fiyat referans\u0131n \u00fcst\u00fcndeyse \u2192 0.50'den b\u00fcy\u00fck.",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L22",
+      "id": "tests_test_fair_value_rationale_22",
+      "community": 2,
+      "norm_label": "fiyat referans\u0131n ustundeyse \u2192 0.50'den buyuk."
+    },
+    {
+      "label": "Fiyat referans\u0131n alt\u0131ndaysa \u2192 0.50'den k\u00fc\u00e7\u00fck.",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L28",
+      "id": "tests_test_fair_value_rationale_28",
+      "community": 2,
+      "norm_label": "fiyat referans\u0131n alt\u0131ndaysa \u2192 0.50'den kucuk."
+    },
+    {
+      "label": "S\u00fcre dolmu\u015f, fiyat referans\u0131n \u00fcst\u00fcnde \u2192 1.0.",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L34",
+      "id": "tests_test_fair_value_rationale_34",
+      "community": 2,
+      "norm_label": "sure dolmus, fiyat referans\u0131n ustunde \u2192 1.0."
+    },
+    {
+      "label": "S\u00fcre dolmu\u015f, fiyat referans\u0131n alt\u0131nda \u2192 0.0.",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L39",
+      "id": "tests_test_fair_value_rationale_39",
+      "community": 2,
+      "norm_label": "sure dolmus, fiyat referans\u0131n alt\u0131nda \u2192 0.0."
+    },
+    {
+      "label": "S\u00fcre dolmu\u015f, fiyat tam referansta \u2192 0.0 (\u00fcst\u00fcnde de\u011fil).",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L44",
+      "id": "tests_test_fair_value_rationale_44",
+      "community": 2,
+      "norm_label": "sure dolmus, fiyat tam referansta \u2192 0.0 (ustunde degil)."
+    },
+    {
+      "label": "Somut senaryo: ref=105000, cur=104800, 180s kald\u0131 (BTC vol=%80).     Analitik:",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L49",
+      "id": "tests_test_fair_value_rationale_49",
+      "community": 2,
+      "norm_label": "somut senaryo: ref=105000, cur=104800, 180s kald\u0131 (btc vol=%80).     analitik:"
+    },
+    {
+      "label": "fair_yes(up) + fair_yes(down) == 1 \u2014 log-normal modelde simetri geometrik.     p",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L63",
+      "id": "tests_test_fair_value_rationale_63",
+      "community": 2,
+      "norm_label": "fair_yes(up) + fair_yes(down) == 1 \u2014 log-normal modelde simetri geometrik.     p"
+    },
+    {
+      "label": "S\u0131f\u0131r p_now ValueError f\u0131rlat\u0131r.",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L73",
+      "id": "tests_test_fair_value_rationale_73",
+      "community": 2,
+      "norm_label": "s\u0131f\u0131r p_now valueerror f\u0131rlat\u0131r."
+    },
+    {
+      "label": "Negatif p_now ValueError f\u0131rlat\u0131r.",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L79",
+      "id": "tests_test_fair_value_rationale_79",
+      "community": 2,
+      "norm_label": "negatif p_now valueerror f\u0131rlat\u0131r."
+    },
+    {
+      "label": "S\u0131f\u0131r p_ref ValueError f\u0131rlat\u0131r.",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L85",
+      "id": "tests_test_fair_value_rationale_85",
+      "community": 2,
+      "norm_label": "s\u0131f\u0131r p_ref valueerror f\u0131rlat\u0131r."
+    },
+    {
+      "label": "Her ko\u015fulda sonu\u00e7 [0, 1] aral\u0131\u011f\u0131nda.",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L91",
+      "id": "tests_test_fair_value_rationale_91",
+      "community": 2,
+      "norm_label": "her kosulda sonuc [0, 1] aral\u0131g\u0131nda."
+    },
+    {
+      "label": "Takip edilen t\u00fcm varl\u0131klar ASSET_VOL s\u00f6zl\u00fc\u011f\u00fcnde var ve pozitif.",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L104",
+      "id": "tests_test_fair_value_rationale_104",
+      "community": 2,
+      "norm_label": "takip edilen tum varl\u0131klar asset_vol sozlugunde var ve pozitif."
+    },
+    {
+      "label": "ETH daha y\u00fcksek vol kulland\u0131\u011f\u0131 i\u00e7in ayn\u0131 sapmayla daha geni\u015f da\u011f\u0131l\u0131m.",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L111",
+      "id": "tests_test_fair_value_rationale_111",
+      "community": 2,
+      "norm_label": "eth daha yuksek vol kulland\u0131g\u0131 icin ayn\u0131 sapmayla daha genis dag\u0131l\u0131m."
+    },
+    {
+      "label": "Daha uzun s\u00fcre \u2192 daha b\u00fcy\u00fck sigma_t \u2192 z daha k\u00fc\u00e7\u00fck \u2192 0.5'e daha yak\u0131n.",
+      "file_type": "rationale",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L119",
+      "id": "tests_test_fair_value_rationale_119",
+      "community": 2,
+      "norm_label": "daha uzun sure \u2192 daha buyuk sigma_t \u2192 z daha kucuk \u2192 0.5'e daha yak\u0131n."
+    },
+    {
+      "label": "settings.local.json",
+      "file_type": "code",
+      "source_file": ".claude/settings.local.json",
+      "source_location": "L1",
+      "id": "claude_settings_local_json",
+      "community": 8,
+      "norm_label": "settings.local.json"
+    },
+    {
+      "label": "permissions",
+      "file_type": "code",
+      "source_file": ".claude/settings.local.json",
+      "source_location": "L2",
+      "id": "claude_settings_local_permissions",
+      "community": 8,
+      "norm_label": "permissions"
+    },
+    {
+      "label": "allow",
+      "file_type": "code",
+      "source_file": ".claude/settings.local.json",
+      "source_location": "L3",
+      "id": "claude_settings_local_permissions_allow",
+      "community": 8,
+      "norm_label": "allow"
+    },
+    {
+      "label": "__init__.py",
+      "file_type": "code",
+      "source_file": "execution/__init__.py",
+      "source_location": "L1",
+      "id": "execution_init_py",
+      "community": 9,
+      "norm_label": "__init__.py"
+    },
+    {
+      "label": "__init__.py",
+      "file_type": "code",
+      "source_file": "db/__init__.py",
+      "source_location": "L1",
+      "id": "db_init_py",
+      "community": 10,
+      "norm_label": "__init__.py"
+    },
+    {
+      "label": "__init__.py",
+      "file_type": "code",
+      "source_file": "council/__init__.py",
+      "source_location": "L1",
+      "id": "council_init_py",
+      "community": 11,
+      "norm_label": "__init__.py"
+    },
+    {
+      "label": "verifier.py",
+      "file_type": "code",
+      "source_file": "council/verifier.py",
+      "source_location": "L1",
+      "id": "council_verifier_py",
+      "community": 1,
+      "norm_label": "verifier.py"
+    },
+    {
+      "label": "verify()",
+      "file_type": "code",
+      "source_file": "council/verifier.py",
+      "source_location": "L25",
+      "id": "council_verifier_verify",
+      "community": 1,
+      "norm_label": "verify()"
+    },
+    {
+      "label": "_result()",
+      "file_type": "code",
+      "source_file": "council/verifier.py",
+      "source_location": "L113",
+      "id": "council_verifier_result",
+      "community": 1,
+      "norm_label": "_result()"
+    },
+    {
+      "label": "bool",
+      "file_type": "code",
+      "source_file": "council/verifier.py",
+      "source_location": "L113",
+      "id": "bool",
+      "community": 1,
+      "norm_label": "bool"
+    },
+    {
+      "label": "str",
+      "file_type": "code",
+      "source_file": "council/verifier.py",
+      "source_location": "L113",
+      "id": "council_verifier_py_str",
+      "community": 1,
+      "norm_label": "str"
+    },
+    {
+      "label": "float",
+      "file_type": "code",
+      "source_file": "council/verifier.py",
+      "source_location": "L113",
+      "id": "council_verifier_py_float",
+      "community": 1,
+      "norm_label": "float"
+    },
+    {
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "council/verifier.py",
+      "source_location": "L137",
+      "id": "council_verifier_main",
+      "community": 1,
+      "norm_label": "main()"
+    },
+    {
+      "label": "council/verifier.py \u2014 KATMAN 2: Ba\u011f\u0131ms\u0131z Do\u011frulay\u0131c\u0131.  Scout bulgusunu taze API",
+      "file_type": "rationale",
+      "source_file": "council/verifier.py",
+      "source_location": "L1",
+      "id": "council_verifier_rationale_1",
+      "community": 1,
+      "norm_label": "council/verifier.py \u2014 katman 2: bag\u0131ms\u0131z dogrulay\u0131c\u0131.  scout bulgusunu taze api"
+    },
+    {
+      "label": "Scout bulgusunu ba\u011f\u0131ms\u0131z API \u00e7a\u011fr\u0131s\u0131yla do\u011frular.      Args:         finding: sc",
+      "file_type": "rationale",
+      "source_file": "council/verifier.py",
+      "source_location": "L26",
+      "id": "council_verifier_rationale_26",
+      "community": 1,
+      "norm_label": "scout bulgusunu bag\u0131ms\u0131z api cagr\u0131s\u0131yla dogrular.      args:         finding: sc"
+    },
+    {
+      "label": "scout.py",
+      "file_type": "code",
+      "source_file": "council/scout.py",
+      "source_location": "L1",
+      "id": "council_scout_py",
+      "community": 3,
+      "norm_label": "scout.py"
+    },
+    {
+      "label": "_asset_of()",
+      "file_type": "code",
+      "source_file": "council/scout.py",
+      "source_location": "L26",
+      "id": "council_scout_asset_of",
+      "community": 0,
+      "norm_label": "_asset_of()"
+    },
+    {
+      "label": "str",
+      "file_type": "code",
+      "source_file": "council/scout.py",
+      "source_location": "L26",
+      "id": "council_scout_py_str",
+      "community": 0,
+      "norm_label": "str"
+    },
+    {
+      "label": "_edge_signal()",
+      "file_type": "code",
+      "source_file": "council/scout.py",
+      "source_location": "L39",
+      "id": "council_scout_edge_signal",
+      "community": 0,
+      "norm_label": "_edge_signal()"
+    },
+    {
+      "label": "float",
+      "file_type": "code",
+      "source_file": "council/scout.py",
+      "source_location": "L39",
+      "id": "council_scout_py_float",
+      "community": 0,
+      "norm_label": "float"
+    },
+    {
+      "label": "_process_market()",
+      "file_type": "code",
+      "source_file": "council/scout.py",
+      "source_location": "L61",
+      "id": "council_scout_process_market",
+      "community": 3,
+      "norm_label": "_process_market()"
+    },
+    {
+      "label": "scan_edges()",
+      "file_type": "code",
+      "source_file": "council/scout.py",
+      "source_location": "L107",
+      "id": "council_scout_scan_edges",
+      "community": 1,
+      "norm_label": "scan_edges()"
+    },
+    {
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "council/scout.py",
+      "source_location": "L121",
+      "id": "council_scout_main",
+      "community": 3,
+      "norm_label": "main()"
+    },
+    {
+      "label": "council/scout.py \u2014 KATMAN 1: Ke\u015fif Ajan\u0131.  Edge tan\u0131m\u0131 (matematiksel):   fair_ye",
+      "file_type": "rationale",
+      "source_file": "council/scout.py",
+      "source_location": "L1",
+      "id": "council_scout_rationale_1",
+      "community": 3,
+      "norm_label": "council/scout.py \u2014 katman 1: kesif ajan\u0131.  edge tan\u0131m\u0131 (matematiksel):   fair_ye"
+    },
+    {
+      "label": "fair: fair_yes de\u011feri [0,1]     best_ask: YES almak i\u00e7in \u00f6deyece\u011fimiz fiyat",
+      "file_type": "rationale",
+      "source_file": "council/scout.py",
+      "source_location": "L40",
+      "id": "council_scout_rationale_40",
+      "community": 0,
+      "norm_label": "fair: fair_yes degeri [0,1]     best_ask: yes almak icin odeyecegimiz fiyat"
+    },
+    {
+      "label": "Tek marketi de\u011ferlendirir. Edge yoksa veya veri eksikse None.",
+      "file_type": "rationale",
+      "source_file": "council/scout.py",
+      "source_location": "L62",
+      "id": "council_scout_rationale_62",
+      "community": 3,
+      "norm_label": "tek marketi degerlendirir. edge yoksa veya veri eksikse none."
+    },
+    {
+      "label": "T\u00fcm k\u0131sa vadeli marketleri tarar, ger\u00e7ek edge olanlar\u0131 d\u00f6ner.",
+      "file_type": "rationale",
+      "source_file": "council/scout.py",
+      "source_location": "L108",
+      "id": "council_scout_rationale_108",
+      "community": 1,
+      "norm_label": "tum k\u0131sa vadeli marketleri tarar, gercek edge olanlar\u0131 doner."
+    },
+    {
+      "label": "__init__.py",
+      "file_type": "code",
+      "source_file": "monitor/__init__.py",
+      "source_location": "L1",
+      "id": "monitor_init_py",
+      "community": 12,
+      "norm_label": "__init__.py"
+    },
+    {
+      "label": "__init__.py",
+      "file_type": "code",
+      "source_file": "position/__init__.py",
+      "source_location": "L1",
+      "id": "position_init_py",
+      "community": 13,
+      "norm_label": "__init__.py"
+    },
+    {
+      "label": "__init__.py",
+      "file_type": "code",
+      "source_file": "data/__init__.py",
+      "source_location": "L1",
+      "id": "data_init_py",
+      "community": 14,
+      "norm_label": "__init__.py"
+    },
+    {
+      "label": "hl_candles.py",
+      "file_type": "code",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L1",
+      "id": "data_hl_candles_py",
+      "community": 3,
+      "norm_label": "hl_candles.py"
+    },
+    {
+      "label": "fetch_candles()",
+      "file_type": "code",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L12",
+      "id": "data_hl_candles_fetch_candles",
+      "community": 3,
+      "norm_label": "fetch_candles()"
+    },
+    {
+      "label": "realized_move()",
+      "file_type": "code",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L27",
+      "id": "data_hl_candles_realized_move",
+      "community": 3,
+      "norm_label": "realized_move()"
+    },
+    {
+      "label": "fetch_candles_range()",
+      "file_type": "code",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L39",
+      "id": "data_hl_candles_fetch_candles_range",
+      "community": 3,
+      "norm_label": "fetch_candles_range()"
+    },
+    {
+      "label": "str",
+      "file_type": "code",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L39",
+      "id": "data_hl_candles_py_str",
+      "community": 3,
+      "norm_label": "str"
+    },
+    {
+      "label": "int",
+      "file_type": "code",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L39",
+      "id": "int",
+      "community": 3,
+      "norm_label": "int"
+    },
+    {
+      "label": "price_at_timestamp()",
+      "file_type": "code",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L53",
+      "id": "data_hl_candles_price_at_timestamp",
+      "community": 3,
+      "norm_label": "price_at_timestamp()"
+    },
+    {
+      "label": "float",
+      "file_type": "code",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L53",
+      "id": "data_hl_candles_py_float",
+      "community": 3,
+      "norm_label": "float"
+    },
+    {
+      "label": "current_price()",
+      "file_type": "code",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L67",
+      "id": "data_hl_candles_current_price",
+      "community": 3,
+      "norm_label": "current_price()"
+    },
+    {
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L75",
+      "id": "data_hl_candles_main",
+      "community": 3,
+      "norm_label": "main()"
+    },
+    {
+      "label": "data/hl_candles.py \u2014 Hyperliquid'den GERCEK gecmis fiyat (candle) ceker. Uydurma",
+      "file_type": "rationale",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L1",
+      "id": "data_hl_candles_rationale_1",
+      "community": 3,
+      "norm_label": "data/hl_candles.py \u2014 hyperliquid'den gercek gecmis fiyat (candle) ceker. uydurma"
+    },
+    {
+      "label": "Son 'window_minutes' dakikada fiyat GERCEKTE % kac degisti.",
+      "file_type": "rationale",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L28",
+      "id": "data_hl_candles_rationale_28",
+      "community": 3,
+      "norm_label": "son 'window_minutes' dakikada fiyat gercekte % kac degisti."
+    },
+    {
+      "label": "Belirli zaman aral\u0131\u011f\u0131nda mum \u00e7eker (ms epoch).",
+      "file_type": "rationale",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L40",
+      "id": "data_hl_candles_rationale_40",
+      "community": 3,
+      "norm_label": "belirli zaman aral\u0131g\u0131nda mum ceker (ms epoch)."
+    },
+    {
+      "label": "ts_ms an\u0131ndaki HL spot fiyat\u0131n\u0131 d\u00f6ner (en yak\u0131n 1m mumun open fiyat\u0131).     Raise",
+      "file_type": "rationale",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L54",
+      "id": "data_hl_candles_rationale_54",
+      "community": 3,
+      "norm_label": "ts_ms an\u0131ndaki hl spot fiyat\u0131n\u0131 doner (en yak\u0131n 1m mumun open fiyat\u0131).     raise"
+    },
+    {
+      "label": "\u015eimdiki HL fiyat\u0131n\u0131 d\u00f6ner (son 1m mumun close fiyat\u0131).",
+      "file_type": "rationale",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L68",
+      "id": "data_hl_candles_rationale_68",
+      "community": 3,
+      "norm_label": "simdiki hl fiyat\u0131n\u0131 doner (son 1m mumun close fiyat\u0131)."
+    },
+    {
+      "label": "hyperliquid.py",
+      "file_type": "code",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L1",
+      "id": "data_hyperliquid_py",
+      "community": 5,
+      "norm_label": "hyperliquid.py"
+    },
+    {
+      "label": "_post()",
+      "file_type": "code",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L11",
+      "id": "data_hyperliquid_post",
+      "community": 5,
+      "norm_label": "_post()"
+    },
+    {
+      "label": "fetch_market_state()",
+      "file_type": "code",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L17",
+      "id": "data_hyperliquid_fetch_market_state",
+      "community": 5,
+      "norm_label": "fetch_market_state()"
+    },
+    {
+      "label": "_signal()",
+      "file_type": "code",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L37",
+      "id": "data_hyperliquid_signal",
+      "community": 5,
+      "norm_label": "_signal()"
+    },
+    {
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L47",
+      "id": "data_hyperliquid_main",
+      "community": 5,
+      "norm_label": "main()"
+    },
+    {
+      "label": "data/hyperliquid.py \u2014 Hyperliquid veri katmani (public, key gerekmez). BTC/ETH i",
+      "file_type": "rationale",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L1",
+      "id": "data_hyperliquid_rationale_1",
+      "community": 5,
+      "norm_label": "data/hyperliquid.py \u2014 hyperliquid veri katmani (public, key gerekmez). btc/eth i"
+    },
+    {
+      "label": "Basit yon gostergesi: mark vs oracle + gunluk degisim + funding.",
+      "file_type": "rationale",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L38",
+      "id": "data_hyperliquid_rationale_38",
+      "community": 5,
+      "norm_label": "basit yon gostergesi: mark vs oracle + gunluk degisim + funding."
+    },
+    {
+      "label": "fair_value.py",
+      "file_type": "code",
+      "source_file": "data/fair_value.py",
+      "source_location": "L1",
+      "id": "data_fair_value_py",
+      "community": 2,
+      "norm_label": "fair_value.py"
+    },
+    {
+      "label": "fair_yes()",
+      "file_type": "code",
+      "source_file": "data/fair_value.py",
+      "source_location": "L18",
+      "id": "data_fair_value_fair_yes",
+      "community": 2,
+      "norm_label": "fair_yes()"
+    },
+    {
+      "label": "float",
+      "file_type": "code",
+      "source_file": "data/fair_value.py",
+      "source_location": "L18",
+      "id": "data_fair_value_py_float",
+      "community": 2,
+      "norm_label": "float"
+    },
+    {
+      "label": "str",
+      "file_type": "code",
+      "source_file": "data/fair_value.py",
+      "source_location": "L18",
+      "id": "data_fair_value_py_str",
+      "community": 2,
+      "norm_label": "str"
+    },
+    {
+      "label": "data/fair_value.py \u2014 Binary option fair value hesaplay\u0131c\u0131. Model: log-normal GBM",
+      "file_type": "rationale",
+      "source_file": "data/fair_value.py",
+      "source_location": "L1",
+      "id": "data_fair_value_rationale_1",
+      "community": 2,
+      "norm_label": "data/fair_value.py \u2014 binary option fair value hesaplay\u0131c\u0131. model: log-normal gbm"
+    },
+    {
+      "label": "P(asset_price > p_ref at resolution | current_price = p_now)      Args:",
+      "file_type": "rationale",
+      "source_file": "data/fair_value.py",
+      "source_location": "L19",
+      "id": "data_fair_value_rationale_19",
+      "community": 2,
+      "norm_label": "p(asset_price > p_ref at resolution | current_price = p_now)      args:"
+    },
+    {
+      "label": "polymarket.py",
+      "file_type": "code",
+      "source_file": "data/polymarket.py",
+      "source_location": "L1",
+      "id": "data_polymarket_py",
+      "community": 6,
+      "norm_label": "polymarket.py"
+    },
+    {
+      "label": "_parse()",
+      "file_type": "code",
+      "source_file": "data/polymarket.py",
+      "source_location": "L19",
+      "id": "data_polymarket_parse",
+      "community": 6,
+      "norm_label": "_parse()"
+    },
+    {
+      "label": "fetch_crypto_markets()",
+      "file_type": "code",
+      "source_file": "data/polymarket.py",
+      "source_location": "L28",
+      "id": "data_polymarket_fetch_crypto_markets",
+      "community": 6,
+      "norm_label": "fetch_crypto_markets()"
+    },
+    {
+      "label": "_fmt()",
+      "file_type": "code",
+      "source_file": "data/polymarket.py",
+      "source_location": "L54",
+      "id": "data_polymarket_fmt",
+      "community": 6,
+      "norm_label": "_fmt()"
+    },
+    {
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "data/polymarket.py",
+      "source_location": "L70",
+      "id": "data_polymarket_main",
+      "community": 6,
+      "norm_label": "main()"
+    },
+    {
+      "label": "data/polymarket.py \u2014 Polymarket veri katmani (ADIM 1: canli fiyat cekme) Gamma A",
+      "file_type": "rationale",
+      "source_file": "data/polymarket.py",
+      "source_location": "L1",
+      "id": "data_polymarket_rationale_1",
+      "community": 6,
+      "norm_label": "data/polymarket.py \u2014 polymarket veri katmani (adim 1: canli fiyat cekme) gamma a"
+    },
+    {
+      "label": "shortterm.py",
+      "file_type": "code",
+      "source_file": "data/shortterm.py",
+      "source_location": "L1",
+      "id": "data_shortterm_py",
+      "community": 4,
+      "norm_label": "shortterm.py"
+    },
+    {
+      "label": "_parse()",
+      "file_type": "code",
+      "source_file": "data/shortterm.py",
+      "source_location": "L14",
+      "id": "data_shortterm_parse",
+      "community": 4,
+      "norm_label": "_parse()"
+    },
+    {
+      "label": "parse_market_window()",
+      "file_type": "code",
+      "source_file": "data/shortterm.py",
+      "source_location": "L23",
+      "id": "data_shortterm_parse_market_window",
+      "community": 4,
+      "norm_label": "parse_market_window()"
+    },
+    {
+      "label": "slugs_for_now()",
+      "file_type": "code",
+      "source_file": "data/shortterm.py",
+      "source_location": "L64",
+      "id": "data_shortterm_slugs_for_now",
+      "community": 4,
+      "norm_label": "slugs_for_now()"
+    },
+    {
+      "label": "fetch_by_slug()",
+      "file_type": "code",
+      "source_file": "data/shortterm.py",
+      "source_location": "L77",
+      "id": "data_shortterm_fetch_by_slug",
+      "community": 4,
+      "norm_label": "fetch_by_slug()"
+    },
+    {
+      "label": "find_shortterm()",
+      "file_type": "code",
+      "source_file": "data/shortterm.py",
+      "source_location": "L89",
+      "id": "data_shortterm_find_shortterm",
+      "community": 4,
+      "norm_label": "find_shortterm()"
+    },
+    {
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "data/shortterm.py",
+      "source_location": "L104",
+      "id": "data_shortterm_main",
+      "community": 4,
+      "norm_label": "main()"
+    },
+    {
+      "label": "data/shortterm.py \u2014 Kisa vadeli BTC/ETH Up/Down market bulucu. Slug'i o anki UTC",
+      "file_type": "rationale",
+      "source_file": "data/shortterm.py",
+      "source_location": "L1",
+      "id": "data_shortterm_rationale_1",
+      "community": 4,
+      "norm_label": "data/shortterm.py \u2014 kisa vadeli btc/eth up/down market bulucu. slug'i o anki utc"
+    },
+    {
+      "label": "Ham Gamma market dict'inden scout'un ihtiyac\u0131 olan alanlar\u0131 \u00e7\u0131kar\u0131r.     Returns",
+      "file_type": "rationale",
+      "source_file": "data/shortterm.py",
+      "source_location": "L24",
+      "id": "data_shortterm_rationale_24",
+      "community": 4,
+      "norm_label": "ham gamma market dict'inden scout'un ihtiyac\u0131 olan alanlar\u0131 c\u0131kar\u0131r.     returns"
+    },
+    {
+      "label": "Su an ve son birkac periyodun slug'larini uretir.",
+      "file_type": "rationale",
+      "source_file": "data/shortterm.py",
+      "source_location": "L65",
+      "id": "data_shortterm_rationale_65",
+      "community": 4,
+      "norm_label": "su an ve son birkac periyodun slug'larini uretir."
+    },
+    {
+      "label": "CLAUDE.md - Mispricing Bot Constitution",
+      "file_type": "document",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "claude_md",
+      "community": 7,
+      "norm_label": "claude.md - mispricing bot constitution"
+    },
+    {
+      "label": "Verifier Design Document",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-30-verifier-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "verifier_design_md",
+      "community": 7,
+      "norm_label": "verifier design document"
+    },
+    {
+      "label": "Verifier Implementation Plan",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-30-verifier-katman2.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "verifier_plan_md",
+      "community": 7,
+      "norm_label": "verifier implementation plan"
+    },
+    {
+      "label": "Scout Fair Value Rewrite Plan",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-30-scout-fair-value-rewrite.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "scout_rewrite_plan_md",
+      "community": 7,
+      "norm_label": "scout fair value rewrite plan"
+    }
+  ],
+  "links": [
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "config.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "mispricing_agent_config_rationale_1",
+      "target": "config_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-30-verifier-design.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "verifier_design_md",
+      "target": "config_py"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-30-verifier-katman2.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "verifier_plan_md",
+      "target": "config_py"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_py",
+      "target": "data_shortterm_find_shortterm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_py",
+      "target": "data_shortterm_parse",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_py",
+      "target": "data_shortterm_parse_market_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L148",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_py",
+      "target": "tests_test_shortterm_test_find_shortterm_parse_market_window_works",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L142",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_py",
+      "target": "tests_test_shortterm_test_find_shortterm_returns_list",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_py",
+      "target": "tests_test_shortterm_test_parse_invalid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_py",
+      "target": "tests_test_shortterm_test_parse_json_string",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_py",
+      "target": "tests_test_shortterm_test_parse_list",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L36",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_py",
+      "target": "tests_test_shortterm_test_parse_market_window_full",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L105",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_py",
+      "target": "tests_test_shortterm_test_parse_market_window_missing_best_ask_returns_none",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L86",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_py",
+      "target": "tests_test_shortterm_test_parse_market_window_missing_event_start_returns_none",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L127",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_py",
+      "target": "tests_test_shortterm_test_parse_market_window_neg_risk_defaults_false",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L114",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_py",
+      "target": "tests_test_shortterm_test_parse_market_window_neg_risk_true",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L71",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_py",
+      "target": "tests_test_shortterm_test_parse_market_window_seconds_remaining_past",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L30",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_py",
+      "target": "tests_test_shortterm_test_parse_none",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_rationale_1",
+      "target": "tests_test_shortterm_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_test_parse_list",
+      "target": "data_shortterm_parse",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_test_parse_json_string",
+      "target": "data_shortterm_parse",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L27",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_test_parse_invalid",
+      "target": "data_shortterm_parse",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L31",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_test_parse_none",
+      "target": "data_shortterm_parse",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L37",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_rationale_37",
+      "target": "tests_test_shortterm_test_parse_market_window_full",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L46",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_test_parse_market_window_full",
+      "target": "data_shortterm_parse_market_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L58",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_rationale_58",
+      "target": "tests_test_shortterm_test_parse_market_window_seconds_remaining_past",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L72",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_rationale_72",
+      "target": "tests_test_shortterm_test_parse_market_window_seconds_remaining_past",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L81",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_test_parse_market_window_seconds_remaining_past",
+      "target": "data_shortterm_parse_market_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L87",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_rationale_87",
+      "target": "tests_test_shortterm_test_parse_market_window_missing_event_start_returns_none",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L92",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_test_parse_market_window_missing_event_start_returns_none",
+      "target": "data_shortterm_parse_market_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L106",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_rationale_106",
+      "target": "tests_test_shortterm_test_parse_market_window_missing_best_ask_returns_none",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L96",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_rationale_96",
+      "target": "tests_test_shortterm_test_parse_market_window_missing_best_ask_returns_none",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L111",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_test_parse_market_window_missing_best_ask_returns_none",
+      "target": "data_shortterm_parse_market_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L115",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_rationale_115",
+      "target": "tests_test_shortterm_test_parse_market_window_neg_risk_true",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L122",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_test_parse_market_window_neg_risk_true",
+      "target": "data_shortterm_parse_market_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L128",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_rationale_128",
+      "target": "tests_test_shortterm_test_parse_market_window_neg_risk_defaults_false",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L134",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_test_parse_market_window_neg_risk_defaults_false",
+      "target": "data_shortterm_parse_market_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L143",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_test_find_shortterm_returns_list",
+      "target": "data_shortterm_find_shortterm"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L149",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_rationale_149",
+      "target": "tests_test_shortterm_test_find_shortterm_parse_market_window_works",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L150",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_test_find_shortterm_parse_market_window_works",
+      "target": "data_shortterm_find_shortterm"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_shortterm.py",
+      "source_location": "L152",
+      "weight": 1.0,
+      "source": "tests_test_shortterm_test_find_shortterm_parse_market_window_works",
+      "target": "data_shortterm_parse_market_window"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_py",
+      "target": "data_hl_candles_current_price",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_py",
+      "target": "data_hl_candles_fetch_candles",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_py",
+      "target": "data_hl_candles_price_at_timestamp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_py",
+      "target": "data_hl_candles_realized_move",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L48",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_py",
+      "target": "tests_test_hl_candles_test_current_price_btc_is_positive",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L55",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_py",
+      "target": "tests_test_hl_candles_test_current_price_eth_is_positive",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L62",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_py",
+      "target": "tests_test_hl_candles_test_price_at_timestamp_5min_ago",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L71",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_py",
+      "target": "tests_test_hl_candles_test_price_at_timestamp_close_to_current",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L81",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_py",
+      "target": "tests_test_hl_candles_test_price_at_timestamp_too_old_raises",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_py",
+      "target": "tests_test_hl_candles_test_realized_move_calculates_pct",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_py",
+      "target": "tests_test_hl_candles_test_realized_move_empty",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L33",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_py",
+      "target": "tests_test_hl_candles_test_realized_move_negative",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_py",
+      "target": "tests_test_hl_candles_test_realized_move_single_candle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L40",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_py",
+      "target": "tests_test_hl_candles_test_realized_move_zero_open_returns_none",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_rationale_1",
+      "target": "tests_test_hl_candles_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_test_realized_move_empty",
+      "target": "data_hl_candles_realized_move",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_test_realized_move_single_candle",
+      "target": "data_hl_candles_realized_move",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L28",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_test_realized_move_calculates_pct",
+      "target": "data_hl_candles_realized_move",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L35",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_test_realized_move_negative",
+      "target": "data_hl_candles_realized_move",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L42",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_test_realized_move_zero_open_returns_none",
+      "target": "data_hl_candles_realized_move",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L49",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_test_current_price_btc_is_positive",
+      "target": "data_hl_candles_current_price"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L56",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_test_current_price_eth_is_positive",
+      "target": "data_hl_candles_current_price"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L63",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_rationale_63",
+      "target": "tests_test_hl_candles_test_price_at_timestamp_5min_ago",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L65",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_test_price_at_timestamp_5min_ago",
+      "target": "data_hl_candles_price_at_timestamp"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L72",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_rationale_72",
+      "target": "tests_test_hl_candles_test_price_at_timestamp_close_to_current",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L75",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_test_price_at_timestamp_close_to_current",
+      "target": "data_hl_candles_current_price"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L74",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_test_price_at_timestamp_close_to_current",
+      "target": "data_hl_candles_price_at_timestamp"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L82",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_rationale_82",
+      "target": "tests_test_hl_candles_test_price_at_timestamp_too_old_raises",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_hl_candles.py",
+      "source_location": "L85",
+      "weight": 1.0,
+      "source": "tests_test_hl_candles_test_price_at_timestamp_too_old_raises",
+      "target": "data_hl_candles_price_at_timestamp"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L13",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "council_scout_scan_edges",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L43",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "council_verifier_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "council_verifier_verify",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L115",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "data_hl_candles_current_price",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "tests_test_verifier_fake_finding",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L63",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "tests_test_verifier_test_hard_fail_halt_matches_config",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L78",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "tests_test_verifier_test_pass_result_structure",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L74",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "tests_test_verifier_test_pm_drift_threshold_is_positive",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L70",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "tests_test_verifier_test_price_drift_threshold_is_positive",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L41",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "tests_test_verifier_test_result_has_required_fields",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L54",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "tests_test_verifier_test_soft_fail_halt_is_false",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L109",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "tests_test_verifier_test_verify_expired_soft_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L163",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "tests_test_verifier_test_verify_fresh_prices_positive_on_non_fetch_error",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L95",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "tests_test_verifier_test_verify_hl_drift_triggers_halt",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L126",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "tests_test_verifier_test_verify_invalid_slug_fetch_error_no_halt",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L149",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "tests_test_verifier_test_verify_pass_edge_above_min",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L137",
+      "weight": 1.0,
+      "source": "tests_test_verifier_py",
+      "target": "tests_test_verifier_test_verify_real_scout_finding_has_valid_structure",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "tests_test_verifier_rationale_1",
+      "target": "tests_test_verifier_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "tests_test_verifier_rationale_22",
+      "target": "tests_test_verifier_fake_finding",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L117",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_verify_expired_soft_fail",
+      "target": "tests_test_verifier_fake_finding",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L100",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_verify_hl_drift_triggers_halt",
+      "target": "tests_test_verifier_fake_finding",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L130",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_verify_invalid_slug_fetch_error_no_halt",
+      "target": "tests_test_verifier_fake_finding",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L42",
+      "weight": 1.0,
+      "source": "tests_test_verifier_rationale_42",
+      "target": "tests_test_verifier_test_result_has_required_fields",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L44",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_result_has_required_fields",
+      "target": "council_verifier_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L55",
+      "weight": 1.0,
+      "source": "tests_test_verifier_rationale_55",
+      "target": "tests_test_verifier_test_soft_fail_halt_is_false",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L58",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_soft_fail_halt_is_false",
+      "target": "council_verifier_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L64",
+      "weight": 1.0,
+      "source": "tests_test_verifier_rationale_64",
+      "target": "tests_test_verifier_test_hard_fail_halt_matches_config",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L66",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_hard_fail_halt_matches_config",
+      "target": "council_verifier_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L79",
+      "weight": 1.0,
+      "source": "tests_test_verifier_rationale_79",
+      "target": "tests_test_verifier_test_pass_result_structure",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L81",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_pass_result_structure",
+      "target": "council_verifier_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L96",
+      "weight": 1.0,
+      "source": "tests_test_verifier_rationale_96",
+      "target": "tests_test_verifier_test_verify_hl_drift_triggers_halt",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L101",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_verify_hl_drift_triggers_halt",
+      "target": "council_verifier_verify"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L110",
+      "weight": 1.0,
+      "source": "tests_test_verifier_rationale_110",
+      "target": "tests_test_verifier_test_verify_expired_soft_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L119",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_verify_expired_soft_fail",
+      "target": "council_verifier_verify"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L116",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_verify_expired_soft_fail",
+      "target": "data_hl_candles_current_price"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L127",
+      "weight": 1.0,
+      "source": "tests_test_verifier_rationale_127",
+      "target": "tests_test_verifier_test_verify_invalid_slug_fetch_error_no_halt",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L131",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_verify_invalid_slug_fetch_error_no_halt",
+      "target": "council_verifier_verify"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L129",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_verify_invalid_slug_fetch_error_no_halt",
+      "target": "data_hl_candles_current_price"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L138",
+      "weight": 1.0,
+      "source": "tests_test_verifier_rationale_138",
+      "target": "tests_test_verifier_test_verify_real_scout_finding_has_valid_structure",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L139",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_verify_real_scout_finding_has_valid_structure",
+      "target": "council_scout_scan_edges"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L142",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_verify_real_scout_finding_has_valid_structure",
+      "target": "council_verifier_verify"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L150",
+      "weight": 1.0,
+      "source": "tests_test_verifier_rationale_150",
+      "target": "tests_test_verifier_test_verify_pass_edge_above_min",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L151",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_verify_pass_edge_above_min",
+      "target": "council_scout_scan_edges"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L155",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_verify_pass_edge_above_min",
+      "target": "council_verifier_verify"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L164",
+      "weight": 1.0,
+      "source": "tests_test_verifier_rationale_164",
+      "target": "tests_test_verifier_test_verify_fresh_prices_positive_on_non_fetch_error",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L165",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_verify_fresh_prices_positive_on_non_fetch_error",
+      "target": "council_scout_scan_edges"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_verifier.py",
+      "source_location": "L168",
+      "weight": 1.0,
+      "source": "tests_test_verifier_test_verify_fresh_prices_positive_on_non_fetch_error",
+      "target": "council_verifier_verify"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L13",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "council_scout_asset_of",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L13",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "council_scout_edge_signal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L13",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "council_scout_scan_edges",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_asset_of_bitcoin",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L25",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_asset_of_btc_short",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L41",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_asset_of_empty_returns_none",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_asset_of_ethereum",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L45",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_asset_of_none_returns_none",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L29",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_asset_of_solana",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L37",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_asset_of_unknown_returns_none",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L33",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_asset_of_xrp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L78",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_edge_signal_below_min_threshold_no",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L85",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_edge_signal_exact_min_threshold",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L57",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_edge_signal_no_cheap",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L65",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_edge_signal_no_edge_when_fair",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L49",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_edge_signal_yes_cheap",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L116",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_scan_edges_edge_above_min",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L142",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_scan_edges_fair_value_in_range",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L102",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_scan_edges_findings_have_required_fields",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L125",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_scan_edges_neg_risk_filtered",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L150",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_scan_edges_prices_positive",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L96",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_scan_edges_returns_list",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L159",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_scan_edges_sorted_by_edge_desc",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L133",
+      "weight": 1.0,
+      "source": "tests_test_scout_py",
+      "target": "tests_test_scout_test_scan_edges_time_filter",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "tests_test_scout_rationale_1",
+      "target": "tests_test_scout_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_asset_of_bitcoin",
+      "target": "council_scout_asset_of",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_asset_of_ethereum",
+      "target": "council_scout_asset_of",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_asset_of_btc_short",
+      "target": "council_scout_asset_of",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L30",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_asset_of_solana",
+      "target": "council_scout_asset_of",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L34",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_asset_of_xrp",
+      "target": "council_scout_asset_of",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L38",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_asset_of_unknown_returns_none",
+      "target": "council_scout_asset_of",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L42",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_asset_of_empty_returns_none",
+      "target": "council_scout_asset_of",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L46",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_asset_of_none_returns_none",
+      "target": "council_scout_asset_of",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L50",
+      "weight": 1.0,
+      "source": "tests_test_scout_rationale_50",
+      "target": "tests_test_scout_test_edge_signal_yes_cheap",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L51",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_edge_signal_yes_cheap",
+      "target": "council_scout_edge_signal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L58",
+      "weight": 1.0,
+      "source": "tests_test_scout_rationale_58",
+      "target": "tests_test_scout_test_edge_signal_no_cheap",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L59",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_edge_signal_no_cheap",
+      "target": "council_scout_edge_signal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L66",
+      "weight": 1.0,
+      "source": "tests_test_scout_rationale_66",
+      "target": "tests_test_scout_test_edge_signal_no_edge_when_fair",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L67",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_edge_signal_no_edge_when_fair",
+      "target": "council_scout_edge_signal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L72",
+      "weight": 1.0,
+      "source": "tests_test_scout_rationale_72",
+      "target": "tests_test_scout_test_edge_signal_below_min_threshold_no",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L79",
+      "weight": 1.0,
+      "source": "tests_test_scout_rationale_79",
+      "target": "tests_test_scout_test_edge_signal_below_min_threshold_no",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L81",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_edge_signal_below_min_threshold_no",
+      "target": "council_scout_edge_signal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L86",
+      "weight": 1.0,
+      "source": "tests_test_scout_rationale_86",
+      "target": "tests_test_scout_test_edge_signal_exact_min_threshold",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L88",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_edge_signal_exact_min_threshold",
+      "target": "council_scout_edge_signal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_scout.py",
+      "source_location": "L97",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_scan_edges_returns_list",
+      "target": "council_scout_scan_edges"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L103",
+      "weight": 1.0,
+      "source": "tests_test_scout_rationale_103",
+      "target": "tests_test_scout_test_scan_edges_findings_have_required_fields",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_scout.py",
+      "source_location": "L104",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_scan_edges_findings_have_required_fields",
+      "target": "council_scout_scan_edges"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L117",
+      "weight": 1.0,
+      "source": "tests_test_scout_rationale_117",
+      "target": "tests_test_scout_test_scan_edges_edge_above_min",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_scout.py",
+      "source_location": "L118",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_scan_edges_edge_above_min",
+      "target": "council_scout_scan_edges"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L126",
+      "weight": 1.0,
+      "source": "tests_test_scout_rationale_126",
+      "target": "tests_test_scout_test_scan_edges_neg_risk_filtered",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_scout.py",
+      "source_location": "L127",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_scan_edges_neg_risk_filtered",
+      "target": "council_scout_scan_edges"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L134",
+      "weight": 1.0,
+      "source": "tests_test_scout_rationale_134",
+      "target": "tests_test_scout_test_scan_edges_time_filter",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_scout.py",
+      "source_location": "L135",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_scan_edges_time_filter",
+      "target": "council_scout_scan_edges"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L143",
+      "weight": 1.0,
+      "source": "tests_test_scout_rationale_143",
+      "target": "tests_test_scout_test_scan_edges_fair_value_in_range",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_scout.py",
+      "source_location": "L144",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_scan_edges_fair_value_in_range",
+      "target": "council_scout_scan_edges"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L151",
+      "weight": 1.0,
+      "source": "tests_test_scout_rationale_151",
+      "target": "tests_test_scout_test_scan_edges_prices_positive",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_scout.py",
+      "source_location": "L152",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_scan_edges_prices_positive",
+      "target": "council_scout_scan_edges"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_scout.py",
+      "source_location": "L160",
+      "weight": 1.0,
+      "source": "tests_test_scout_rationale_160",
+      "target": "tests_test_scout_test_scan_edges_sorted_by_edge_desc",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_scout.py",
+      "source_location": "L161",
+      "weight": 1.0,
+      "source": "tests_test_scout_test_scan_edges_sorted_by_edge_desc",
+      "target": "council_scout_scan_edges"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_py",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L103",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_py",
+      "target": "tests_test_fair_value_test_asset_vol_keys_exist",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_py",
+      "target": "tests_test_fair_value_test_fair_yes_above_reference_is_above_half",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_py",
+      "target": "tests_test_fair_value_test_fair_yes_at_reference_price_is_half",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L27",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_py",
+      "target": "tests_test_fair_value_test_fair_yes_below_reference_is_below_half",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L48",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_py",
+      "target": "tests_test_fair_value_test_fair_yes_concrete_example",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L110",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_py",
+      "target": "tests_test_fair_value_test_fair_yes_eth_uses_higher_vol",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L33",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_py",
+      "target": "tests_test_fair_value_test_fair_yes_expired_above",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L38",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_py",
+      "target": "tests_test_fair_value_test_fair_yes_expired_below",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L43",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_py",
+      "target": "tests_test_fair_value_test_fair_yes_expired_equal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L78",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_py",
+      "target": "tests_test_fair_value_test_fair_yes_invalid_negative_price",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L84",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_py",
+      "target": "tests_test_fair_value_test_fair_yes_invalid_zero_ref",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L118",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_py",
+      "target": "tests_test_fair_value_test_fair_yes_more_time_means_closer_to_half",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L90",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_py",
+      "target": "tests_test_fair_value_test_fair_yes_output_range",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L62",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_py",
+      "target": "tests_test_fair_value_test_fair_yes_symmetry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_1",
+      "target": "tests_test_fair_value_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_16",
+      "target": "tests_test_fair_value_test_fair_yes_at_reference_price_is_half",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_test_fair_yes_at_reference_price_is_half",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_22",
+      "target": "tests_test_fair_value_test_fair_yes_above_reference_is_above_half",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_test_fair_yes_above_reference_is_above_half",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L28",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_28",
+      "target": "tests_test_fair_value_test_fair_yes_below_reference_is_below_half",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L29",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_test_fair_yes_below_reference_is_below_half",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L34",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_34",
+      "target": "tests_test_fair_value_test_fair_yes_expired_above",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L35",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_test_fair_yes_expired_above",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L39",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_39",
+      "target": "tests_test_fair_value_test_fair_yes_expired_below",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L40",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_test_fair_yes_expired_below",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L44",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_44",
+      "target": "tests_test_fair_value_test_fair_yes_expired_equal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L45",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_test_fair_yes_expired_equal",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L49",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_49",
+      "target": "tests_test_fair_value_test_fair_yes_concrete_example",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L58",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_test_fair_yes_concrete_example",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L63",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_63",
+      "target": "tests_test_fair_value_test_fair_yes_symmetry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L67",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_test_fair_yes_symmetry",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L79",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_79",
+      "target": "tests_test_fair_value_test_fair_yes_invalid_negative_price",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L81",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_test_fair_yes_invalid_negative_price",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L73",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_73",
+      "target": "tests_test_fair_value_test_fair_yes_invalid_zero_ref",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L85",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_85",
+      "target": "tests_test_fair_value_test_fair_yes_invalid_zero_ref",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L87",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_test_fair_yes_invalid_zero_ref",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L91",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_91",
+      "target": "tests_test_fair_value_test_fair_yes_output_range",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L99",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_test_fair_yes_output_range",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L104",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_104",
+      "target": "tests_test_fair_value_test_asset_vol_keys_exist",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L111",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_111",
+      "target": "tests_test_fair_value_test_fair_yes_eth_uses_higher_vol",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L112",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_test_fair_yes_eth_uses_higher_vol",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L119",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_rationale_119",
+      "target": "tests_test_fair_value_test_fair_yes_more_time_means_closer_to_half",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_fair_value.py",
+      "source_location": "L120",
+      "weight": 1.0,
+      "source": "tests_test_fair_value_test_fair_yes_more_time_means_closer_to_half",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": ".claude/settings.local.json",
+      "source_location": "L2",
+      "weight": 1.0,
+      "source": "claude_settings_local_json",
+      "target": "claude_settings_local_permissions",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": ".claude/settings.local.json",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "claude_settings_local_permissions",
+      "target": "claude_settings_local_permissions_allow",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L138",
+      "weight": 1.0,
+      "source": "council_verifier_py",
+      "target": "council_scout_scan_edges",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L137",
+      "weight": 1.0,
+      "source": "council_verifier_py",
+      "target": "council_verifier_main",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L113",
+      "weight": 1.0,
+      "source": "council_verifier_py",
+      "target": "council_verifier_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L25",
+      "weight": 1.0,
+      "source": "council_verifier_py",
+      "target": "council_verifier_verify",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "council_verifier_py",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L15",
+      "weight": 1.0,
+      "source": "council_verifier_py",
+      "target": "data_hl_candles_current_price",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "council_verifier_py",
+      "target": "data_shortterm_fetch_by_slug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "council_verifier_py",
+      "target": "data_shortterm_parse_market_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "council_verifier_rationale_1",
+      "target": "council_verifier_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L147",
+      "weight": 1.0,
+      "source": "council_verifier_main",
+      "target": "council_verifier_verify",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "council_verifier_rationale_26",
+      "target": "council_verifier_verify",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L47",
+      "weight": 1.0,
+      "source": "council_verifier_verify",
+      "target": "council_verifier_result",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L94",
+      "weight": 1.0,
+      "source": "council_verifier_verify",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L45",
+      "weight": 1.0,
+      "source": "council_verifier_verify",
+      "target": "data_hl_candles_current_price",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L59",
+      "weight": 1.0,
+      "source": "council_verifier_verify",
+      "target": "data_shortterm_fetch_by_slug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L69",
+      "weight": 1.0,
+      "source": "council_verifier_verify",
+      "target": "data_shortterm_parse_market_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L113",
+      "weight": 1.0,
+      "source": "council_verifier_result",
+      "target": "bool",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L113",
+      "weight": 1.0,
+      "source": "council_verifier_result",
+      "target": "council_verifier_py_float",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L113",
+      "weight": 1.0,
+      "source": "council_verifier_result",
+      "target": "council_verifier_py_str",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/verifier.py",
+      "source_location": "L142",
+      "weight": 1.0,
+      "source": "council_verifier_main",
+      "target": "council_scout_scan_edges",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "council_scout_py",
+      "target": "council_scout_asset_of",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L39",
+      "weight": 1.0,
+      "source": "council_scout_py",
+      "target": "council_scout_edge_signal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L121",
+      "weight": 1.0,
+      "source": "council_scout_py",
+      "target": "council_scout_main",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L61",
+      "weight": 1.0,
+      "source": "council_scout_py",
+      "target": "council_scout_process_market",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L107",
+      "weight": 1.0,
+      "source": "council_scout_py",
+      "target": "council_scout_scan_edges",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L20",
+      "weight": 1.0,
+      "source": "council_scout_py",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "council_scout_py",
+      "target": "data_hl_candles_current_price",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "council_scout_py",
+      "target": "data_hl_candles_price_at_timestamp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "council_scout_py",
+      "target": "data_shortterm_find_shortterm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "council_scout_py",
+      "target": "data_shortterm_parse_market_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "council_scout_rationale_1",
+      "target": "council_scout_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "council_scout_asset_of",
+      "target": "council_scout_py_str",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L63",
+      "weight": 1.0,
+      "source": "council_scout_process_market",
+      "target": "council_scout_asset_of",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L39",
+      "weight": 1.0,
+      "source": "council_scout_edge_signal",
+      "target": "council_scout_py_float",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L87",
+      "weight": 1.0,
+      "source": "council_scout_process_market",
+      "target": "council_scout_edge_signal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L40",
+      "weight": 1.0,
+      "source": "council_scout_rationale_40",
+      "target": "council_scout_edge_signal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L86",
+      "weight": 1.0,
+      "source": "council_scout_process_market",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L82",
+      "weight": 1.0,
+      "source": "council_scout_process_market",
+      "target": "data_hl_candles_current_price",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L81",
+      "weight": 1.0,
+      "source": "council_scout_process_market",
+      "target": "data_hl_candles_price_at_timestamp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L67",
+      "weight": 1.0,
+      "source": "council_scout_process_market",
+      "target": "data_shortterm_parse_market_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L62",
+      "weight": 1.0,
+      "source": "council_scout_rationale_62",
+      "target": "council_scout_process_market",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L113",
+      "weight": 1.0,
+      "source": "council_scout_scan_edges",
+      "target": "council_scout_process_market",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L127",
+      "weight": 1.0,
+      "source": "council_scout_main",
+      "target": "council_scout_scan_edges",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L108",
+      "weight": 1.0,
+      "source": "council_scout_rationale_108",
+      "target": "council_scout_scan_edges",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "council/scout.py",
+      "source_location": "L109",
+      "weight": 1.0,
+      "source": "council_scout_scan_edges",
+      "target": "data_shortterm_find_shortterm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L67",
+      "weight": 1.0,
+      "source": "data_hl_candles_py",
+      "target": "data_hl_candles_current_price",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "data_hl_candles_py",
+      "target": "data_hl_candles_fetch_candles",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L39",
+      "weight": 1.0,
+      "source": "data_hl_candles_py",
+      "target": "data_hl_candles_fetch_candles_range",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L75",
+      "weight": 1.0,
+      "source": "data_hl_candles_py",
+      "target": "data_hl_candles_main",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L53",
+      "weight": 1.0,
+      "source": "data_hl_candles_py",
+      "target": "data_hl_candles_price_at_timestamp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L27",
+      "weight": 1.0,
+      "source": "data_hl_candles_py",
+      "target": "data_hl_candles_realized_move",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "data_hl_candles_rationale_1",
+      "target": "data_hl_candles_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L69",
+      "weight": 1.0,
+      "source": "data_hl_candles_current_price",
+      "target": "data_hl_candles_fetch_candles",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L77",
+      "weight": 1.0,
+      "source": "data_hl_candles_main",
+      "target": "data_hl_candles_fetch_candles",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L81",
+      "weight": 1.0,
+      "source": "data_hl_candles_main",
+      "target": "data_hl_candles_realized_move",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L28",
+      "weight": 1.0,
+      "source": "data_hl_candles_rationale_28",
+      "target": "data_hl_candles_realized_move",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L39",
+      "weight": 1.0,
+      "source": "data_hl_candles_fetch_candles_range",
+      "target": "data_hl_candles_py_str",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L39",
+      "weight": 1.0,
+      "source": "data_hl_candles_fetch_candles_range",
+      "target": "int",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L60",
+      "weight": 1.0,
+      "source": "data_hl_candles_price_at_timestamp",
+      "target": "data_hl_candles_fetch_candles_range",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L40",
+      "weight": 1.0,
+      "source": "data_hl_candles_rationale_40",
+      "target": "data_hl_candles_fetch_candles_range",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L67",
+      "weight": 1.0,
+      "source": "data_hl_candles_current_price",
+      "target": "data_hl_candles_py_str",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L53",
+      "weight": 1.0,
+      "source": "data_hl_candles_price_at_timestamp",
+      "target": "data_hl_candles_py_str",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L53",
+      "weight": 1.0,
+      "source": "data_hl_candles_price_at_timestamp",
+      "target": "int",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L53",
+      "weight": 1.0,
+      "source": "data_hl_candles_price_at_timestamp",
+      "target": "data_hl_candles_py_float",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L54",
+      "weight": 1.0,
+      "source": "data_hl_candles_rationale_54",
+      "target": "data_hl_candles_price_at_timestamp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L67",
+      "weight": 1.0,
+      "source": "data_hl_candles_current_price",
+      "target": "data_hl_candles_py_float",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hl_candles.py",
+      "source_location": "L68",
+      "weight": 1.0,
+      "source": "data_hl_candles_rationale_68",
+      "target": "data_hl_candles_current_price",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "data_hyperliquid_py",
+      "target": "data_hyperliquid_fetch_market_state",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L47",
+      "weight": 1.0,
+      "source": "data_hyperliquid_py",
+      "target": "data_hyperliquid_main",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L11",
+      "weight": 1.0,
+      "source": "data_hyperliquid_py",
+      "target": "data_hyperliquid_post",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L37",
+      "weight": 1.0,
+      "source": "data_hyperliquid_py",
+      "target": "data_hyperliquid_signal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "data_hyperliquid_rationale_1",
+      "target": "data_hyperliquid_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "data_hyperliquid_fetch_market_state",
+      "target": "data_hyperliquid_post",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L50",
+      "weight": 1.0,
+      "source": "data_hyperliquid_main",
+      "target": "data_hyperliquid_fetch_market_state",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L58",
+      "weight": 1.0,
+      "source": "data_hyperliquid_main",
+      "target": "data_hyperliquid_signal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "data/hyperliquid.py",
+      "source_location": "L38",
+      "weight": 1.0,
+      "source": "data_hyperliquid_rationale_38",
+      "target": "data_hyperliquid_signal",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/fair_value.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "data_fair_value_py",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "data/fair_value.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "data_fair_value_rationale_1",
+      "target": "data_fair_value_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "data/fair_value.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "data_fair_value_fair_yes",
+      "target": "data_fair_value_py_float",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "data/fair_value.py",
+      "source_location": "L18",
+      "weight": 1.0,
+      "source": "data_fair_value_fair_yes",
+      "target": "data_fair_value_py_str",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "data/fair_value.py",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "data_fair_value_rationale_19",
+      "target": "data_fair_value_fair_yes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/polymarket.py",
+      "source_location": "L28",
+      "weight": 1.0,
+      "source": "data_polymarket_py",
+      "target": "data_polymarket_fetch_crypto_markets",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/polymarket.py",
+      "source_location": "L54",
+      "weight": 1.0,
+      "source": "data_polymarket_py",
+      "target": "data_polymarket_fmt",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/polymarket.py",
+      "source_location": "L70",
+      "weight": 1.0,
+      "source": "data_polymarket_py",
+      "target": "data_polymarket_main",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/polymarket.py",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "data_polymarket_py",
+      "target": "data_polymarket_parse",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "data/polymarket.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "data_polymarket_rationale_1",
+      "target": "data_polymarket_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/polymarket.py",
+      "source_location": "L56",
+      "weight": 1.0,
+      "source": "data_polymarket_fmt",
+      "target": "data_polymarket_parse",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/polymarket.py",
+      "source_location": "L73",
+      "weight": 1.0,
+      "source": "data_polymarket_main",
+      "target": "data_polymarket_fetch_crypto_markets",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/polymarket.py",
+      "source_location": "L86",
+      "weight": 1.0,
+      "source": "data_polymarket_main",
+      "target": "data_polymarket_fmt",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/shortterm.py",
+      "source_location": "L77",
+      "weight": 1.0,
+      "source": "data_shortterm_py",
+      "target": "data_shortterm_fetch_by_slug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/shortterm.py",
+      "source_location": "L89",
+      "weight": 1.0,
+      "source": "data_shortterm_py",
+      "target": "data_shortterm_find_shortterm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/shortterm.py",
+      "source_location": "L104",
+      "weight": 1.0,
+      "source": "data_shortterm_py",
+      "target": "data_shortterm_main",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/shortterm.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "data_shortterm_py",
+      "target": "data_shortterm_parse",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/shortterm.py",
+      "source_location": "L23",
+      "weight": 1.0,
+      "source": "data_shortterm_py",
+      "target": "data_shortterm_parse_market_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/shortterm.py",
+      "source_location": "L64",
+      "weight": 1.0,
+      "source": "data_shortterm_py",
+      "target": "data_shortterm_slugs_for_now",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "data/shortterm.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "data_shortterm_rationale_1",
+      "target": "data_shortterm_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/shortterm.py",
+      "source_location": "L116",
+      "weight": 1.0,
+      "source": "data_shortterm_main",
+      "target": "data_shortterm_parse",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "data/shortterm.py",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "data_shortterm_rationale_24",
+      "target": "data_shortterm_parse_market_window",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/shortterm.py",
+      "source_location": "L95",
+      "weight": 1.0,
+      "source": "data_shortterm_find_shortterm",
+      "target": "data_shortterm_slugs_for_now",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/shortterm.py",
+      "source_location": "L110",
+      "weight": 1.0,
+      "source": "data_shortterm_main",
+      "target": "data_shortterm_slugs_for_now",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "data/shortterm.py",
+      "source_location": "L65",
+      "weight": 1.0,
+      "source": "data_shortterm_rationale_65",
+      "target": "data_shortterm_slugs_for_now",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/shortterm.py",
+      "source_location": "L96",
+      "weight": 1.0,
+      "source": "data_shortterm_find_shortterm",
+      "target": "data_shortterm_fetch_by_slug",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/shortterm.py",
+      "source_location": "L106",
+      "weight": 1.0,
+      "source": "data_shortterm_main",
+      "target": "data_shortterm_find_shortterm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-30-scout-fair-value-rewrite.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "scout_rewrite_plan_md",
+      "target": "claude_md"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-30-verifier-katman2.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "verifier_plan_md",
+      "target": "claude_md"
+    },
+    {
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": null,
+      "source_location": null,
+      "weight": 0.9,
+      "source": "verifier_design_md",
+      "target": "verifier_plan_md"
+    }
+  ],
+  "hyperedges": [],
+  "built_at_commit": "b8734784715f27c2cd7663ac2bd96a331782c040"
+}
