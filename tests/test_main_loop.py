@@ -9,7 +9,7 @@ import pytest_asyncio
 import aiosqlite
 from db.schema import init_schema
 from db.logger import log_position_open
-from main_loop import _run_council, _scan_and_execute, _monitor_positions, _load_open_positions, fetch_resolved
+from main_loop import _run_council, _scan_and_execute, _monitor_positions, _load_open_positions, fetch_resolved, _heal_pending_resolutions
 
 
 # ── Fixture'lar ──────────────────────────────────────────────────────────────
@@ -253,6 +253,30 @@ async def test_monitor_no_position_exit_uses_no_price():
 
 
 @pytest.mark.asyncio
+async def test_dry_run_passes_zero_daily_loss_to_council():
+    """DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz."""
+    import config
+    open_pos = []
+    loss_pos = {
+        "action": "YES", "pm_entry_price": 0.10, "pm_exit_price": 0.0,
+        "position_usd": 100.0, "position_id": "loss-001",
+        "closed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    with patch("main_loop.scan_edges",   new_callable=AsyncMock) as mock_scan, \
+         patch("main_loop._run_council", new_callable=AsyncMock) as mock_council, \
+         patch("main_loop.execute",      new_callable=AsyncMock) as mock_exec, \
+         patch.object(config, "DRY_RUN", True):
+        mock_scan.return_value    = [_finding()]
+        mock_council.return_value = (_pass_gate(), _pass_risk())
+        mock_exec.return_value    = {"position_id": "dry-001", "status": "open",
+                                     "asset": "BTC", "action": "YES", "slug": "btc-test"}
+        await _scan_and_execute(open_pos, [loss_pos] * 10, bankroll_usd=1000.0)
+    mock_council.assert_called_once()
+    _, kwargs = mock_council.call_args
+    assert kwargs.get("daily_loss_usd") == 0.0
+
+
+@pytest.mark.asyncio
 async def test_daily_loss_includes_recovered_closed_positions(mem_db):
     """Restart sonrası DB'den yüklenen bugünün kapanan pozisyonları _daily_loss_usd'e dahil edilir."""
     from datetime import date
@@ -280,3 +304,84 @@ async def test_daily_loss_includes_recovered_closed_positions(mem_db):
     # (0.0 - 0.40) / 0.40 * 50 = -50 → kayıp 50.0
     loss = _daily_loss_usd(recovered)
     assert abs(loss - 50.0) < 1e-4
+
+
+# ── Task: _heal_pending_resolutions() ────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_heal_fixes_null_pnl_when_api_returns(mem_db):
+    """fetch_resolved veri döndürünce pm_exit_price ve realized_pnl DB'ye yazılır."""
+    await mem_db.execute(
+        """INSERT INTO positions
+               (position_id, ts_open, ts_close, slug, asset, action, pm_entry_price,
+                position_usd, kelly_f, confidence_score, status, exit_reason, dry_run)
+           VALUES ('heal-001', '2026-06-01T10:00:00+00:00', '2026-06-01T10:05:00+00:00',
+                   'btc-up-5m', 'BTC', 'YES', 0.20, 50.0, 0.10, 75.0,
+                   'closed', 'market_expired', 1)"""
+    )
+    await mem_db.commit()
+
+    closed_today = [{"position_id": "heal-001", "pm_exit_price": None, "exit_reason": "market_expired"}]
+
+    with patch("main_loop.fetch_resolved", new_callable=AsyncMock) as mock_res:
+        mock_res.return_value = {"yes_exit": 1.0, "no_exit": 0.0}
+        await _heal_pending_resolutions(mem_db, closed_today, limit=3)
+
+    async with mem_db.execute(
+        "SELECT pm_exit_price, realized_pnl, exit_reason FROM positions WHERE position_id='heal-001'"
+    ) as cur:
+        row = await cur.fetchone()
+    assert row[0] == 1.0
+    assert abs(row[1] - 200.0) < 0.01   # (1.0 - 0.20) / 0.20 * 50 = 200
+    assert row[2] == "market_resolved_late"
+    assert closed_today[0]["pm_exit_price"] == 1.0
+    assert closed_today[0]["exit_reason"] == "market_resolved_late"
+
+
+@pytest.mark.asyncio
+async def test_heal_skips_when_api_still_none(mem_db):
+    """fetch_resolved hâlâ None dönerse DB kaydına dokunulmaz."""
+    await mem_db.execute(
+        """INSERT INTO positions
+               (position_id, ts_open, ts_close, slug, asset, action, pm_entry_price,
+                position_usd, kelly_f, confidence_score, status, exit_reason, dry_run)
+           VALUES ('heal-002', '2026-06-01T10:00:00+00:00', '2026-06-01T10:05:00+00:00',
+                   'btc-up-5m', 'BTC', 'YES', 0.20, 50.0, 0.10, 75.0,
+                   'closed', 'market_expired', 1)"""
+    )
+    await mem_db.commit()
+
+    with patch("main_loop.fetch_resolved", new_callable=AsyncMock) as mock_res:
+        mock_res.return_value = None
+        await _heal_pending_resolutions(mem_db, [], limit=3)
+
+    async with mem_db.execute(
+        "SELECT pm_exit_price FROM positions WHERE position_id='heal-002'"
+    ) as cur:
+        row = await cur.fetchone()
+    assert row[0] is None
+
+
+@pytest.mark.asyncio
+async def test_heal_respects_limit(mem_db):
+    """limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır."""
+    for i in range(5):
+        await mem_db.execute(
+            f"""INSERT INTO positions
+                   (position_id, ts_open, ts_close, slug, asset, action, pm_entry_price,
+                    position_usd, kelly_f, confidence_score, status, exit_reason, dry_run)
+               VALUES ('lim-{i:03d}', '2026-06-01T10:00:00+00:00', '2026-06-01T10:05:00+00:00',
+                       'slug-{i}', 'BTC', 'YES', 0.20, 50.0, 0.10, 75.0,
+                       'closed', 'market_expired', 1)"""
+        )
+    await mem_db.commit()
+
+    with patch("main_loop.fetch_resolved", new_callable=AsyncMock) as mock_res:
+        mock_res.return_value = {"yes_exit": 1.0, "no_exit": 0.0}
+        await _heal_pending_resolutions(mem_db, [], limit=2)
+
+    async with mem_db.execute(
+        "SELECT COUNT(*) FROM positions WHERE pm_exit_price IS NULL AND status='closed'"
+    ) as cur:
+        remaining = (await cur.fetchone())[0]
+    assert remaining == 3  # 5 - 2 = 3 hâlâ null

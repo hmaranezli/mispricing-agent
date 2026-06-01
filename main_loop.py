@@ -18,7 +18,7 @@ from data.hl_candles import current_price
 from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window
 from monitor.notifier import notify_open, notify_close, notify_halt
 from monitor.kill_switch import check as kill_switch_check
-from db.logger import log_candidate, log_position_open, log_position_close, load_closed_today, get_connection
+from db.logger import log_candidate, log_position_open, log_position_close, load_closed_today, get_connection, patch_position_resolution
 
 SCAN_INTERVAL_SECS = 30
 BANKROLL_USD = 1000.0  # Başlangıç sermayesi — canlıya geçmeden önce ayarla
@@ -122,7 +122,7 @@ async def _scan_and_execute(
         return
 
     findings = await scan_edges()
-    daily_loss = _daily_loss_usd(closed_today)
+    daily_loss = 0.0 if config.DRY_RUN else _daily_loss_usd(closed_today)
     open_slugs = {p["slug"] for p in open_positions}
 
     for finding in findings:
@@ -144,6 +144,41 @@ async def _scan_and_execute(
         if position:
             await log_position_open(conn, position)
             open_positions.append(position)
+
+
+async def _heal_pending_resolutions(
+    conn,
+    closed_today: list[dict],
+    limit: int = 3,
+) -> None:
+    """market_expired + pm_exit_price=None kayıtları için resolution retry eder."""
+    if conn is None:
+        return
+    async with conn.execute(
+        """SELECT position_id, slug, action, pm_entry_price, position_usd
+           FROM positions
+           WHERE status='closed' AND pm_exit_price IS NULL
+           LIMIT ?""",
+        (limit,),
+    ) as cur:
+        rows = await cur.fetchall()
+
+    for position_id, slug, action, pm_entry_price, position_usd in rows:
+        try:
+            resolution = await fetch_resolved(slug)
+            if resolution is None:
+                continue
+            pm_exit      = resolution["yes_exit"] if action == "YES" else resolution["no_exit"]
+            realized_pnl = (pm_exit - pm_entry_price) / pm_entry_price * position_usd
+            await patch_position_resolution(conn, position_id, pm_exit, realized_pnl)
+            for pos in closed_today:
+                if pos.get("position_id") == position_id:
+                    pos["pm_exit_price"] = pm_exit
+                    pos["realized_pnl"]  = realized_pnl
+                    pos["exit_reason"]   = "market_resolved_late"
+                    break
+        except Exception as e:
+            print(f"[heal] {slug} hata: {e}")
 
 
 async def _monitor_positions(
@@ -217,6 +252,8 @@ async def main() -> None:
                 await _scan_and_execute(open_positions, closed_today, BANKROLL_USD, conn=conn)
                 for pos in open_positions[n_open_before:]:
                     notify_open(pos)
+
+                await _heal_pending_resolutions(conn, closed_today)
 
             except Exception as e:
                 print(f"[bot] Döngü hatası: {e}")
