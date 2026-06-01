@@ -12,7 +12,6 @@ from council.verifier import verify
 from council.redteam import redteam as redteam_eval
 from council.risk import risk as risk_eval
 from council.gate import gate
-import os
 from execution.executor       import execute as _dry_execute
 from execution.clob_executor  import execute as _clob_execute
 from execution.position_store import sell_position

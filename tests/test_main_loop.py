@@ -397,7 +397,6 @@ def test_bankroll_reads_from_env(monkeypatch):
     import main_loop as ml
     importlib.reload(ml)
     assert abs(ml.BANKROLL_USD - 50.0) < 0.01
-    importlib.reload(ml)  # restore defaults
 
 
 @pytest.mark.asyncio
