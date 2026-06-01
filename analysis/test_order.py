@@ -12,6 +12,7 @@ Kullanım:
     python analysis/test_order.py
 """
 import asyncio
+import json
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -24,7 +25,7 @@ except ImportError:
 
 from execution.clob_client import get_client, reset_client
 from data.shortterm import find_shortterm
-from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
+from py_clob_client.clob_types import BalanceAllowanceParams, AssetType, OrderArgs
 
 MIN_TEST_USD   = 1.0   # $1 test pozisyon
 TEST_ASSET     = "btc" # BTC marketlerinde test
@@ -52,10 +53,9 @@ async def run_test() -> bool:
             params=BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
         )
         usdc = float(bal.get("balance", 0))
-        print(f"    USDC: {usdc}")
+        print(f"    USDC (CLOB deposit): {usdc}")
         if usdc < MIN_TEST_USD:
-            print(f"    ✗ Yetersiz bakiye (min ${MIN_TEST_USD} gerekli)")
-            return False
+            print(f"    ⚠ CLOB deposit bakiye={usdc} (native USDC görünmüyor — devam ediyoruz)")
     except Exception as e:
         print(f"    ✗ {e}")
         return False
@@ -76,7 +76,12 @@ async def run_test() -> bool:
             print("    ✗ Uygun market yok (şu an aktif BTC 5m/15m marketi bulunamadı)")
             return False
         market = candidates[0]
-        yes_token = market["clobTokenIds"][0]
+        raw_ids = market.get("clobTokenIds", "[]")
+        token_ids = json.loads(raw_ids) if isinstance(raw_ids, str) else raw_ids
+        yes_token = token_ids[0] if token_ids else None
+        if not yes_token:
+            print("    ✗ clobTokenIds boş")
+            return False
         best_ask  = float(market["bestAsk"])
         slug      = market["slug"]
         print(f"    ✓ Market : {slug}")
@@ -90,13 +95,12 @@ async def run_test() -> bool:
     shares = round(MIN_TEST_USD / best_ask, 4)
     print(f"\n[4] ${MIN_TEST_USD} YES order gönderiliyor ({shares} shares @ {best_ask})...")
     try:
-        order_args = {
-            "token_id":      yes_token,
-            "price":         best_ask,
-            "size":          shares,
-            "side":          "BUY",
-            "time_in_force": "IOC",
-        }
+        order_args = OrderArgs(
+            token_id=yes_token,
+            price=best_ask,
+            size=shares,
+            side="BUY",
+        )
         resp = client.create_and_post_order(order_args)
         print(f"    Response: {resp}")
 
@@ -112,13 +116,12 @@ async def run_test() -> bool:
             print("    ✓ Order DOLDU — şimdi satıyoruz...")
             filled = float(size_filled or 0)
             if filled > 0:
-                sell_args = {
-                    "token_id":      yes_token,
-                    "price":         best_ask * 0.95,
-                    "size":          filled,
-                    "side":          "SELL",
-                    "time_in_force": "IOC",
-                }
+                sell_args = OrderArgs(
+                    token_id=yes_token,
+                    price=round(best_ask * 0.95, 2),
+                    size=filled,
+                    side="SELL",
+                )
                 sell_resp = client.create_and_post_order(sell_args)
                 sell_status = sell_resp.get("status") if isinstance(sell_resp, dict) else getattr(sell_resp, "status", "?")
                 print(f"    SELL status: {sell_status}")

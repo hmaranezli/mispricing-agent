@@ -20,6 +20,19 @@ def _parse(raw):
         return None
 
 
+def _parse_token_ids(raw) -> list[str]:
+    """clobTokenIds alanını her zaman list[str] döndür. JSON string veya list kabul eder."""
+    if isinstance(raw, list):
+        return [str(x) for x in raw]
+    if isinstance(raw, str):
+        try:
+            result = json.loads(raw)
+            return [str(x) for x in result] if isinstance(result, list) else []
+        except (json.JSONDecodeError, ValueError):
+            return []
+    return []
+
+
 def parse_market_window(m: dict):
     """
     Ham Gamma market dict'inden scout'un ihtiyacı olan alanları çıkarır.

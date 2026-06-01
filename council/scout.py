@@ -15,7 +15,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data.shortterm import find_shortterm, parse_market_window
+from data.shortterm import find_shortterm, parse_market_window, _parse_token_ids
 from data.hl_candles import price_at_timestamp, current_price
 from data.fair_value import fair_yes
 import config
@@ -88,6 +88,7 @@ async def _process_market(m: dict) -> dict | None:
     if signal is None:
         return None
 
+    _tids = _parse_token_ids(m.get("clobTokenIds"))
     return {
         "question":          (m.get("question") or "?")[:60],
         "asset":             asset,
@@ -103,8 +104,8 @@ async def _process_market(m: dict) -> dict | None:
         "slug":              m.get("slug", ""),
         "_window":           window,
         "_raw_market":       m,
-        "yes_token_id":      next(iter((m.get("clobTokenIds") or [])[0:1]), None),
-        "no_token_id":       next(iter((m.get("clobTokenIds") or [])[1:2]), None),
+        "yes_token_id":      _tids[0] if _tids else None,
+        "no_token_id":       _tids[1] if len(_tids) > 1 else None,
     }
 
 

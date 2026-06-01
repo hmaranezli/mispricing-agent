@@ -63,14 +63,16 @@ async def run_canary() -> bool:
     # 3. clobTokenIds doğrulama
     print("\n[3] BTC market clobTokenIds okunuyor...")
     try:
+        import json as _json
         markets = await find_shortterm(intervals=(5,))
         btc_markets = [m for m in markets if "btc" in m.get("slug", "").lower()]
         if btc_markets:
             m = btc_markets[0]
-            token_ids = m.get("clobTokenIds", [])
+            raw_ids = m.get("clobTokenIds", "[]")
+            token_ids = _json.loads(raw_ids) if isinstance(raw_ids, str) else raw_ids
             print(f"    ✓ Market: {m['slug']}")
-            print(f"      YES token: {token_ids[0] if token_ids else 'YOK'}")
-            print(f"      NO token:  {token_ids[1] if len(token_ids) > 1 else 'YOK'}")
+            print(f"      YES token: {str(token_ids[0])[:20]}..." if token_ids else "      YES token: YOK")
+            print(f"      NO token:  {str(token_ids[1])[:20]}..." if len(token_ids) > 1 else "      NO token:  YOK")
             if not token_ids:
                 print("    ⚠ clobTokenIds boş — Polymarket API yanıtını kontrol et")
         else:

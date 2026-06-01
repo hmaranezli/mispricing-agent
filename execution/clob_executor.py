@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import datetime, timezone
 from uuid import uuid4
 from execution.clob_client import get_client
+from py_clob_client.clob_types import OrderArgs
 
 
 async def execute(
@@ -34,13 +35,12 @@ async def execute(
         return None
     shares = round(position_usd / entry_price, 4)
 
-    order_args = {
-        "token_id":      token_id,
-        "price":         entry_price,
-        "size":          shares,
-        "side":          "BUY",
-        "time_in_force": "IOC",
-    }
+    order_args = OrderArgs(
+        token_id=token_id,
+        price=entry_price,
+        size=shares,
+        side="BUY",
+    )
 
     try:
         client = get_client()

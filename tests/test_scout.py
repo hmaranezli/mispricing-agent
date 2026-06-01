@@ -201,14 +201,16 @@ async def test_scan_edges_min_seconds_above_thesis_threshold():
 async def test_finding_contains_token_ids():
     """scan_edges() döndürdüğü finding'de yes_token_id ve no_token_id bulunur."""
     from unittest.mock import AsyncMock, patch
+    from datetime import datetime, timezone, timedelta
 
+    now = datetime.now(timezone.utc)
     fake_market = {
         "question": "Will BTC go up?",
         "slug": "btc-updown-5m-123",
         "bestAsk": "0.35",
         "bestBid": "0.33",
-        "eventStartTime": "2026-06-01T10:00:00Z",
-        "endDate": "2026-06-01T10:15:00Z",
+        "eventStartTime": (now - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "endDate": (now + timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "negRisk": False,
         "clobTokenIds": ["yes-token-abc", "no-token-xyz"],
     }
@@ -231,14 +233,16 @@ async def test_finding_contains_token_ids():
 async def test_finding_token_ids_none_when_absent():
     """clobTokenIds yoksa yes_token_id ve no_token_id None döner, exception yok."""
     from unittest.mock import AsyncMock, patch
+    from datetime import datetime, timezone, timedelta
 
+    now = datetime.now(timezone.utc)
     fake_market = {
         "question": "Will BTC go up?",
         "slug": "btc-updown-5m-456",
         "bestAsk": "0.35",
         "bestBid": "0.33",
-        "eventStartTime": "2026-06-01T10:00:00Z",
-        "endDate": "2026-06-01T10:15:00Z",
+        "eventStartTime": (now - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "endDate": (now + timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "negRisk": False,
         # clobTokenIds intentionally absent
     }
@@ -260,14 +264,16 @@ async def test_finding_token_ids_none_when_absent():
 async def test_finding_token_ids_single_element_no_crash():
     """clobTokenIds sadece 1 eleman içeriyorsa yes_token_id set, no_token_id None — crash yok."""
     from unittest.mock import AsyncMock, patch
+    from datetime import datetime, timezone, timedelta
 
+    now = datetime.now(timezone.utc)
     fake_market = {
         "question": "Will BTC go up?",
         "slug": "btc-updown-5m-789",
         "bestAsk": "0.35",
         "bestBid": "0.33",
-        "eventStartTime": "2026-06-01T10:00:00Z",
-        "endDate": "2026-06-01T10:15:00Z",
+        "eventStartTime": (now - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "endDate": (now + timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "negRisk": False,
         "clobTokenIds": ["only-yes-token"],  # sadece 1 eleman
     }

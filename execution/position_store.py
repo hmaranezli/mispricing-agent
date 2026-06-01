@@ -3,6 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from execution.clob_client import get_client
+from py_clob_client.clob_types import OrderArgs
 
 
 async def sell_position(pos: dict) -> float:
@@ -22,13 +23,12 @@ async def sell_position(pos: dict) -> float:
         print(f"[sell] {pos.get('slug')}: token_id veya shares eksik/sıfır, fallback={fallback:.4f}")
         return fallback
 
-    order_args = {
-        "token_id":      token_id,
-        "price":         fallback,
-        "size":          shares,
-        "side":          "SELL",
-        "time_in_force": "IOC",
-    }
+    order_args = OrderArgs(
+        token_id=token_id,
+        price=fallback,
+        size=shares,
+        side="SELL",
+    )
 
     try:
         client = get_client()
