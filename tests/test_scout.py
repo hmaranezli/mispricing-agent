@@ -105,7 +105,7 @@ async def test_scan_edges_findings_have_required_fields():
     required = {
         "question", "asset", "fair_value", "best_ask", "best_bid",
         "edge", "action", "ref_price", "cur_price", "seconds_remaining",
-        "slug",
+        "slug", "yes_token_id", "no_token_id",
     }
     for f in findings:
         missing = required - set(f.keys())
@@ -195,3 +195,62 @@ async def test_scan_edges_min_seconds_above_thesis_threshold():
     for f in findings:
         assert f["seconds_remaining"] >= 180, \
             f"Eşik altı market geçmiş: {f['seconds_remaining']:.0f}s < 180s"
+
+
+@pytest.mark.asyncio
+async def test_finding_contains_token_ids():
+    """scan_edges() döndürdüğü finding'de yes_token_id ve no_token_id bulunur."""
+    from unittest.mock import AsyncMock, patch
+
+    fake_market = {
+        "question": "Will BTC go up?",
+        "slug": "btc-updown-5m-123",
+        "bestAsk": "0.35",
+        "bestBid": "0.33",
+        "eventStartTime": "2026-06-01T10:00:00Z",
+        "endDate": "2026-06-01T10:15:00Z",
+        "negRisk": False,
+        "clobTokenIds": ["yes-token-abc", "no-token-xyz"],
+    }
+    with patch("council.scout.find_shortterm", new_callable=AsyncMock) as mock_find, \
+         patch("council.scout.price_at_timestamp", new_callable=AsyncMock) as mock_ref, \
+         patch("council.scout.current_price", new_callable=AsyncMock) as mock_cur, \
+         patch("council.scout.fair_yes", return_value=0.60):
+        mock_find.return_value = [fake_market]
+        mock_ref.return_value = 95000.0
+        mock_cur.return_value = 96000.0
+        findings = await scan_edges()
+
+    assert len(findings) >= 1, "No findings returned"
+    f = findings[0]
+    assert f.get("yes_token_id") == "yes-token-abc", f"yes_token_id eksik veya yanlış: {f}"
+    assert f.get("no_token_id")  == "no-token-xyz",  f"no_token_id eksik veya yanlış: {f}"
+
+
+@pytest.mark.asyncio
+async def test_finding_token_ids_none_when_absent():
+    """clobTokenIds yoksa yes_token_id ve no_token_id None döner, exception yok."""
+    from unittest.mock import AsyncMock, patch
+
+    fake_market = {
+        "question": "Will BTC go up?",
+        "slug": "btc-updown-5m-456",
+        "bestAsk": "0.35",
+        "bestBid": "0.33",
+        "eventStartTime": "2026-06-01T10:00:00Z",
+        "endDate": "2026-06-01T10:15:00Z",
+        "negRisk": False,
+        # clobTokenIds intentionally absent
+    }
+    with patch("council.scout.find_shortterm", new_callable=AsyncMock) as mock_find, \
+         patch("council.scout.price_at_timestamp", new_callable=AsyncMock) as mock_ref, \
+         patch("council.scout.current_price", new_callable=AsyncMock) as mock_cur, \
+         patch("council.scout.fair_yes", return_value=0.60):
+        mock_find.return_value = [fake_market]
+        mock_ref.return_value = 95000.0
+        mock_cur.return_value = 96000.0
+        findings = await scan_edges()
+
+    if findings:
+        assert findings[0].get("yes_token_id") is None
+        assert findings[0].get("no_token_id")  is None
