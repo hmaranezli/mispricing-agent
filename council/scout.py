@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.shortterm import find_shortterm, parse_market_window, _parse_token_ids
 from data.hl_candles import price_at_timestamp, current_price
 from data.fair_value import fair_yes
+from data.fee_rate import fetch_fee_rate
 import config
 
 MIN_SECONDS = 180  # Çözüme bu kadar saniyeden az kalmışsa atla (RedTeam 120s eşiği + 60s buffer)
@@ -89,6 +90,9 @@ async def _process_market(m: dict) -> dict | None:
         return None
 
     _tids = _parse_token_ids(m.get("clobTokenIds"))
+    yes_token = _tids[0] if _tids else None
+    taker_fee = await fetch_fee_rate(yes_token) if yes_token else 0.02
+
     return {
         "question":          (m.get("question") or "?")[:60],
         "asset":             asset,
@@ -104,8 +108,9 @@ async def _process_market(m: dict) -> dict | None:
         "slug":              m.get("slug", ""),
         "_window":           window,
         "_raw_market":       m,
-        "yes_token_id":      _tids[0] if _tids else None,
+        "yes_token_id":      yes_token,
         "no_token_id":       _tids[1] if len(_tids) > 1 else None,
+        "taker_fee":         taker_fee,
     }
 
 

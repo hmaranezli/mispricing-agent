@@ -106,7 +106,8 @@ async def redteam(finding: dict, verification: dict) -> dict:
         spread      = float(market.get("spread") or 999)
         liquidity   = float(market.get("liquidityClob") or 0)
         volume_24hr = float(market.get("volume24hr") or 0)
-        taker_fee   = _parse_taker_fee(market.get("takerBaseFee"))
+        # Scout seviyesinde çekilmiş fee — Gamma bağımlılığı azaldı
+        taker_fee   = finding.get("taker_fee") or _parse_taker_fee(market.get("takerBaseFee"))
     except (TypeError, ValueError):
         return _result(False, vetoes + ["parse_error"], warnings, 0.0, 0.02, 0.0, 0.0)
 
