@@ -9,7 +9,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import datetime, timezone
 from uuid import uuid4
 from execution.clob_client import get_client
-from py_clob_client_v2.clob_types import OrderArgs
+from py_clob_client_v2.clob_types import OrderArgs, OrderType
+
+MIN_SHARES = 5  # Polymarket CLOB minimum
 
 
 async def execute(
@@ -34,6 +36,9 @@ async def execute(
         print(f"[clob] {finding['slug']}: position_usd={position_usd:.2f} < $1 minimum, atlandı")
         return None
     shares = round(position_usd / entry_price, 4)
+    if shares < MIN_SHARES:
+        print(f"[clob] {finding['slug']}: shares={shares:.2f} < {MIN_SHARES} minimum, atlandı")
+        return None
 
     order_args = OrderArgs(
         token_id=token_id,
@@ -44,7 +49,7 @@ async def execute(
 
     try:
         client = get_client()
-        resp   = client.create_and_post_order(order_args)
+        resp   = client.create_and_post_order(order_args, order_type=OrderType.FOK)
     except Exception as e:
         print(f"[clob] {finding['slug']}: order hatası — {e}")
         return None

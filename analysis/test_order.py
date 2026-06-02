@@ -25,7 +25,7 @@ except ImportError:
 
 from execution.clob_client import get_client, reset_client
 from data.shortterm import find_shortterm
-from py_clob_client_v2.clob_types import BalanceAllowanceParams, AssetType, OrderArgs
+from py_clob_client_v2.clob_types import BalanceAllowanceParams, AssetType, OrderArgs, OrderType
 
 MIN_TEST_USD   = 0.80  # $0.80 test — fee (~$0.03) dahil $1.00 bakiyeye sığar
 TEST_ASSET     = "btc" # BTC marketlerinde test
@@ -101,7 +101,7 @@ async def run_test() -> bool:
             size=shares,
             side="BUY",
         )
-        resp = client.create_and_post_order(order_args)
+        resp = client.create_and_post_order(order_args, order_type=OrderType.FOK)
         print(f"    Response: {resp}")
 
         status      = resp.get("status") if isinstance(resp, dict) else getattr(resp, "status", "?")

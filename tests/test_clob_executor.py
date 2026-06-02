@@ -68,8 +68,8 @@ async def test_execute_uses_yes_token_for_yes_action():
         from execution.clob_executor import execute
         await execute(_finding("YES"), _gate(), _risk(), [])
     call_args = fake_client.create_and_post_order.call_args[0][0]
-    assert call_args["token_id"] == "yes-tok-111"
-    assert call_args["side"] == "BUY"
+    assert call_args.token_id == "yes-tok-111"
+    assert call_args.side == "BUY"
 
 
 @pytest.mark.asyncio
@@ -83,4 +83,4 @@ async def test_execute_uses_no_token_for_no_action():
         from execution.clob_executor import execute
         await execute(_finding("NO"), _gate(), _risk(), [])
     call_args = fake_client.create_and_post_order.call_args[0][0]
-    assert call_args["token_id"] == "no-tok-222"
+    assert call_args.token_id == "no-tok-222"
