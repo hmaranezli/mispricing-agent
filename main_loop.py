@@ -15,6 +15,7 @@ from council.gate import gate
 from execution.executor       import execute as _dry_execute
 from execution.clob_executor  import execute as _clob_execute
 from execution.position_store import sell_position
+from execution.balance        import get_effective_bankroll
 from position.manager import check_exit, close_position
 from data.hl_candles import current_price
 from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window
@@ -23,7 +24,7 @@ from monitor.kill_switch import check as kill_switch_check
 from db.logger import log_candidate, log_position_open, log_position_close, load_closed_today, get_connection, patch_position_resolution
 
 SCAN_INTERVAL_SECS = 15
-BANKROLL_USD = float(os.getenv("BANKROLL_USD", "1000.0"))
+BANKROLL_CONFIG = float(os.getenv("BANKROLL_USD", "1000.0"))
 
 
 async def execute(finding, gate_result, risk_result, open_positions):
@@ -276,7 +277,8 @@ async def main() -> None:
                 for pos in closed_today[n_closed_before:]:
                     notify_close(pos)
 
-                await _scan_and_execute(open_positions, closed_today, BANKROLL_USD, conn=conn)
+                effective_bankroll = await get_effective_bankroll(BANKROLL_CONFIG)
+                await _scan_and_execute(open_positions, closed_today, effective_bankroll, conn=conn)
                 for pos in open_positions[n_open_before:]:
                     notify_open(pos)
 
