@@ -19,7 +19,7 @@ def _parse(raw) -> float:
     """base_fee (bps) → ondalık. 1000 → 0.02."""
     try:
         fee = float(raw) / 50_000
-        return fee if 0 < fee <= 0.20 else DEFAULT
+        return fee if 0.001 <= fee <= 0.20 else DEFAULT
     except (TypeError, ValueError):
         return DEFAULT
 
@@ -32,6 +32,7 @@ async def _fetch_from_api(token_id: str) -> float:
             f"{CLOB_HOST}/fee-rate/{token_id}",
             timeout=aiohttp.ClientTimeout(total=5)
         ) as resp:
+            resp.raise_for_status()
             data = await resp.json()
             return _parse(data.get("base_fee"))
 

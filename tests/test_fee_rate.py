@@ -10,6 +10,7 @@ import data.fee_rate as fee_mod
 @pytest.mark.asyncio
 async def test_fetch_returns_parsed_fee():
     """CLOB API base_fee:1000 → 0.02 döner."""
+    fee_mod._cache.clear()  # cache temizle, stale hit'i önle
     with patch.object(fee_mod, "_fetch_from_api", return_value=0.02):
         result = await fee_mod.fetch_fee_rate("some-token-id-123")
     assert result == pytest.approx(0.02)
@@ -54,3 +55,28 @@ async def test_api_error_returns_default():
     with patch.object(fee_mod, "_fetch_from_api", side_effect=Exception("timeout")):
         result = await fee_mod.fetch_fee_rate("tok-err")
     assert result == 0.02
+
+
+# ---------------------------------------------------------------------------
+# _parse unit tests
+# ---------------------------------------------------------------------------
+
+def test_parse_1000_bps_to_002():
+    """1000 bps → 0.02."""
+    from data.fee_rate import _parse
+    assert _parse(1000) == pytest.approx(0.02)
+
+
+def test_parse_zero_returns_default():
+    from data.fee_rate import _parse, DEFAULT
+    assert _parse(0) == DEFAULT
+
+
+def test_parse_none_returns_default():
+    from data.fee_rate import _parse, DEFAULT
+    assert _parse(None) == DEFAULT
+
+
+def test_parse_negative_returns_default():
+    from data.fee_rate import _parse, DEFAULT
+    assert _parse(-100) == DEFAULT
