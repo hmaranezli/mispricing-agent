@@ -16,6 +16,7 @@ from execution.executor       import execute as _dry_execute
 from execution.clob_executor  import execute as _clob_execute
 from execution.position_store import sell_position
 from execution.balance        import get_effective_bankroll
+from execution.reconcile      import startup_reconcile
 from position.manager import check_exit, close_position
 from data.hl_candles import current_price
 from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window
@@ -260,6 +261,9 @@ async def main() -> None:
     closed_today   = await load_closed_today(conn)
     if open_positions:
         print(f"[bot] DB'den {len(open_positions)} açık pozisyon yüklendi.")
+        rec = await startup_reconcile(open_positions, conn)
+        if rec["closed"]:
+            print(f"[bot] Reconcile: {rec['closed']} pozisyon kapatıldı.")
     if closed_today:
         display_loss = 0.0 if config.DRY_RUN else _daily_loss_usd(closed_today)
         print(f"[bot] Bugün {len(closed_today)} kapanan pozisyon geri yüklendi, günlük kayıp: ${display_loss:.2f} (DRY_RUN={config.DRY_RUN})")
