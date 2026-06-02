@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 
 KELLY_FRACTION   = 0.25  # Çeyrek Kelly — tam Kelly'nin 1/4'ü
-MIN_POSITION_USD = 5.0   # Bu altı → fee'ye değmez → veto
+MIN_POSITION_USD = 1.0   # $50 bankroll × 5% = $2.50 — $1 alt sınır yeterli
 
 
 def _kelly(action: str, fee_adj_edge: float,
