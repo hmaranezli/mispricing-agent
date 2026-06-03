@@ -146,3 +146,39 @@ async def test_execute_v2_sizefilled_none_no_crash():
         result = await execute(_finding("YES"), _gate(), _risk(), [])
     assert result is not None, "sizeFilled eksikliği crash veya None döndürmemeli"
     assert result["shares"] > 0
+
+
+@pytest.mark.asyncio
+async def test_clob_order_uses_price_premium():
+    """LIVE order fiyatı = best_ask + PRICE_PREMIUM olmalı — fill rate iyileştirmesi."""
+    from execution.clob_executor import PRICE_PREMIUM
+    fake_client = MagicMock()
+    fake_client.create_and_post_order.return_value = {
+        "status": "matched", "success": True, "orderID": "ord-prem",
+        "takingAmount": "69.0", "makingAmount": "24.84",
+    }
+    with patch("execution.clob_executor.get_client", return_value=fake_client):
+        from execution.clob_executor import execute
+        await execute(_finding("YES"), _gate(), _risk(), [])
+    call_args = fake_client.create_and_post_order.call_args
+    order_args = call_args[0][0]
+    expected = round(0.35 + PRICE_PREMIUM, 6)
+    assert abs(order_args.price - expected) < 1e-6, \
+        f"Order fiyatı {order_args.price:.4f} — beklenen {expected:.4f} (best_ask+PRICE_PREMIUM)"
+
+
+@pytest.mark.asyncio
+async def test_clob_position_includes_entry_hl_price():
+    """LIVE position dict'te entry_hl_price = finding['cur_price'] olmalı."""
+    fake_client = MagicMock()
+    fake_client.create_and_post_order.return_value = {
+        "status": "matched", "success": True, "orderID": "ord-hl",
+        "takingAmount": "69.0", "makingAmount": "24.84",
+    }
+    finding = {**_finding("YES"), "cur_price": 66500.0}
+    with patch("execution.clob_executor.get_client", return_value=fake_client):
+        from execution.clob_executor import execute
+        result = await execute(finding, _gate(), _risk(), [])
+    assert result is not None
+    assert result.get("entry_hl_price") == 66500.0, \
+        f"entry_hl_price={result.get('entry_hl_price')}, beklenen 66500.0"

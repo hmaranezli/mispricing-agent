@@ -12,7 +12,8 @@ from uuid import uuid4
 from execution.clob_client import get_client
 from py_clob_client_v2.clob_types import OrderArgs, OrderType
 
-MIN_SHARES = 1  # Canary testi ile doğrulandı: CLOB gerçek min = $1 USDC, 5 share değil
+MIN_SHARES    = 1     # Canary testi ile doğrulandı: CLOB gerçek min = $1 USDC, 5 share değil
+PRICE_PREMIUM = 0.01  # FOK fill rate iyileştirmesi: limit fiyatı best_ask + 1 cent
 
 
 def _calc_shares(usdc: float, price: float) -> float:
@@ -44,7 +45,7 @@ async def execute(
         return None
 
     position_usd = risk_result["position_usd"]
-    entry_price  = finding["best_ask"]
+    entry_price  = finding["best_ask"] + PRICE_PREMIUM
     if entry_price <= 0:
         return None
     if position_usd < 1.0:
@@ -127,6 +128,7 @@ async def execute(
         "fill_price":              fill_price,
         "yes_token_id":            finding.get("yes_token_id"),
         "no_token_id":             finding.get("no_token_id"),
+        "entry_hl_price":          finding.get("cur_price"),
         "requires_human_approval": False,
         "dry_run":                 False,
         "status":                  "open",
