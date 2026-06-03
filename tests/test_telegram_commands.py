@@ -71,6 +71,19 @@ def test_build_stats_all_time_label():
     msg = build_stats_message(total=10, wins=8, losses=2, pnl=5.0, hours=None)
     assert msg  # en azindan bos olmamali
 
+def test_build_stats_shows_expired_when_nonzero():
+    """expired>0 iken 'Expired' satiri mesaja eklenmeli"""
+    from monitor.telegram_commands import build_stats_message
+    msg = build_stats_message(total=10, wins=7, losses=2, pnl=3.0, hours=None, expired=3)
+    assert "Expired" in msg
+    assert "3" in msg
+
+def test_build_stats_no_expired_line_when_zero():
+    """expired=0 iken 'Expired' satiri gorünmemeli"""
+    from monitor.telegram_commands import build_stats_message
+    msg = build_stats_message(total=10, wins=8, losses=2, pnl=5.0, hours=None, expired=0)
+    assert "Expired" not in msg
+
 
 # ── build_durum_message ────────────────────────────────────────────────────────
 
