@@ -279,7 +279,6 @@ async def main() -> None:
                 continue
 
             try:
-                n_open_before   = len(open_positions)
                 n_closed_before = len(closed_today)
 
                 await _monitor_positions(open_positions, closed_today, conn=conn)
@@ -299,6 +298,7 @@ async def main() -> None:
                         notify_soft_stop(config.STREAK_WARN_COUNT, effective_bk)
                         print(f"[bot] SOFT STOP: {config.STREAK_WARN_COUNT} arka arkaya kayıp")
 
+                n_open_before = len(open_positions)  # monitor sonrası al: kapananlar düşüldü
                 effective_bankroll = await get_effective_bankroll(BANKROLL_CONFIG)
                 await _scan_and_execute(open_positions, closed_today, effective_bankroll, conn=conn)
                 for pos in open_positions[n_open_before:]:

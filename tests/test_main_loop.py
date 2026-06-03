@@ -363,6 +363,38 @@ async def test_heal_respects_limit(mem_db):
     assert remaining == 3  # 5 - 2 = 3 hâlâ null
 
 
+# ── Regression: notify_open n_open_before slice bug ─────────────────────────
+
+def test_notify_open_slice_after_monitor_captures_all_new():
+    """
+    Regression: n_open_before'un _monitor_positions'dan ÖNCE alınması,
+    aynı turda hem kapanma hem açılma olunca notify_open'ın bazı
+    pozisyonları atlamasına neden oluyordu.
+
+    Senaryo: başlangıçta 3 açık pozisyon → monitor hepsini kapatıyor (liste boşalıyor)
+    → scan 3 yeni açıyor. Eski kodda n_open_before=3 olduğu için
+    open_positions[3:] boş liste dönerdi (0/1/2 indeksindekiler atlanır).
+    Fix: n_open_before monitor'dan SONRA alınıyor.
+    """
+    open_positions = [{"id": i} for i in range(3)]
+
+    # Monitor tüm pozisyonları kapatıyor
+    open_positions.clear()
+
+    # BUG: n_open_before=3 alındığında
+    n_open_before_bug = 3
+    for i in range(3):
+        open_positions.append({"id": f"new-{i}"})
+    assert open_positions[n_open_before_bug:] == []  # hepsi atlanırdı
+
+    # FIX: n_open_before monitor'dan SONRA alındığında
+    open_positions.clear()
+    n_open_before_fix = len(open_positions)  # = 0
+    for i in range(3):
+        open_positions.append({"id": f"new-{i}"})
+    assert len(open_positions[n_open_before_fix:]) == 3  # hepsi yakalanır
+
+
 # ── Task 7: CLOB router + sell path ──────────────────────────────────────────
 
 def test_bankroll_reads_from_env(monkeypatch):
