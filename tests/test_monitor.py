@@ -129,3 +129,38 @@ def test_kill_switch_false_when_file_absent(tmp_path, monkeypatch):
     kill_file = tmp_path / "KILL"
     monkeypatch.setattr(ks, "KILL_FILE", kill_file)
     assert ks.check() is False
+
+
+def test_notify_resolved_late_kazandi():
+    """WIN pozisyon için GÜNCELLENDİ + ✅ içeren mesaj gönderir."""
+    with patch("monitor.notifier.send_telegram") as mock_send:
+        notifier.notify_resolved_late({
+            "seq_no": 56, "asset": "XRP", "action": "YES",
+            "pm_entry_price": 0.5, "pm_exit_price": 1.0, "position_usd": 1.25,
+        })
+    msg = mock_send.call_args[0][0]
+    assert "GÜNCELLENDİ" in msg
+    assert "#56" in msg
+    assert "XRP" in msg
+    assert "✅" in msg
+
+
+def test_notify_resolved_late_kaybetti():
+    """LOSS pozisyon için ❌ içeren mesaj gönderir."""
+    with patch("monitor.notifier.send_telegram") as mock_send:
+        notifier.notify_resolved_late({
+            "seq_no": 10, "asset": "BTC", "action": "YES",
+            "pm_entry_price": 0.51, "pm_exit_price": 0.0, "position_usd": 1.25,
+        })
+    msg = mock_send.call_args[0][0]
+    assert "❌" in msg
+
+
+def test_notify_resolved_late_no_exit_price():
+    """pm_exit_price=None ise P&L satırı olmadan yine de mesaj gönderir."""
+    with patch("monitor.notifier.send_telegram") as mock_send:
+        notifier.notify_resolved_late({
+            "asset": "ETH", "action": "NO",
+            "pm_entry_price": 0.5, "pm_exit_price": None, "position_usd": 1.25,
+        })
+    mock_send.assert_called_once()

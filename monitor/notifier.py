@@ -58,6 +58,28 @@ def notify_close(pos: dict) -> None:
     send_telegram(msg)
 
 
+def notify_resolved_late(pos: dict) -> None:
+    """Heal edilmiş pozisyon için gecikmiş Telegram bildirimi."""
+    msg = (
+        f"GÜNCELLENDİ {_seq(pos)}{pos['asset']} {pos['action']}\n"
+        f"market_resolved_late"
+    )
+    entry   = pos.get("pm_entry_price")
+    exit_p  = pos.get("pm_exit_price")
+    pos_usd = pos.get("position_usd", 0)
+    if entry and exit_p is not None:
+        pnl   = (exit_p - entry) / entry * pos_usd
+        cikis = pos_usd + pnl
+        pct   = pnl / pos_usd * 100 if pos_usd else 0
+        sign  = "+" if pnl >= 0 else ""
+        icon  = "✅" if pnl >= 0 else "❌"
+        msg += (
+            f"\nGiriş: ${pos_usd:.2f} → Çıkış: ${cikis:.2f}"
+            f"\nP&L: {sign}${pnl:.2f} ({sign}{pct:.1f}%) {icon}"
+        )
+    send_telegram(msg)
+
+
 def notify_halt(reason: str) -> None:
     send_telegram(f"HALT — Sistem durdu. Sebep: {reason}")
 
