@@ -85,27 +85,9 @@ def test_kelly_no_calculation():
     assert abs(k - 0.25) < 1e-6
 
 
-# ── Task 3: günlük kayıp limiti ───────────────────────────────────────────────
-
-def test_halt_on_daily_loss_limit():
-    # Tam limit: bankroll × DAILY_LOSS_LIMIT_PCT = 1000 × 0.10 = $100
-    loss = BANKROLL * config.DAILY_LOSS_LIMIT_PCT
-    r = risk(_finding(), _verification(), _redteam(),
-             bankroll_usd=BANKROLL, open_positions=0, daily_loss_usd=loss)
-    assert r["pass"] is False
-    assert r["halt"] is True
-    assert r["reason"] == "daily_loss_limit_hit"
-
-
-def test_no_halt_below_limit():
-    # %9 kayıp → limit altı
-    loss = BANKROLL * (config.DAILY_LOSS_LIMIT_PCT - 0.01)
-    r = risk(_finding(), _verification(), _redteam(),
-             bankroll_usd=BANKROLL, open_positions=0, daily_loss_usd=loss)
-    assert r["halt"] is False
-
-
-# ── Task 4: açık pozisyon limiti ─────────────────────────────────────────────
+# ── Task 3: açık pozisyon limiti ─────────────────────────────────────────────
+# Not: Günlük kayıp limiti (DAILY_LOSS_LIMIT_PCT) circuit_breaker'a taşındı.
+#      Yeni davranış: bust %50 → hard stop, 6 streak → soft stop.
 
 def test_veto_max_open_positions():
     r = risk(_finding(), _verification(), _redteam(),

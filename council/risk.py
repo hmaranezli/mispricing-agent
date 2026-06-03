@@ -67,11 +67,7 @@ def risk(
         {pass, position_usd, kelly_f, kelly_fraction_applied,
          requires_human_approval, halt, reason}
     """
-    # 1. Günlük kayıp limiti — HALT
-    if bankroll_usd > 0 and daily_loss_usd / bankroll_usd >= config.DAILY_LOSS_LIMIT_PCT:
-        return _result(False, halt=True, reason="daily_loss_limit_hit")
-
-    # 2. Açık pozisyon limiti
+    # 1. Açık pozisyon limiti (gunluk kayip limiti circuit_breaker'a tasindi)
     if open_positions >= config.MAX_OPEN_POSITIONS:
         return _result(False, reason="max_open_positions_reached")
 
