@@ -132,6 +132,20 @@ def _query_daily_pnl() -> float:
 def handle_command(text: str) -> str:
     text = text.strip()
 
+    if text in ("/help", "/yardim"):
+        return (
+            "Kullanilabilir komutlar:\n\n"
+            "/durum         — Acik pozisyonlar + gunluk P&L\n"
+            "/istatistik    — Tum zamanlar istatistik\n"
+            "/istatistik6   — Son 6 saat\n"
+            "/istatistik12  — Son 12 saat\n"
+            "/istatistik24  — Son 24 saat\n"
+            "/durdur        — Kill switch devreye al\n"
+            "/baslat        — Soft stop / kill switch kaldir\n"
+            "/hardbaslat    — Hard stop (bust) kaldir\n"
+            "/help          — Bu mesaj"
+        )
+
     if text == "/durum":
         positions = _query_open_positions()
         daily_pnl = _query_daily_pnl()
