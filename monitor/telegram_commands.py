@@ -142,15 +142,22 @@ def handle_command(text: str) -> str:
         return "Kill switch DEVREDE. Bot durdu. /baslat ile kaldir."
 
     if text == "/baslat":
+        from monitor.state import soft_resume
+        soft_resume()
         ks_disarm()
-        return "Kill switch KALDIRILDI. Bot devam ediyor."
+        return "Soft stop KALDIRILDI. Bot devam ediyor."
+
+    if text == "/hardbaslat":
+        from monitor.state import hard_resume
+        hard_resume()
+        return "Hard stop KALDIRILDI. Bot devam ediyor."
 
     if text.startswith("/istatistik"):
         hours = parse_hours(text)
         s     = _query_stats(hours)
         return build_stats_message(s["total"], s["wins"], s["losses"], s["pnl"], hours)
 
-    return f"Bilinmeyen komut: {text}\nKomutlar: /durum /istatistik /istatistik6 /durdur /baslat"
+    return f"Bilinmeyen komut: {text}\nKomutlar: /durum /istatistik /istatistik6 /durdur /baslat /hardbaslat"
 
 
 # ── polling loop ───────────────────────────────────────────────────────────────

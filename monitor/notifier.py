@@ -55,3 +55,25 @@ def notify_close(pos: dict) -> None:
 
 def notify_halt(reason: str) -> None:
     send_telegram(f"HALT — Sistem durdu. Sebep: {reason}")
+
+
+def notify_restart(dry_run: bool, bankroll: float) -> None:
+    mod = "DRY_RUN" if dry_run else "LIVE"
+    send_telegram(f"Bot baslatildi — {mod} | Bankroll: ${bankroll:.2f}")
+
+
+def notify_soft_stop(streak: int, current_bankroll: float) -> None:
+    send_telegram(
+        f"SOFT STOP: {streak} arka arkaya kayip\n"
+        f"Bankroll: ${current_bankroll:.2f}\n"
+        f"/baslat ile devam"
+    )
+
+
+def notify_hard_stop(current_bankroll: float, starting_bankroll: float) -> None:
+    pct = current_bankroll / starting_bankroll * 100
+    send_telegram(
+        f"HARD STOP: Bakiye %{pct:.0f} seviyesinde (${current_bankroll:.2f})\n"
+        f"Bust korumasi devreye girdi!\n"
+        f"/hardbaslat ile devam"
+    )

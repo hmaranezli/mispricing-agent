@@ -91,3 +91,26 @@ def test_build_durum_empty_positions():
     msg = build_durum_message(open_positions=[], daily_pnl=0.0)
     assert msg  # bos olmamali
     assert "0" in msg
+
+
+def test_hardbaslat_clears_hard_paused():
+    """/hardbaslat HARD_PAUSED'u temizler."""
+    import monitor.state as s
+    s.HARD_PAUSED = True
+    from monitor.telegram_commands import handle_command
+    from unittest.mock import patch
+    with patch("monitor.telegram_commands.send_telegram"):
+        result = handle_command("/hardbaslat")
+    assert s.HARD_PAUSED is False
+    assert "kaldirildi" in result.lower() or "devam" in result.lower()
+
+
+def test_baslat_clears_soft_paused():
+    """/baslat SOFT_PAUSED'u temizler."""
+    import monitor.state as s
+    s.SOFT_PAUSED = True
+    from monitor.telegram_commands import handle_command
+    from unittest.mock import patch
+    with patch("monitor.telegram_commands.send_telegram"):
+        result = handle_command("/baslat")
+    assert s.SOFT_PAUSED is False

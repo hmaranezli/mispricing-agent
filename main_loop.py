@@ -20,9 +20,11 @@ from execution.reconcile      import startup_reconcile
 from position.manager import check_exit, close_position
 from data.hl_candles import current_price
 from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window
-from monitor.notifier import notify_open, notify_close, notify_halt
+from monitor.notifier import notify_open, notify_close, notify_halt, notify_restart, notify_soft_stop, notify_hard_stop
 from monitor.kill_switch import check as kill_switch_check
 from monitor.telegram_commands import poll_commands
+from monitor.state import is_paused
+from monitor import circuit_breaker
 from db.logger import log_candidate, log_position_open, log_position_close, load_closed_today, get_connection, patch_position_resolution
 
 SCAN_INTERVAL_SECS = 15
@@ -74,20 +76,6 @@ async def _load_open_positions(conn) -> list[dict]:
     ]
 
 
-def _daily_loss_usd(closed_today: list[dict]) -> float:
-    """Bugün kapanan pozisyonlardan gerçekleşen kaybı toplar."""
-    today = date.today()
-    loss = 0.0
-    for pos in closed_today:
-        if pos.get("pm_exit_price") is None:
-            continue
-        closed_date = datetime.fromisoformat(pos["closed_at"]).date()
-        if closed_date != today:
-            continue
-        pnl = (pos["pm_exit_price"] - pos["pm_entry_price"]) / pos["pm_entry_price"] * pos["position_usd"]
-        if pnl < 0:
-            loss += abs(pnl)
-    return loss
 
 
 async def _run_council(
@@ -140,7 +128,7 @@ async def _scan_and_execute(
         return
 
     findings = await scan_edges()
-    daily_loss = 0.0 if config.DRY_RUN else _daily_loss_usd(closed_today)
+    daily_loss = 0.0
     open_slugs = {p["slug"] for p in open_positions}
 
     for finding in findings:
@@ -267,14 +255,27 @@ async def main() -> None:
         if rec["closed"]:
             print(f"[bot] Reconcile: {rec['closed']} pozisyon kapatıldı.")
     if closed_today:
-        display_loss = 0.0 if config.DRY_RUN else _daily_loss_usd(closed_today)
-        print(f"[bot] Bugün {len(closed_today)} kapanan pozisyon geri yüklendi, günlük kayıp: ${display_loss:.2f} (DRY_RUN={config.DRY_RUN})")
+        print(f"[bot] Bugün {len(closed_today)} kapanan pozisyon geri yüklendi.")
+
+    starting_bankroll = await get_effective_bankroll(BANKROLL_CONFIG)
+    circuit_breaker.BUST_PROTECTION_PCT = config.BUST_PROTECTION_PCT
+    circuit_breaker.STREAK_WARN_COUNT   = config.STREAK_WARN_COUNT
+    notify_restart(dry_run=config.DRY_RUN, bankroll=starting_bankroll)
+
     try:
         while True:
             if kill_switch_check():
                 notify_halt("kill_switch")
                 print("[bot] Kill switch etkin — sistem durdu.")
                 break
+
+            if is_paused():
+                import monitor.state as _st
+                reason = "hard_stop" if _st.HARD_PAUSED else "soft_stop"
+                print(f"[bot] {reason} — bekliyor... (/baslat veya /hardbaslat)")
+                await asyncio.sleep(SCAN_INTERVAL_SECS)
+                continue
+
             try:
                 n_open_before   = len(open_positions)
                 n_closed_before = len(closed_today)
@@ -282,6 +283,19 @@ async def main() -> None:
                 await _monitor_positions(open_positions, closed_today, conn=conn)
                 for pos in closed_today[n_closed_before:]:
                     notify_close(pos)
+                    pnl = pos.get("realized_pnl") or 0.0
+                    effective_bk = await get_effective_bankroll(BANKROLL_CONFIG)
+                    cb_result = circuit_breaker.on_trade_closed(
+                        pnl=pnl,
+                        current_bankroll=effective_bk,
+                        starting_bankroll=starting_bankroll,
+                    )
+                    if cb_result == 'hard_stop':
+                        notify_hard_stop(effective_bk, starting_bankroll)
+                        print(f"[bot] HARD STOP: bakiye ${effective_bk:.2f} / başlangıç ${starting_bankroll:.2f}")
+                    elif cb_result == 'soft_stop':
+                        notify_soft_stop(config.STREAK_WARN_COUNT, effective_bk)
+                        print(f"[bot] SOFT STOP: {config.STREAK_WARN_COUNT} arka arkaya kayıp")
 
                 effective_bankroll = await get_effective_bankroll(BANKROLL_CONFIG)
                 await _scan_and_execute(open_positions, closed_today, effective_bankroll, conn=conn)
