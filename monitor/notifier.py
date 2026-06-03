@@ -31,9 +31,12 @@ def _seq(pos: dict) -> str:
 
 
 def notify_open(pos: dict) -> None:
+    entry_hl = pos.get("entry_hl_price")
+    hl_line  = f"\nHL: ${entry_hl:,.0f}" if entry_hl else ""
     send_telegram(
         f"AÇILDI {_seq(pos)}{pos['asset']} {pos['action']}\n"
         f"Edge: {pos.get('edge', 0):.0%} | Pozisyon: ${pos.get('position_usd', 0):.2f}"
+        f"{hl_line}"
     )
 
 
@@ -55,6 +58,12 @@ def notify_close(pos: dict) -> None:
             f"\nGiriş: ${pos_usd:.2f} → Çıkış: ${cikis:.2f}"
             f"\nP&L: {sign}${pnl:.2f} ({sign}{pct:.1f}%) {icon}"
         )
+    entry_hl = pos.get("entry_hl_price")
+    exit_hl  = pos.get("exit_hl_price")
+    if entry_hl and exit_hl:
+        msg += f"\nHL: ${entry_hl:,.0f} → ${exit_hl:,.0f}"
+    elif entry_hl:
+        msg += f"\nHL: ${entry_hl:,.0f}"
     send_telegram(msg)
 
 
@@ -77,6 +86,12 @@ def notify_resolved_late(pos: dict) -> None:
             f"\nGiriş: ${pos_usd:.2f} → Çıkış: ${cikis:.2f}"
             f"\nP&L: {sign}${pnl:.2f} ({sign}{pct:.1f}%) {icon}"
         )
+    entry_hl = pos.get("entry_hl_price")
+    exit_hl  = pos.get("exit_hl_price")
+    if entry_hl and exit_hl:
+        msg += f"\nHL: ${entry_hl:,.0f} → ${exit_hl:,.0f}"
+    elif entry_hl:
+        msg += f"\nHL: ${entry_hl:,.0f}"
     send_telegram(msg)
 
 

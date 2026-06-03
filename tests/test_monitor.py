@@ -164,3 +164,75 @@ def test_notify_resolved_late_no_exit_price():
             "pm_entry_price": 0.5, "pm_exit_price": None, "position_usd": 1.25,
         })
     mock_send.assert_called_once()
+
+
+# ── HL fiyat bildirim testleri ────────────────────────────────────────────────
+
+def _send_notifier(fn, pos):
+    """fn'i çağır, gönderilen mesaj metnini döndür."""
+    with patch("monitor.notifier.requests.post") as mock_post, \
+         patch("monitor.notifier.config") as cfg:
+        mock_post.return_value.status_code = 200
+        cfg.TELEGRAM_BOT_TOKEN = "tok"
+        cfg.TELEGRAM_CHAT_ID   = "123"
+        cfg.DRY_RUN            = True
+        fn(pos)
+        return mock_post.call_args[1]["json"]["text"]
+
+
+def _base_pos(**kwargs):
+    base = {
+        "position_id": "pos-01", "asset": "BTC", "action": "YES",
+        "slug": "btc-up-5m", "pm_entry_price": 0.35, "fair_value": 0.55,
+        "edge": 0.20, "position_usd": 1.25, "seq_no": 42,
+        "exit_reason": "thesis_invalidated", "pm_exit_price": 0.72,
+    }
+    return {**base, **kwargs}
+
+
+def test_notify_open_shows_entry_hl_price():
+    """notify_open entry_hl_price'ı göstermeli."""
+    from monitor import notifier
+    text = _send_notifier(notifier.notify_open, _base_pos(entry_hl_price=66500.0))
+    assert "66,500" in text or "66500" in text, f"HL fiyatı bildirimde yok: {text}"
+
+
+def test_notify_open_no_crash_without_hl_price():
+    """entry_hl_price yokken notify_open hata vermemeli."""
+    from monitor import notifier
+    _send_notifier(notifier.notify_open, _base_pos())
+
+
+def test_notify_close_shows_hl_entry_and_exit():
+    """notify_close hem entry hem exit HL göstermeli."""
+    from monitor import notifier
+    text = _send_notifier(notifier.notify_close, _base_pos(entry_hl_price=66500.0, exit_hl_price=66502.0))
+    assert "66,500" in text or "66500" in text, f"entry HL yok: {text}"
+    assert "66,502" in text or "66502" in text, f"exit HL yok: {text}"
+
+
+def test_notify_close_no_crash_without_hl():
+    """HL fiyatlar yokken notify_close hata vermemeli."""
+    from monitor import notifier
+    _send_notifier(notifier.notify_close, _base_pos())
+
+
+def test_notify_resolved_late_shows_hl_prices():
+    """notify_resolved_late HL giriş ve çıkış göstermeli."""
+    from monitor import notifier
+    pos = {
+        "seq_no": 42, "asset": "BTC", "action": "YES",
+        "pm_entry_price": 0.35, "pm_exit_price": 1.0, "position_usd": 1.25,
+        "entry_hl_price": 66500.0, "exit_hl_price": 66510.0,
+    }
+    text = _send_notifier(notifier.notify_resolved_late, pos)
+    assert "66,500" in text or "66500" in text, f"entry HL yok: {text}"
+    assert "66,510" in text or "66510" in text, f"exit HL yok: {text}"
+
+
+def test_notify_resolved_late_no_crash_without_hl():
+    """HL fiyatlar yokken notify_resolved_late hata vermemeli."""
+    from monitor import notifier
+    pos = {"seq_no": 1, "asset": "BTC", "action": "YES",
+           "pm_entry_price": 0.35, "pm_exit_price": 1.0, "position_usd": 1.25}
+    _send_notifier(notifier.notify_resolved_late, pos)
