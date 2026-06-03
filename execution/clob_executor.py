@@ -6,12 +6,27 @@ executor.py ile birebir aynı interface:
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from decimal import Decimal, ROUND_DOWN
 from datetime import datetime, timezone
 from uuid import uuid4
 from execution.clob_client import get_client
 from py_clob_client_v2.clob_types import OrderArgs, OrderType
 
-MIN_SHARES = 5  # Polymarket CLOB minimum
+MIN_SHARES = 1  # Canary testi ile doğrulandı: CLOB gerçek min = $1 USDC, 5 share değil
+
+
+def _calc_shares(usdc: float, price: float) -> float:
+    """price × shares'in tam olarak ≤2 decimal olduğu en yüksek hassasiyeti döndür.
+    CLOB kuralı: maker_amount (USDC) max 2dp, taker_amount (shares) max 4dp.
+    Kontrol: (maker × 100) % 1 == 0 → trailing-zero'larla da çalışır.
+    """
+    p = Decimal(str(round(price, 2)))
+    budget = Decimal(str(round(usdc, 2)))
+    for precision in ("0.0001", "0.001", "0.01", "0.1", "1"):
+        s = (budget / p).quantize(Decimal(precision), rounding=ROUND_DOWN)
+        if (s * p * 100) % 1 == 0:
+            return float(s)
+    return max(1.0, float((budget / p).quantize(Decimal("1"), rounding=ROUND_DOWN)))
 
 
 async def execute(
@@ -35,7 +50,7 @@ async def execute(
     if position_usd < 1.0:
         print(f"[clob] {finding['slug']}: position_usd={position_usd:.2f} < $1 minimum, atlandı")
         return None
-    shares = round(position_usd / entry_price, 4)
+    shares = _calc_shares(position_usd, entry_price)
     if shares < MIN_SHARES:
         print(f"[clob] {finding['slug']}: shares={shares:.2f} < {MIN_SHARES} minimum, atlandı")
         return None
@@ -61,24 +76,39 @@ async def execute(
     def _get(obj, key, default=None):
         return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
 
-    status       = _get(resp, "status", "")
-    order_id     = _get(resp, "orderID", "")
-    size_filled  = _get(resp, "sizeFilled", "0")
-    fill_price_s = _get(resp, "price", str(entry_price))
+    status         = _get(resp, "status", "")
+    success        = _get(resp, "success", False)
+    order_id       = _get(resp, "orderID", "")
+    taking_amount  = _get(resp, "takingAmount", None)   # v2: gerçek share sayısı
+    making_amount  = _get(resp, "makingAmount", None)   # v2: USDC harcanan
+    size_filled    = _get(resp, "sizeFilled", None)     # v1: fill edilen share
 
-    if status != "MATCHED":
+    matched = success is True or status.lower() == "matched"
+    if not matched:
         print(f"[clob] {finding['slug']}: order UNMATCHED (status={status})")
         return None
 
-    fill_price  = float(fill_price_s or entry_price)
-    fill_shares = float(size_filled or shares)
+    # fill_shares: v2 takingAmount → v1 sizeFilled → FOK fallback (tümü doldu)
+    if taking_amount is not None and float(taking_amount) > 0:
+        fill_shares = float(taking_amount)
+    elif size_filled is not None and float(size_filled) > 0:
+        fill_shares = float(size_filled)
+    else:
+        fill_shares = shares
 
     if fill_shares <= 0:
         print(f"[clob] {finding['slug']}: fill_shares=0, pozisyon açılmadı")
         return None
 
-    if fill_shares < shares * 0.99:
-        print(f"[clob] {finding['slug']}: kısmi dolma — beklenen={shares:.4f}, gerçek={fill_shares:.4f}")
+    # fill_price: v2'de making/taking → v1'de "price" alanı → limit fiyatı fallback
+    if making_amount and float(taking_amount or 0) > 0:
+        fill_price = round(float(making_amount) / float(taking_amount), 6)
+    else:
+        fill_price_s = _get(resp, "price", str(entry_price))
+        fill_price   = float(fill_price_s or entry_price)
+
+    # position_usd: USDC gerçekten harcanan (v2 making_amount) veya fill × shares
+    pos_usd = float(making_amount) if making_amount else fill_price * fill_shares
 
     return {
         "position_id":             str(uuid4()),
@@ -89,7 +119,7 @@ async def execute(
         "fair_value":              finding["fair_value"],
         "ref_price":               finding["ref_price"],
         "edge":                    finding["edge"],
-        "position_usd":            fill_price * fill_shares,
+        "position_usd":            pos_usd,
         "kelly_f":                 risk_result["kelly_f"],
         "confidence_score":        gate_result["confidence_score"],
         "shares":                  fill_shares,

@@ -84,3 +84,65 @@ async def test_execute_uses_no_token_for_no_action():
         await execute(_finding("NO"), _gate(), _risk(), [])
     call_args = fake_client.create_and_post_order.call_args[0][0]
     assert call_args.token_id == "no-tok-222"
+
+
+# ── v2 API format testleri ──────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_execute_v2_lowercase_matched_status():
+    """v2 API 'matched' (küçük harf) döndürür → pozisyon açılmalı."""
+    fake_client = MagicMock()
+    fake_client.create_and_post_order.return_value = {
+        "status": "matched",          # küçük harf — v2 gerçek API yanıtı
+        "orderID": "0xabc",
+        "takingAmount": "71",
+        "makingAmount": "24.85",
+        "success": True,
+        "transactionsHashes": ["0xdef"],
+    }
+    with patch("execution.clob_executor.get_client", return_value=fake_client):
+        from execution.clob_executor import execute
+        result = await execute(_finding("YES"), _gate(), _risk(), [])
+    assert result is not None, "lowercase 'matched' pozisyon açmalı"
+    assert result["order_id"] == "0xabc"
+
+
+@pytest.mark.asyncio
+async def test_execute_v2_takingamount_used_for_shares():
+    """v2'de takingAmount gerçek share sayısıdır — sizeFilled yoktur."""
+    fake_client = MagicMock()
+    fake_client.create_and_post_order.return_value = {
+        "status": "matched",
+        "orderID": "0xbcd",
+        "takingAmount": "102",        # gerçek fill edilen share
+        "makingAmount": "1.02",       # USDC harcanan
+        "success": True,
+        "transactionsHashes": ["0xeff"],
+        # sizeFilled yok — v2 yanıtında gelmez
+    }
+    with patch("execution.clob_executor.get_client", return_value=fake_client):
+        from execution.clob_executor import execute
+        result = await execute(_finding("YES"), _gate(), _risk(), [])
+    assert result is not None
+    assert abs(result["shares"] - 102.0) < 0.01,        "fill_shares takingAmount'dan gelmeli"
+    assert abs(result["position_usd"] - 1.02) < 0.01,   "position_usd makingAmount olmalı"
+    assert abs(result["pm_entry_price"] - 0.01) < 0.001, "fill_price = making/taking = 0.01"
+
+
+@pytest.mark.asyncio
+async def test_execute_v2_sizefilled_none_no_crash():
+    """sizeFilled key'i yanıtta hiç yoksa (None default) — fill_shares 0 dönmemeli."""
+    fake_client = MagicMock()
+    fake_client.create_and_post_order.return_value = {
+        "status": "matched",
+        "orderID": "0xcde",
+        "takingAmount": "50",
+        "makingAmount": "17.50",
+        "success": True,
+        "transactionsHashes": ["0xfff"],
+    }
+    with patch("execution.clob_executor.get_client", return_value=fake_client):
+        from execution.clob_executor import execute
+        result = await execute(_finding("YES"), _gate(), _risk(), [])
+    assert result is not None, "sizeFilled eksikliği crash veya None döndürmemeli"
+    assert result["shares"] > 0

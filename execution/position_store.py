@@ -43,7 +43,7 @@ async def sell_position(pos: dict) -> float:
     status    = resp.get("status") if isinstance(resp, dict) else getattr(resp, "status", "")
     price_str = resp.get("price")  if isinstance(resp, dict) else getattr(resp, "price", None)
 
-    if status == "MATCHED" and price_str:
+    if (status or "").lower() == "matched" and price_str:
         return float(price_str)
 
     print(f"[sell] {pos.get('slug')}: SELL {status}, fallback={fallback:.4f}")

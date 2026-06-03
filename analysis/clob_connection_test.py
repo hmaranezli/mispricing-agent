@@ -49,7 +49,7 @@ async def run_canary() -> bool:
     # 2. Wallet bakiyesi
     print("\n[2] Wallet bakiyesi okunuyor...")
     try:
-        from py_clob_client.clob_types import BalanceAllowanceParams, AssetType
+        from py_clob_client_v2.clob_types import BalanceAllowanceParams, AssetType
         bal = client.get_balance_allowance(
             params=BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
         )

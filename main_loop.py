@@ -22,6 +22,7 @@ from data.hl_candles import current_price
 from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window
 from monitor.notifier import notify_open, notify_close, notify_halt
 from monitor.kill_switch import check as kill_switch_check
+from monitor.telegram_commands import poll_commands
 from db.logger import log_candidate, log_position_open, log_position_close, load_closed_today, get_connection, patch_position_resolution
 
 SCAN_INTERVAL_SECS = 15
@@ -256,6 +257,7 @@ async def main() -> None:
     open_positions: list[dict] = []
     closed_today:   list[dict] = []
     print(f"[bot] Başladı — DRY_RUN={config.DRY_RUN}, tarama={SCAN_INTERVAL_SECS}s")
+    asyncio.create_task(poll_commands())
     conn = await get_connection()
     open_positions = await _load_open_positions(conn)
     closed_today   = await load_closed_today(conn)

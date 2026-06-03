@@ -15,6 +15,7 @@ import asyncio
 import json
 import sys
 import os
+from decimal import Decimal, ROUND_DOWN
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
@@ -27,7 +28,7 @@ from execution.clob_client import get_client, reset_client
 from data.shortterm import find_shortterm
 from py_clob_client_v2.clob_types import BalanceAllowanceParams, AssetType, OrderArgs, OrderType
 
-MIN_TEST_USD   = 0.80  # $0.80 test — fee (~$0.03) dahil $1.00 bakiyeye sığar
+MIN_TEST_USD   = 1.10  # Polymarket min order $1 — $1.10 ile en az 2 share alınır
 TEST_ASSET     = "btc" # BTC marketlerinde test
 
 
@@ -91,8 +92,15 @@ async def run_test() -> bool:
         print(f"    ✗ {e}")
         return False
 
-    # 4. $1 BUY order gönder
-    shares = round(MIN_TEST_USD / best_ask, 4)
+    # 4. $1 BUY order gönder — shares × price ≤ 2 decimal (CLOB zorunlu)
+    p = Decimal(str(round(best_ask, 2)))
+    budget = Decimal(str(round(MIN_TEST_USD, 2)))
+    shares = float(budget / p)  # fallback
+    for prec in ("0.0001", "0.001", "0.01", "0.1", "1"):
+        s = (budget / p).quantize(Decimal(prec), rounding=ROUND_DOWN)
+        if (s * p * 100) % 1 == 0:
+            shares = float(s)
+            break
     print(f"\n[4] ${MIN_TEST_USD} YES order gönderiliyor ({shares} shares @ {best_ask})...")
     try:
         order_args = OrderArgs(
@@ -104,29 +112,41 @@ async def run_test() -> bool:
         resp = client.create_and_post_order(order_args, order_type=OrderType.FOK)
         print(f"    Response: {resp}")
 
-        status      = resp.get("status") if isinstance(resp, dict) else getattr(resp, "status", "?")
-        order_id    = resp.get("orderID") if isinstance(resp, dict) else getattr(resp, "orderID", "?")
-        size_filled = resp.get("sizeFilled") if isinstance(resp, dict) else getattr(resp, "sizeFilled", "0")
+        def _get(obj, key, default=None):
+            return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
+
+        status         = _get(resp, "status", "")
+        success        = _get(resp, "success", False)
+        order_id       = _get(resp, "orderID", "")
+        taking_amount  = _get(resp, "takingAmount", None)
+        making_amount  = _get(resp, "makingAmount", None)
+
+        matched = success is True or (status or "").lower() == "matched"
 
         print(f"    Status     : {status}")
         print(f"    Order ID   : {order_id}")
-        print(f"    Size filled: {size_filled}")
+        print(f"    takingAmount (shares): {taking_amount}")
+        print(f"    makingAmount (USDC)  : {making_amount}")
+        print(f"    Matched    : {matched}")
 
-        if status == "MATCHED":
-            print("    ✓ Order DOLDU — şimdi satıyoruz...")
-            filled = float(size_filled or 0)
-            if filled > 0:
-                sell_args = OrderArgs(
+        if matched:
+            fill_shares = float(taking_amount) if taking_amount else 0
+            fill_usdc   = float(making_amount) if making_amount else 0
+            print(f"    ✓ Order DOLDU — {fill_shares} share @ ${fill_usdc:.4f} USDC")
+            if fill_shares > 0:
+                sell_price = round(best_ask * 0.95, 2)
+                sell_args  = OrderArgs(
                     token_id=yes_token,
-                    price=round(best_ask * 0.95, 2),
-                    size=filled,
+                    price=sell_price,
+                    size=fill_shares,
                     side="SELL",
                 )
-                sell_resp = client.create_and_post_order(sell_args)
-                sell_status = sell_resp.get("status") if isinstance(sell_resp, dict) else getattr(sell_resp, "status", "?")
-                print(f"    SELL status: {sell_status}")
+                sell_resp   = client.create_and_post_order(sell_args, order_type=OrderType.FOK)
+                sell_status = _get(sell_resp, "status", "?")
+                sell_success = _get(sell_resp, "success", False)
+                print(f"    SELL status: {sell_status} | success: {sell_success}")
         else:
-            print("    ⚠ IOC iptal oldu (fill yok) — kayıp yok, bu normal olabilir")
+            print("    ⚠ FOK iptal oldu (fill yok) — kayıp yok, likidite yetersiz olabilir")
 
     except Exception as e:
         print(f"    ✗ Order hatası: {e}")
