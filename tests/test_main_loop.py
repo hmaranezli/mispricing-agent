@@ -298,7 +298,8 @@ async def test_heal_fixes_null_pnl_when_api_returns(mem_db):
 
     closed_today = [{"position_id": "heal-001", "pm_exit_price": None, "exit_reason": "market_expired"}]
 
-    with patch("main_loop.fetch_resolved", new_callable=AsyncMock) as mock_res:
+    with patch("main_loop.fetch_resolved", new_callable=AsyncMock) as mock_res, \
+         patch("main_loop.notify_resolved_late"):
         mock_res.return_value = {"yes_exit": 1.0, "no_exit": 0.0}
         await _heal_pending_resolutions(mem_db, closed_today, limit=3)
 
@@ -327,7 +328,8 @@ async def test_heal_skips_when_api_still_none(mem_db):
     )
     await mem_db.commit()
 
-    with patch("main_loop.fetch_resolved", new_callable=AsyncMock) as mock_res:
+    with patch("main_loop.fetch_resolved", new_callable=AsyncMock) as mock_res, \
+         patch("main_loop.notify_resolved_late"):
         mock_res.return_value = None
         await _heal_pending_resolutions(mem_db, [], limit=3)
 
@@ -352,7 +354,8 @@ async def test_heal_respects_limit(mem_db):
         )
     await mem_db.commit()
 
-    with patch("main_loop.fetch_resolved", new_callable=AsyncMock) as mock_res:
+    with patch("main_loop.fetch_resolved", new_callable=AsyncMock) as mock_res, \
+         patch("main_loop.notify_resolved_late"):
         mock_res.return_value = {"yes_exit": 1.0, "no_exit": 0.0}
         await _heal_pending_resolutions(mem_db, [], limit=2)
 
@@ -361,6 +364,53 @@ async def test_heal_respects_limit(mem_db):
     ) as cur:
         remaining = (await cur.fetchone())[0]
     assert remaining == 3  # 5 - 2 = 3 hâlâ null
+
+
+@pytest.mark.asyncio
+async def test_heal_calls_notify_resolved_late(mem_db):
+    """Heal başarılıysa notify_resolved_late doğru asset/seq_no ile çağrılır."""
+    await mem_db.execute(
+        """INSERT INTO positions
+               (position_id, ts_open, ts_close, slug, asset, action, pm_entry_price,
+                position_usd, kelly_f, confidence_score, status, exit_reason, dry_run, seq_no)
+           VALUES ('heal-ntf', '2026-06-01T10:00:00+00:00', '2026-06-01T10:05:00+00:00',
+                   'xrp-updown-5m-1000', 'XRP', 'YES', 0.5, 1.25, 0.30, 80.0,
+                   'closed', 'market_expired', 1, 99)"""
+    )
+    await mem_db.commit()
+
+    with patch("main_loop.fetch_resolved", new_callable=AsyncMock) as mock_res, \
+         patch("main_loop.notify_resolved_late") as mock_notify:
+        mock_res.return_value = {"yes_exit": 1.0, "no_exit": 0.0}
+        await _heal_pending_resolutions(mem_db, [], limit=3)
+
+    mock_notify.assert_called_once()
+    call_pos = mock_notify.call_args[0][0]
+    assert call_pos["asset"] == "XRP"
+    assert call_pos["seq_no"] == 99
+    assert call_pos["pm_exit_price"] == 1.0
+    assert call_pos["action"] == "YES"
+
+
+@pytest.mark.asyncio
+async def test_heal_no_notify_when_api_none(mem_db):
+    """fetch_resolved None döndürürse notify_resolved_late çağrılmaz."""
+    await mem_db.execute(
+        """INSERT INTO positions
+               (position_id, ts_open, ts_close, slug, asset, action, pm_entry_price,
+                position_usd, kelly_f, confidence_score, status, exit_reason, dry_run)
+           VALUES ('heal-no-ntf', '2026-06-01T10:00:00+00:00', '2026-06-01T10:05:00+00:00',
+                   'btc-updown-5m-2000', 'BTC', 'YES', 0.5, 1.25, 0.30, 80.0,
+                   'closed', 'market_expired', 1)"""
+    )
+    await mem_db.commit()
+
+    with patch("main_loop.fetch_resolved", new_callable=AsyncMock) as mock_res, \
+         patch("main_loop.notify_resolved_late") as mock_notify:
+        mock_res.return_value = None
+        await _heal_pending_resolutions(mem_db, [], limit=3)
+
+    mock_notify.assert_not_called()
 
 
 # ── Regression: notify_open n_open_before slice bug ─────────────────────────

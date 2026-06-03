@@ -20,7 +20,7 @@ from execution.reconcile      import startup_reconcile
 from position.manager import check_exit, close_position
 from data.hl_candles import current_price
 from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window
-from monitor.notifier import notify_open, notify_close, notify_halt, notify_restart, notify_soft_stop, notify_hard_stop
+from monitor.notifier import notify_open, notify_close, notify_halt, notify_restart, notify_soft_stop, notify_hard_stop, notify_resolved_late
 from monitor.kill_switch import check as kill_switch_check
 from monitor.telegram_commands import poll_commands
 from monitor.state import is_paused
@@ -163,7 +163,7 @@ async def _heal_pending_resolutions(
     if conn is None:
         return
     async with conn.execute(
-        """SELECT position_id, slug, action, pm_entry_price, position_usd
+        """SELECT position_id, slug, asset, action, pm_entry_price, position_usd, seq_no
            FROM positions
            WHERE status='closed' AND pm_exit_price IS NULL
            LIMIT ?""",
@@ -171,7 +171,7 @@ async def _heal_pending_resolutions(
     ) as cur:
         rows = await cur.fetchall()
 
-    for position_id, slug, action, pm_entry_price, position_usd in rows:
+    for position_id, slug, asset, action, pm_entry_price, position_usd, seq_no in rows:
         try:
             resolution = await fetch_resolved(slug)
             if resolution is None:
@@ -188,6 +188,14 @@ async def _heal_pending_resolutions(
                     pos["realized_pnl"]  = realized_pnl
                     pos["exit_reason"]   = "market_resolved_late"
                     break
+            notify_resolved_late({
+                "seq_no":         seq_no,
+                "asset":          asset,
+                "action":         action,
+                "pm_entry_price": pm_entry_price,
+                "pm_exit_price":  pm_exit,
+                "position_usd":   position_usd,
+            })
         except Exception as e:
             print(f"[heal] {slug} hata: {e}")
 
