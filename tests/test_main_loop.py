@@ -111,6 +111,24 @@ async def test_scan_skips_already_open_slug():
     assert len(open_pos) == 1
 
 
+@pytest.mark.asyncio
+async def test_scan_does_not_open_same_slug_twice_in_one_scan():
+    """findings listesinde aynı slug iki kez varsa yalnızca bir pozisyon açılır."""
+    dup_finding = {**_finding(), "slug": "dup-slug-test"}
+    fake_pos = {"position_id": "dup-001", "slug": "dup-slug-test",
+                "status": "open", "asset": "BTC", "action": "YES"}
+    with patch("main_loop.scan_edges",   new_callable=AsyncMock) as mock_scan, \
+         patch("main_loop._run_council", new_callable=AsyncMock) as mock_council, \
+         patch("main_loop.execute",      new_callable=AsyncMock) as mock_exec:
+        mock_scan.return_value    = [dup_finding, dup_finding]  # aynı slug iki kez
+        mock_council.return_value = (_pass_gate(), _pass_risk())
+        mock_exec.return_value    = fake_pos
+        open_pos = []
+        await _scan_and_execute(open_pos, [], bankroll_usd=1000.0)
+    assert len(open_pos) == 1, f"Beklenen 1 pozisyon, açılan: {len(open_pos)}"
+    assert mock_exec.call_count == 1, f"execute {mock_exec.call_count} kez çağrıldı"
+
+
 # ── Task 3: _monitor_positions() ─────────────────────────────────────────────
 
 def _open_position():

@@ -152,6 +152,7 @@ async def _scan_and_execute(
         if position:
             await log_position_open(conn, position)
             open_positions.append(position)
+            open_slugs.add(position["slug"])
 
 
 async def _heal_pending_resolutions(
