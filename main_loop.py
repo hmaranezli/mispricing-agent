@@ -44,7 +44,7 @@ async def _load_open_positions(conn) -> list[dict]:
     async with conn.execute(
         "SELECT position_id, ts_open, slug, asset, action, pm_entry_price, "
         "fair_value, ref_price, edge, position_usd, kelly_f, confidence_score, dry_run, "
-        "shares, order_id, yes_token_id, no_token_id, seq_no "
+        "shares, order_id, yes_token_id, no_token_id, seq_no, entry_hl_price "
         "FROM positions WHERE status='open' AND dry_run=?",
         (1 if config.DRY_RUN else 0,),
     ) as cur:
@@ -73,6 +73,7 @@ async def _load_open_positions(conn) -> list[dict]:
             "exit_reason":            None,
             "closed_at":              None,
             "seq_no":                 r[17],
+            "entry_hl_price":         r[18],
         }
         for r in rows
     ]
@@ -164,7 +165,8 @@ async def _heal_pending_resolutions(
     if conn is None:
         return
     async with conn.execute(
-        """SELECT position_id, slug, asset, action, pm_entry_price, position_usd, seq_no
+        """SELECT position_id, slug, asset, action, pm_entry_price, position_usd, seq_no,
+                  entry_hl_price
            FROM positions
            WHERE status='closed' AND pm_exit_price IS NULL
            LIMIT ?""",
@@ -172,7 +174,7 @@ async def _heal_pending_resolutions(
     ) as cur:
         rows = await cur.fetchall()
 
-    for position_id, slug, asset, action, pm_entry_price, position_usd, seq_no in rows:
+    for position_id, slug, asset, action, pm_entry_price, position_usd, seq_no, entry_hl_price in rows:
         try:
             resolution = await fetch_resolved(slug)
             if resolution is None:
@@ -182,7 +184,12 @@ async def _heal_pending_resolutions(
                 print(f"[heal] {slug} pm_entry_price=0, skipping")
                 continue
             realized_pnl = (pm_exit - pm_entry_price) / pm_entry_price * position_usd
-            await patch_position_resolution(conn, position_id, pm_exit, realized_pnl)
+            try:
+                exit_hl_price = await current_price(asset)
+            except Exception:
+                exit_hl_price = None
+            await patch_position_resolution(conn, position_id, pm_exit, realized_pnl,
+                                            exit_hl_price=exit_hl_price)
             for pos in closed_today:
                 if pos.get("position_id") == position_id:
                     pos["pm_exit_price"] = pm_exit
@@ -190,12 +197,14 @@ async def _heal_pending_resolutions(
                     pos["exit_reason"]   = "market_resolved_late"
                     break
             notify_resolved_late({
-                "seq_no":         seq_no,
-                "asset":          asset,
-                "action":         action,
-                "pm_entry_price": pm_entry_price,
-                "pm_exit_price":  pm_exit,
-                "position_usd":   position_usd,
+                "seq_no":          seq_no,
+                "asset":           asset,
+                "action":          action,
+                "pm_entry_price":  pm_entry_price,
+                "pm_exit_price":   pm_exit,
+                "position_usd":    position_usd,
+                "entry_hl_price":  entry_hl_price,
+                "exit_hl_price":   exit_hl_price,
             })
         except Exception as e:
             print(f"[heal] {slug} hata: {e}")
@@ -217,9 +226,10 @@ async def _monitor_positions(
                 resolution = await fetch_resolved(pos["slug"])
                 if resolution:
                     pm_exit = resolution["yes_exit"] if pos["action"] == "YES" else resolution["no_exit"]
-                    closed = close_position(pos, "market_resolved", pm_exit_price=pm_exit)
+                    closed = close_position(pos, "market_resolved", pm_exit_price=pm_exit,
+                                            exit_hl_price=hl_price)
                 else:
-                    closed = close_position(pos, "market_expired")
+                    closed = close_position(pos, "market_expired", exit_hl_price=hl_price)
                 await log_position_close(conn, closed)
                 open_positions.remove(pos)
                 closed_today.append(closed)
@@ -234,7 +244,7 @@ async def _monitor_positions(
                     if pos["action"] == "NO":
                         pm_exit = round(1 - window["best_ask"], 4)
                     else:
-                        pm_exit = window["best_ask"]
+                        pm_exit = window["best_bid"]
                 else:
                     # LIVE: gerçek SELL order gönder
                     pos["current_bid"] = (
@@ -243,7 +253,8 @@ async def _monitor_positions(
                         else window["best_bid"]
                     )
                     pm_exit = await sell_position(pos)
-                closed = close_position(pos, exit_reason, pm_exit_price=pm_exit)
+                closed = close_position(pos, exit_reason, pm_exit_price=pm_exit,
+                                        exit_hl_price=hl_price)
                 await log_position_close(conn, closed)
                 open_positions.remove(pos)
                 closed_today.append(closed)

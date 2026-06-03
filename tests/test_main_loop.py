@@ -271,6 +271,31 @@ async def test_monitor_no_position_exit_uses_no_price():
 
 
 @pytest.mark.asyncio
+async def test_monitor_yes_position_exit_uses_best_bid_not_ask():
+    """DRY_RUN YES çıkışta pm_exit_price = best_bid (satış fiyatı), best_ask değil."""
+    pos = {**_open_position(), "action": "YES", "pm_entry_price": 0.35}
+    open_pos = [pos]
+    closed = []
+    fake_window = {
+        "best_ask": 0.75,   # alış fiyatı — çıkışta KULLANILMAMALI
+        "best_bid": 0.72,   # satış fiyatı — çıkışta bu kullanılmalı
+        "seconds_remaining": 500,
+        "neg_risk": False,
+    }
+    with patch("main_loop.current_price",       new_callable=AsyncMock) as mock_hl, \
+         patch("main_loop.fetch_by_slug",       new_callable=AsyncMock) as mock_pm, \
+         patch("main_loop.parse_market_window", return_value=fake_window), \
+         patch("main_loop.fetch_resolved",      new_callable=AsyncMock, return_value=None), \
+         patch("main_loop.check_exit",          return_value="thesis_invalidated"):
+        mock_hl.return_value = 95000.0
+        mock_pm.return_value = {}
+        await _monitor_positions(open_pos, closed)
+    assert len(closed) == 1
+    assert abs(closed[0]["pm_exit_price"] - 0.72) < 1e-4, \
+        f"YES çıkış fiyatı yanlış: {closed[0]['pm_exit_price']:.4f} — best_bid=0.72 olmalı, best_ask=0.75 değil"
+
+
+@pytest.mark.asyncio
 async def test_dry_run_passes_zero_daily_loss_to_council():
     """DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz."""
     import config
@@ -507,3 +532,72 @@ async def test_live_monitor_calls_sell_position_on_exit():
     mock_sell.assert_called_once()
     assert len(closed) == 1
     assert abs(closed[0]["pm_exit_price"] - 0.91) < 0.001
+
+
+@pytest.mark.asyncio
+async def test_load_open_positions_includes_entry_hl_price(mem_db):
+    """DB'den yüklenen pozisyonda entry_hl_price alanı olmalı."""
+    pos = {
+        "position_id": "hl-load-01", "slug": "btc-up-5m", "asset": "BTC",
+        "action": "YES", "pm_entry_price": 0.35, "fair_value": 0.55,
+        "ref_price": 95000.0, "edge": 0.18,
+        "position_usd": 1.25, "kelly_f": 0.15, "confidence_score": 82.0,
+        "opened_at": "2026-06-03T10:00:00+00:00",
+        "entry_hl_price": 66500.0,
+    }
+    await log_position_open(mem_db, pos)
+    result = await _load_open_positions(mem_db)
+    assert len(result) == 1
+    assert result[0].get("entry_hl_price") == 66500.0, \
+        f"entry_hl_price={result[0].get('entry_hl_price')}, beklenen 66500.0"
+
+
+@pytest.mark.asyncio
+async def test_monitor_passes_exit_hl_price_to_closed_position():
+    """_monitor_positions exit anındaki HL fiyatını closed dict'e eklemeli."""
+    pos = _open_position()
+    open_pos = [pos]
+    closed = []
+    fake_window = {"best_ask": 0.72, "best_bid": 0.70,
+                   "seconds_remaining": 500, "neg_risk": False}
+    with patch("main_loop.current_price",       new_callable=AsyncMock) as mock_hl, \
+         patch("main_loop.fetch_by_slug",       new_callable=AsyncMock) as mock_pm, \
+         patch("main_loop.parse_market_window", return_value=fake_window), \
+         patch("main_loop.fetch_resolved",      new_callable=AsyncMock, return_value=None), \
+         patch("main_loop.check_exit",          return_value="thesis_invalidated"):
+        mock_hl.return_value = 66502.0
+        mock_pm.return_value = {}
+        await _monitor_positions(open_pos, closed)
+    assert len(closed) == 1
+    assert closed[0].get("exit_hl_price") == 66502.0, \
+        f"exit_hl_price={closed[0].get('exit_hl_price')}, beklenen 66502.0"
+
+
+@pytest.mark.asyncio
+async def test_heal_passes_hl_prices_to_notify(mem_db):
+    """_heal entry_hl_price DB'den okuyup exit için current_price çağırmalı."""
+    await mem_db.execute(
+        """INSERT INTO positions
+           (position_id, ts_open, slug, asset, action, pm_entry_price, position_usd,
+            confidence_score, status, exit_reason, dry_run, seq_no, entry_hl_price)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        ("heal-hl-01", "2026-06-03T10:00:00+00:00", "slug-heal-hl", "BTC", "YES",
+         0.35, 1.25, 82.0, "closed", "market_expired", 1, 5, 66500.0),
+    )
+    await mem_db.commit()
+    closed_today = [{"position_id": "heal-hl-01", "pm_exit_price": None,
+                     "exit_reason": "market_expired"}]
+    notify_calls = []
+    with patch("main_loop.fetch_resolved",       new_callable=AsyncMock,
+               return_value={"yes_exit": 1.0, "no_exit": 0.0}), \
+         patch("main_loop.patch_position_resolution", new_callable=AsyncMock), \
+         patch("main_loop.current_price",        new_callable=AsyncMock,
+               return_value=66510.0) as mock_hl, \
+         patch("main_loop.notify_resolved_late", side_effect=lambda p: notify_calls.append(p)):
+        await _heal_pending_resolutions(mem_db, closed_today)
+    mock_hl.assert_called_once_with("BTC")
+    assert len(notify_calls) == 1
+    assert notify_calls[0].get("entry_hl_price") == 66500.0, \
+        f"entry_hl_price={notify_calls[0].get('entry_hl_price')}, beklenen 66500.0"
+    assert notify_calls[0].get("exit_hl_price") == 66510.0, \
+        f"exit_hl_price={notify_calls[0].get('exit_hl_price')}, beklenen 66510.0"
