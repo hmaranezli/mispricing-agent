@@ -31,6 +31,7 @@ def close_position(
     position:      dict,
     exit_reason:   str,
     pm_exit_price: float | None = None,
+    exit_hl_price: float | None = None,
     log_file:      Path = LOG_FILE,
 ) -> dict:
     """Pozisyonu kapatır, JSONL'a yazar, güncellenmiş kaydı döndürür."""
@@ -40,6 +41,7 @@ def close_position(
         "exit_reason":   exit_reason,
         "closed_at":     datetime.now(timezone.utc).isoformat(),
         "pm_exit_price": pm_exit_price,
+        "exit_hl_price": exit_hl_price,
     }
     _log("position_closed", {
         "position_id":    closed["position_id"],
@@ -49,6 +51,7 @@ def close_position(
         "exit_reason":    exit_reason,
         "pm_entry_price": closed["pm_entry_price"],
         "pm_exit_price":  pm_exit_price,
+        "exit_hl_price":  exit_hl_price,
         "fair_value":     closed["fair_value"],
         "closed_at":      closed["closed_at"],
         "dry_run":        closed["dry_run"],

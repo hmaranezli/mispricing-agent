@@ -142,3 +142,37 @@ def test_check_exit_profit_target_hit_no():
     result = check_exit(pos, hl_price=94800, pm_yes_price=0.38,
                         time_to_expiry_secs=900)
     assert result == "profit_target_hit"
+
+
+def test_close_position_includes_exit_hl_price():
+    """close_position exit_hl_price parametresini closed dict'e eklemeli."""
+    from datetime import timedelta
+    pos = {
+        "position_id": "pos-hl-01", "asset": "BTC", "action": "YES",
+        "slug": "btc-up-5m", "pm_entry_price": 0.35, "fair_value": 0.55,
+        "ref_price": 95000.0, "edge": 0.20, "position_usd": 1.25,
+        "kelly_f": 0.15, "confidence_score": 82.0, "seconds_remaining": 300,
+        "opened_at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+        "status": "open", "dry_run": True,
+        "exit_reason": None, "closed_at": None, "entry_hl_price": 66500.0,
+    }
+    closed = close_position(pos, "thesis_invalidated", pm_exit_price=0.72, exit_hl_price=66502.0)
+    assert closed["exit_hl_price"] == 66502.0, \
+        f"exit_hl_price={closed.get('exit_hl_price')}, beklenen 66502.0"
+    assert closed["status"] == "closed"
+
+
+def test_close_position_exit_hl_price_none_when_not_given():
+    """exit_hl_price verilmezse None olmalı — backward compat."""
+    from datetime import timedelta
+    pos = {
+        "position_id": "pos-hl-02", "asset": "BTC", "action": "YES",
+        "slug": "btc-up-5m", "pm_entry_price": 0.35, "fair_value": 0.55,
+        "ref_price": 95000.0, "edge": 0.20, "position_usd": 1.25,
+        "kelly_f": 0.15, "confidence_score": 82.0, "seconds_remaining": 300,
+        "opened_at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+        "status": "open", "dry_run": True,
+        "exit_reason": None, "closed_at": None,
+    }
+    closed = close_position(pos, "market_expired")
+    assert closed.get("exit_hl_price") is None
