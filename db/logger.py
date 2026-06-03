@@ -53,13 +53,17 @@ async def log_candidate(
 async def log_position_open(conn, position: dict) -> None:
     if conn is None:
         return
+    async with conn.execute("SELECT COALESCE(MAX(seq_no), 0) + 1 FROM positions") as cur:
+        row = await cur.fetchone()
+    seq_no = row[0] if row else 1
+    position["seq_no"] = seq_no
     await conn.execute(
         """INSERT OR IGNORE INTO positions
                (position_id, ts_open, slug, asset, action, pm_entry_price,
                 fair_value, ref_price, edge, position_usd, kelly_f,
                 confidence_score, status, dry_run,
-                shares, order_id, yes_token_id, no_token_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?)""",
+                shares, order_id, yes_token_id, no_token_id, seq_no)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)""",
         (
             position["position_id"],
             position.get("opened_at", datetime.now(timezone.utc).isoformat()),
@@ -78,6 +82,7 @@ async def log_position_open(conn, position: dict) -> None:
             position.get("order_id"),
             position.get("yes_token_id"),
             position.get("no_token_id"),
+            seq_no,
         ),
     )
     await conn.commit()
@@ -115,7 +120,7 @@ async def load_closed_today(conn) -> list[dict]:
     async with conn.execute(
         """SELECT position_id, ts_open, ts_close, slug, asset, action,
                   pm_entry_price, pm_exit_price, position_usd, realized_pnl,
-                  exit_reason, dry_run
+                  exit_reason, dry_run, seq_no
            FROM positions
            WHERE status='closed' AND ts_close LIKE ?""",
         (f"{today_prefix}%",),
@@ -135,6 +140,7 @@ async def load_closed_today(conn) -> list[dict]:
             "realized_pnl":   r[9],
             "exit_reason":    r[10],
             "dry_run":        bool(r[11]),
+            "seq_no":         r[12],
         }
         for r in rows
     ]

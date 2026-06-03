@@ -24,7 +24,7 @@ def on_trade_closed(pnl: float, current_bankroll: float, starting_bankroll: floa
     """
     global _consecutive_losses
 
-    if pnl > 0:
+    if pnl >= 0:
         _consecutive_losses = 0
         return None
 

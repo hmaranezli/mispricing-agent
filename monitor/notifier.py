@@ -25,16 +25,21 @@ def send_telegram(msg: str) -> None:
         pass
 
 
+def _seq(pos: dict) -> str:
+    n = pos.get("seq_no")
+    return f"#{n} " if n is not None else ""
+
+
 def notify_open(pos: dict) -> None:
     send_telegram(
-        f"AÇILDI {pos['asset']} {pos['action']}\n"
+        f"AÇILDI {_seq(pos)}{pos['asset']} {pos['action']}\n"
         f"Edge: {pos.get('edge', 0):.0%} | Pozisyon: ${pos.get('position_usd', 0):.2f}"
     )
 
 
 def notify_close(pos: dict) -> None:
     msg = (
-        f"KAPANDI {pos['asset']} {pos['action']}\n"
+        f"KAPANDI {_seq(pos)}{pos['asset']} {pos['action']}\n"
         f"Sebep: {pos.get('exit_reason', '?')}"
     )
     entry   = pos.get("pm_entry_price")

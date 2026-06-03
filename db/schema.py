@@ -47,6 +47,8 @@ _MIGRATIONS = [
     "ALTER TABLE positions ADD COLUMN order_id TEXT",
     "ALTER TABLE positions ADD COLUMN yes_token_id TEXT",
     "ALTER TABLE positions ADD COLUMN no_token_id TEXT",
+    # Sira numarasi:
+    "ALTER TABLE positions ADD COLUMN seq_no INTEGER",
 ]
 
 

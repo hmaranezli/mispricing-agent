@@ -25,6 +25,7 @@ from monitor.kill_switch import check as kill_switch_check
 from monitor.telegram_commands import poll_commands
 from monitor.state import is_paused
 from monitor import circuit_breaker
+from monitor import positions_cache
 from db.logger import log_candidate, log_position_open, log_position_close, load_closed_today, get_connection, patch_position_resolution
 
 SCAN_INTERVAL_SECS = 15
@@ -43,7 +44,7 @@ async def _load_open_positions(conn) -> list[dict]:
     async with conn.execute(
         "SELECT position_id, ts_open, slug, asset, action, pm_entry_price, "
         "fair_value, ref_price, edge, position_usd, kelly_f, confidence_score, dry_run, "
-        "shares, order_id, yes_token_id, no_token_id "
+        "shares, order_id, yes_token_id, no_token_id, seq_no "
         "FROM positions WHERE status='open' AND dry_run=?",
         (1 if config.DRY_RUN else 0,),
     ) as cur:
@@ -71,6 +72,7 @@ async def _load_open_positions(conn) -> list[dict]:
             "no_token_id":            r[16],
             "exit_reason":            None,
             "closed_at":              None,
+            "seq_no":                 r[17],
         }
         for r in rows
     ]
@@ -303,6 +305,7 @@ async def main() -> None:
                     notify_open(pos)
 
                 await _heal_pending_resolutions(conn, closed_today)
+                positions_cache.set_open_positions(open_positions)
 
             except Exception as e:
                 print(f"[bot] Döngü hatası: {e}")

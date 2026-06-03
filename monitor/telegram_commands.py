@@ -18,6 +18,7 @@ import requests
 
 from monitor.notifier  import send_telegram
 from monitor.kill_switch import arm as ks_arm, disarm as ks_disarm
+from monitor import positions_cache
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
@@ -52,15 +53,18 @@ def build_stats_message(total: int, wins: int, losses: int, pnl: float, hours: i
     )
 
 
-def build_durum_message(open_positions: list[dict], daily_pnl: float) -> str:
+def build_durum_message(open_positions: list[dict], daily_pnl: float, stale_secs: float | None = None) -> str:
     lines = [f"=== DURUM ===", f"Acik pozisyon: {len(open_positions)}/5"]
     for p in open_positions:
-        slug  = p.get("slug", "?")[:28]
+        seq   = f"#{p['seq_no']} " if p.get("seq_no") is not None else ""
+        slug  = p.get("slug", "?")[:24]
         act   = p.get("action", "?")
         entry = p.get("pm_entry_price", 0)
         usd   = p.get("position_usd", 0)
-        lines.append(f"  {act} {slug} entry={entry:.3f} ${usd:.2f}")
+        lines.append(f"  {seq}{act} {slug} entry={entry:.3f} ${usd:.2f}")
     lines.append(f"Gunluk P&L: ${daily_pnl:+.2f}")
+    if stale_secs is not None and stale_secs > 30:
+        lines.append(f"[Son scan: {int(stale_secs)}s once]")
     return "\n".join(lines)
 
 
@@ -147,9 +151,15 @@ def handle_command(text: str) -> str:
         )
 
     if text == "/durum":
-        positions = _query_open_positions()
+        cached = positions_cache.get_open_positions()
+        stale  = positions_cache.seconds_since_update()
+        if cached or stale < float("inf"):
+            open_pos = cached
+        else:
+            open_pos = _query_open_positions()
+            stale = None
         daily_pnl = _query_daily_pnl()
-        return build_durum_message(positions, daily_pnl)
+        return build_durum_message(open_pos, daily_pnl, stale_secs=stale)
 
     if text == "/durdur":
         ks_arm()
@@ -157,9 +167,11 @@ def handle_command(text: str) -> str:
 
     if text == "/baslat":
         from monitor.state import soft_resume
+        from monitor import circuit_breaker
         soft_resume()
+        circuit_breaker.reset_streak()
         ks_disarm()
-        return "Soft stop KALDIRILDI. Bot devam ediyor."
+        return "Soft stop KALDIRILDI. Streak sifirland. Bot devam ediyor."
 
     if text == "/hardbaslat":
         from monitor.state import hard_resume
