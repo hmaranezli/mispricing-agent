@@ -62,8 +62,9 @@ async def log_position_open(conn, position: dict) -> None:
                (position_id, ts_open, slug, asset, action, pm_entry_price,
                 fair_value, ref_price, edge, position_usd, kelly_f,
                 confidence_score, status, dry_run,
-                shares, order_id, yes_token_id, no_token_id, seq_no)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)""",
+                shares, order_id, yes_token_id, no_token_id, seq_no,
+                entry_hl_price)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)""",
         (
             position["position_id"],
             position.get("opened_at", datetime.now(timezone.utc).isoformat()),
@@ -83,6 +84,7 @@ async def log_position_open(conn, position: dict) -> None:
             position.get("yes_token_id"),
             position.get("no_token_id"),
             seq_no,
+            position.get("entry_hl_price"),
         ),
     )
     await conn.commit()
@@ -101,13 +103,14 @@ async def log_position_close(conn, position: dict) -> None:
     await conn.execute(
         """UPDATE positions
            SET status='closed', ts_close=?, pm_exit_price=?,
-               exit_reason=?, realized_pnl=?
+               exit_reason=?, realized_pnl=?, exit_hl_price=?
            WHERE position_id=?""",
         (
             position.get("closed_at", datetime.now(timezone.utc).isoformat()),
             exit_p,
             position.get("exit_reason"),
             realized_pnl,
+            position.get("exit_hl_price"),
             position["position_id"],
         ),
     )
@@ -152,13 +155,16 @@ async def patch_position_resolution(
     pm_exit_price: float,
     realized_pnl:  float,
     exit_reason:   str = "market_resolved_late",
+    exit_hl_price: float | None = None,
 ) -> None:
     """Kapanmış pozisyonun exit fiyatı ve P&L'ini günceller (market_expired → resolved_late)."""
     if conn is None:
         return
     await conn.execute(
-        "UPDATE positions SET pm_exit_price=?, realized_pnl=?, exit_reason=? WHERE position_id=?",
-        (pm_exit_price, realized_pnl, exit_reason, position_id),
+        """UPDATE positions
+           SET pm_exit_price=?, realized_pnl=?, exit_reason=?, exit_hl_price=?
+           WHERE position_id=?""",
+        (pm_exit_price, realized_pnl, exit_reason, exit_hl_price, position_id),
     )
     if conn.total_changes == 0:
         print(f"[patch] WARN: no row found for position_id={position_id!r} — nothing updated")

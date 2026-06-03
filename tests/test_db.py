@@ -293,3 +293,84 @@ async def test_log_position_open_stores_clob_fields(conn):
     assert row[1] == "ord-abc123"
     assert row[2] == "yes-tok-111"
     assert row[3] == "no-tok-222"
+
+
+@pytest.mark.asyncio
+async def test_positions_has_entry_exit_hl_price_columns():
+    """positions tablosunda entry_hl_price ve exit_hl_price kolonları olmalı."""
+    async with aiosqlite.connect(":memory:") as db:
+        await init_schema(db)
+        async with db.execute("PRAGMA table_info(positions)") as cur:
+            cols = {row[1] for row in await cur.fetchall()}
+    assert "entry_hl_price" in cols, "entry_hl_price kolonu eksik"
+    assert "exit_hl_price" in cols, "exit_hl_price kolonu eksik"
+
+
+@pytest.mark.asyncio
+async def test_log_position_open_saves_entry_hl_price(conn):
+    """log_position_open → entry_hl_price DB'ye kaydedilmeli."""
+    pos = {
+        "position_id": "hl-001", "slug": "btc-up-5m", "asset": "BTC",
+        "action": "YES", "pm_entry_price": 0.35, "fair_value": 0.55,
+        "ref_price": 95000.0, "edge": 0.20, "position_usd": 1.25,
+        "kelly_f": 0.15, "confidence_score": 82.0,
+        "opened_at": "2026-06-03T10:00:00+00:00",
+        "entry_hl_price": 66500.0,
+    }
+    await logger.log_position_open(conn, pos)
+    async with conn.execute(
+        "SELECT entry_hl_price FROM positions WHERE position_id='hl-001'"
+    ) as cur:
+        row = await cur.fetchone()
+    assert row is not None
+    assert abs(row[0] - 66500.0) < 0.01, f"entry_hl_price={row[0]}, beklenen 66500.0"
+
+
+@pytest.mark.asyncio
+async def test_log_position_close_saves_exit_hl_price(conn):
+    """log_position_close → exit_hl_price DB'ye kaydedilmeli."""
+    pos = {
+        "position_id": "hl-002", "slug": "btc-up-5m", "asset": "BTC",
+        "action": "YES", "pm_entry_price": 0.35, "fair_value": 0.55,
+        "ref_price": 95000.0, "edge": 0.20, "position_usd": 1.25,
+        "kelly_f": 0.15, "confidence_score": 82.0,
+        "opened_at": "2026-06-03T10:00:00+00:00",
+        "entry_hl_price": 66500.0,
+    }
+    closed = {
+        **pos, "status": "closed", "exit_reason": "thesis_invalidated",
+        "closed_at": "2026-06-03T10:14:00+00:00",
+        "pm_exit_price": 0.72, "exit_hl_price": 66502.0,
+    }
+    await logger.log_position_open(conn, pos)
+    await logger.log_position_close(conn, closed)
+    async with conn.execute(
+        "SELECT exit_hl_price FROM positions WHERE position_id='hl-002'"
+    ) as cur:
+        row = await cur.fetchone()
+    assert row is not None
+    assert abs(row[0] - 66502.0) < 0.01, f"exit_hl_price={row[0]}, beklenen 66502.0"
+
+
+@pytest.mark.asyncio
+async def test_patch_position_resolution_saves_exit_hl_price(conn):
+    """patch_position_resolution exit_hl_price ile çağrılınca DB'ye kaydedilmeli."""
+    pos = {
+        "position_id": "hl-003", "slug": "btc-up-5m", "asset": "BTC",
+        "action": "YES", "pm_entry_price": 0.35, "fair_value": 0.55,
+        "ref_price": 95000.0, "edge": 0.20, "position_usd": 1.25,
+        "kelly_f": 0.15, "confidence_score": 82.0,
+        "opened_at": "2026-06-03T10:00:00+00:00",
+    }
+    await logger.log_position_open(conn, pos)
+    await conn.execute(
+        "UPDATE positions SET status='closed', pm_exit_price=NULL WHERE position_id='hl-003'"
+    )
+    await conn.commit()
+    await logger.patch_position_resolution(conn, "hl-003", 1.0, 1.07, exit_hl_price=66510.0)
+    async with conn.execute(
+        "SELECT exit_hl_price FROM positions WHERE position_id='hl-003'"
+    ) as cur:
+        row = await cur.fetchone()
+    assert row is not None
+    assert abs(row[0] - 66510.0) < 0.01

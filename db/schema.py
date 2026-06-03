@@ -49,6 +49,9 @@ _MIGRATIONS = [
     "ALTER TABLE positions ADD COLUMN no_token_id TEXT",
     # Sira numarasi:
     "ALTER TABLE positions ADD COLUMN seq_no INTEGER",
+    # HL fiyat kolonlari:
+    "ALTER TABLE positions ADD COLUMN entry_hl_price REAL",
+    "ALTER TABLE positions ADD COLUMN exit_hl_price REAL",
 ]
 
 
