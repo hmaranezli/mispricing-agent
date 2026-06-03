@@ -223,3 +223,22 @@ async def test_two_calls_produce_different_position_ids(tmp_path):
         open_positions=[], log_file=tmp_path / "log.jsonl"
     )
     assert r1["position_id"] != r2["position_id"]
+
+
+@pytest.mark.asyncio
+async def test_dry_run_position_includes_entry_hl_price(tmp_path):
+    """DRY_RUN executor → position dict'te entry_hl_price = finding['cur_price'] olmalı."""
+    finding = {**_finding(), "cur_price": 66500.0}
+    result = await execute(finding, _gate(), _risk(), open_positions=[], log_file=tmp_path / "log.jsonl")
+    assert result is not None
+    assert result.get("entry_hl_price") == 66500.0, \
+        f"entry_hl_price={result.get('entry_hl_price')}, beklenen 66500.0"
+
+
+@pytest.mark.asyncio
+async def test_dry_run_position_entry_hl_price_none_when_missing(tmp_path):
+    """cur_price finding'de yoksa entry_hl_price=None olmalı — backward compat."""
+    finding_no_hl = {k: v for k, v in _finding().items() if k != "cur_price"}
+    result = await execute(finding_no_hl, _gate(), _risk(), open_positions=[], log_file=tmp_path / "log.jsonl")
+    assert result is not None
+    assert result.get("entry_hl_price") is None

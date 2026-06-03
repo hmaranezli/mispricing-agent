@@ -73,6 +73,7 @@ async def execute(
         "status":                  "open",
         "requires_human_approval": risk_result["position_usd"] > config.HUMAN_APPROVAL_USD,
         "dry_run":                 config.DRY_RUN,
+        "entry_hl_price":          finding.get("cur_price"),
         "exit_reason":             None,
         "closed_at":               None,
     }
