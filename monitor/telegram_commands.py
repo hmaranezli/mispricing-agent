@@ -41,9 +41,10 @@ def parse_hours(text: str) -> int | None:
     return int(suffix) if suffix.isdigit() else None
 
 
-def build_stats_message(total: int, wins: int, losses: int, pnl: float, hours: int | None, expired: int = 0) -> str:
-    win_rate = wins / total * 100 if total else 0
-    label    = f"son {hours} saat" if hours else "tum zamanlar"
+def build_stats_message(total: int, wins: int, losses: int, pnl: float, hours: int | None, expired: int = 0, breakeven: int = 0) -> str:
+    denominator = wins + losses
+    win_rate    = wins / denominator * 100 if denominator else 0
+    label       = f"son {hours} saat" if hours else "tum zamanlar"
     msg = (
         f"=== ISTATISTIK ({label}) ===\n"
         f"Trade     : {total}\n"
@@ -51,6 +52,8 @@ def build_stats_message(total: int, wins: int, losses: int, pnl: float, hours: i
         f"Win rate  : {win_rate:.1f}%\n"
         f"Net P&L   : ${pnl:+.2f}"
     )
+    if breakeven:
+        msg += f"\nBerabere  : {breakeven}"
     if expired:
         msg += f"\nExpired   : {expired} (PnL bekleniyor)"
     return msg
@@ -90,17 +93,19 @@ def _query_stats(hours: int | None) -> dict:
         f"SELECT COUNT(*), SUM(realized_pnl), "
         f"COUNT(CASE WHEN realized_pnl>0 THEN 1 END), "
         f"COUNT(CASE WHEN realized_pnl<0 THEN 1 END), "
-        f"COUNT(CASE WHEN pm_exit_price IS NULL THEN 1 END) "
+        f"COUNT(CASE WHEN pm_exit_price IS NULL THEN 1 END), "
+        f"COUNT(CASE WHEN realized_pnl=0 AND pm_exit_price IS NOT NULL THEN 1 END) "
         f"FROM positions {where}", params
     )
     row = c.fetchone()
     conn.close()
     return {
-        "total":   row[0] or 0,
-        "pnl":     row[1] or 0.0,
-        "wins":    row[2] or 0,
-        "losses":  row[3] or 0,
-        "expired": row[4] or 0,
+        "total":     row[0] or 0,
+        "pnl":       row[1] or 0.0,
+        "wins":      row[2] or 0,
+        "losses":    row[3] or 0,
+        "expired":   row[4] or 0,
+        "breakeven": row[5] or 0,
     }
 
 
@@ -186,7 +191,7 @@ def handle_command(text: str) -> str:
     if text.startswith("/istatistik"):
         hours = parse_hours(text)
         s     = _query_stats(hours)
-        return build_stats_message(s["total"], s["wins"], s["losses"], s["pnl"], hours, s.get("expired", 0))
+        return build_stats_message(s["total"], s["wins"], s["losses"], s["pnl"], hours, s.get("expired", 0), s.get("breakeven", 0))
 
     return f"Bilinmeyen komut: {text}\nKomutlar: /durum /istatistik /istatistik6 /durdur /baslat /hardbaslat"
 

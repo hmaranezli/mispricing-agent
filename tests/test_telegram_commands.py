@@ -127,3 +127,38 @@ def test_baslat_clears_soft_paused():
     with patch("monitor.telegram_commands.send_telegram"):
         result = handle_command("/baslat")
     assert s.SOFT_PAUSED is False
+
+
+def test_build_stats_shows_breakeven_when_nonzero():
+    """breakeven>0 iken 'Berabere' satırı mesaja eklenmeli."""
+    from monitor.telegram_commands import build_stats_message
+    msg = build_stats_message(total=167, wins=139, losses=19, pnl=100.0,
+                              hours=None, expired=1, breakeven=8)
+    assert "Berabere" in msg
+    assert "8" in msg
+
+
+def test_build_stats_no_breakeven_line_when_zero():
+    """breakeven=0 iken 'Berabere' satırı görünmemeli."""
+    from monitor.telegram_commands import build_stats_message
+    msg = build_stats_message(total=100, wins=80, losses=20, pnl=50.0,
+                              hours=None, expired=0, breakeven=0)
+    assert "Berabere" not in msg
+
+
+def test_build_stats_win_rate_uses_wins_plus_losses_only():
+    """Win rate = wins/(wins+losses) — expired ve berabere dahil edilmez."""
+    from monitor.telegram_commands import build_stats_message
+    # 139/(139+19) = 87.97...% → 88.0%
+    msg = build_stats_message(total=167, wins=139, losses=19, pnl=100.0,
+                              hours=None, expired=1, breakeven=8)
+    assert "88.0%" in msg
+
+
+def test_build_stats_win_rate_unchanged_when_no_breakeven():
+    """Berabere=0 iken win rate değişmez — geriye dönük uyumluluk."""
+    from monitor.telegram_commands import build_stats_message
+    # 75/(75+25) = 75.0% — eski toplam-bazlı hesapla aynı sonuç
+    msg = build_stats_message(total=100, wins=75, losses=25, pnl=150.0,
+                              hours=None, breakeven=0)
+    assert "75.0%" in msg
