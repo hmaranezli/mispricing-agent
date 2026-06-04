@@ -1,4 +1,13 @@
-"""execution/position_store.py — SELL order gönder, fill fiyatını döndür."""
+"""execution/position_store.py — SELL order gönder, fill fiyatını döndür.
+
+Docs: https://docs.polymarket.com/api-reference/introduction
+  SELL matched response:
+    - status: "matched"
+    - takingAmount: USDC received (seller takes USDC from book)
+    - makingAmount: shares given (seller gives shares to book)
+    - "price" field: DOKÜMANTE DEĞİL — kullanılmaz
+  fill_price = takingAmount / makingAmount
+"""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -7,8 +16,7 @@ from py_clob_client_v2.clob_types import OrderArgs, OrderType
 
 
 async def sell_position(pos: dict) -> float:
-    """
-    Açık pozisyonun token'larını satar (IOC SELL order).
+    """Açık pozisyonun token'larını FAK SELL order ile satar.
 
     pos: position dict — action, yes_token_id, no_token_id, shares, current_bid gerekli
     Döner: fill fiyatı (float). API başarısızsa current_bid fallback.
@@ -32,7 +40,7 @@ async def sell_position(pos: dict) -> float:
 
     try:
         client = get_client()
-        resp   = client.create_and_post_order(order_args, order_type=OrderType.FOK)
+        resp   = client.create_and_post_order(order_args, order_type=OrderType.FAK)
     except Exception as e:
         print(f"[sell] {pos.get('slug')}: SELL hatası — {e}, fallback={fallback:.4f}")
         return fallback
@@ -40,11 +48,26 @@ async def sell_position(pos: dict) -> float:
     if not resp:
         return fallback
 
-    status    = resp.get("status") if isinstance(resp, dict) else getattr(resp, "status", "")
-    price_str = resp.get("price")  if isinstance(resp, dict) else getattr(resp, "price", None)
+    def _get(obj, key, default=None):
+        return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
 
-    if (status or "").lower() == "matched" and price_str:
-        return float(price_str)
+    status       = (_get(resp, "status", "") or "").lower()
+    taking_str   = _get(resp, "takingAmount", None)  # USDC received
+    making_str   = _get(resp, "makingAmount", None)  # shares given
+
+    if status == "matched":
+        try:
+            taking = float(taking_str) if taking_str else 0.0
+            making = float(making_str) if making_str else 0.0
+            if making > 0 and taking > 0:
+                fill_price = round(taking / making, 6)
+                print(f"[sell] {pos.get('slug')}: SELL FILLED {making:.4f} shares → ${taking:.4f} @ {fill_price:.4f}")
+                return fill_price
+        except (ValueError, TypeError):
+            pass
+        # takingAmount/makingAmount yoksa fallback (docs'ta garanti değil)
+        print(f"[sell] {pos.get('slug')}: SELL matched ama amounts eksik, fallback={fallback:.4f}")
+        return fallback
 
     print(f"[sell] {pos.get('slug')}: SELL {status}, fallback={fallback:.4f}")
     return fallback

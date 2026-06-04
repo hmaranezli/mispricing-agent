@@ -2,32 +2,41 @@
 
 executor.py ile birebir aynı interface:
   async def execute(finding, gate_result, risk_result, open_positions) -> dict | None
+
+Docs: https://docs.polymarket.com/trading/orders/create.md
+- BUY market order: MarketOrderArgs(amount=USD, price=worst_price_limit)
+- FAK = Fill-And-Kill: fills available depth, cancels remainder → partial fills OK
+- PartialCreateOrderOptions(tick_size, neg_risk) zorunlu
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from decimal import Decimal, ROUND_DOWN
 from datetime import datetime, timezone
 from uuid import uuid4
+import aiohttp
 from execution.clob_client import get_client
-from py_clob_client_v2.clob_types import OrderArgs, OrderType
+from py_clob_client_v2 import MarketOrderArgs, OrderType, PartialCreateOrderOptions
+from py_clob_client_v2.order_builder.constants import BUY
 
-MIN_SHARES    = 1     # Canary testi ile doğrulandı: CLOB gerçek min = $1 USDC, 5 share değil
-PRICE_PREMIUM = 0.01  # FOK fill rate iyileştirmesi: limit fiyatı best_ask + 1 cent
+CLOB_HOST     = "https://clob.polymarket.com"
+PRICE_PREMIUM = 0.03   # worst-price slippage buffer: live_ask + 3 cent
+TICK_SIZE     = "0.01" # binary prediction markets default tick size
 
 
-def _calc_shares(usdc: float, price: float) -> float:
-    """price × shares'in tam olarak ≤2 decimal olduğu en yüksek hassasiyeti döndür.
-    CLOB kuralı: maker_amount (USDC) max 2dp, taker_amount (shares) max 4dp.
-    Kontrol: (maker × 100) % 1 == 0 → trailing-zero'larla da çalışır.
-    """
-    p = Decimal(str(round(price, 2)))
-    budget = Decimal(str(round(usdc, 2)))
-    for precision in ("0.0001", "0.001", "0.01", "0.1", "1"):
-        s = (budget / p).quantize(Decimal(precision), rounding=ROUND_DOWN)
-        if (s * p * 100) % 1 == 0:
-            return float(s)
-    return max(1.0, float((budget / p).quantize(Decimal("1"), rounding=ROUND_DOWN)))
+async def _get_clob_price(token_id: str) -> float | None:
+    """CLOB /price?side=BUY → token için anlık best ask fiyatı."""
+    try:
+        timeout = aiohttp.ClientTimeout(total=3)
+        async with aiohttp.ClientSession(timeout=timeout) as s:
+            async with s.get(f"{CLOB_HOST}/price",
+                             params={"token_id": token_id, "side": "BUY"}) as r:
+                if r.status == 200:
+                    data = await r.json()
+                    p = float(data.get("price", 0))
+                    return p if p > 0 else None
+    except Exception:
+        pass
+    return None
 
 
 async def execute(
@@ -36,7 +45,12 @@ async def execute(
     risk_result:    dict,
     open_positions: list[dict],
 ) -> dict | None:
-    """Polymarket CLOB'a BUY IOC order gönder. Dolarsa position dict döner, dolmazsa None."""
+    """Polymarket CLOB'a FAK market BUY order gönder.
+
+    FAK (Fill-And-Kill): mevcut derinliği doldurur, kalanı iptal eder.
+    FOK (Fill-Or-Kill) yerine FAK kullanılır — kısmi fill kabul edilir.
+    Dolarsa position dict döner, dolmazsa None.
+    """
     action   = finding["action"]
     token_id = finding["yes_token_id"] if action == "YES" else finding["no_token_id"]
 
@@ -45,27 +59,33 @@ async def execute(
         return None
 
     position_usd = risk_result["position_usd"]
-    entry_price  = finding["best_ask"] + PRICE_PREMIUM
-    if entry_price <= 0:
-        return None
     if position_usd < 1.0:
         print(f"[clob] {finding['slug']}: position_usd={position_usd:.2f} < $1 minimum, atlandı")
         return None
-    shares = _calc_shares(position_usd, entry_price)
-    if shares < MIN_SHARES:
-        print(f"[clob] {finding['slug']}: shares={shares:.2f} < {MIN_SHARES} minimum, atlandı")
-        return None
 
-    order_args = OrderArgs(
-        token_id=token_id,
-        price=entry_price,
-        size=shares,
-        side="BUY",
-    )
+    # CLOB'dan anlık fiyat — council gecikmesini (~5s) kompanse et
+    clob_price  = await _get_clob_price(token_id)
+    live_ask    = clob_price if clob_price else finding["best_ask"]
+    worst_price = round(live_ask + PRICE_PREMIUM, 4)  # slippage limit
+
+    print(f"[clob] {finding['slug']}: FAK BUY amount=${position_usd:.2f} worst_price={worst_price:.4f} (live={live_ask:.4f}+{PRICE_PREMIUM})")
 
     try:
         client = get_client()
-        resp   = client.create_and_post_order(order_args, order_type=OrderType.FOK)
+        market_order = client.create_market_order(
+            order_args=MarketOrderArgs(
+                token_id=token_id,
+                side=BUY,
+                amount=position_usd,      # BUY için: dolar miktarı (docs: "dollar amount to spend")
+                price=worst_price,        # worst-price slippage koruması
+                order_type=OrderType.FAK, # explicit: kütüphane default FOK — override zorunlu
+            ),
+            options=PartialCreateOrderOptions(
+                tick_size=TICK_SIZE,
+                neg_risk=finding.get("neg_risk", False),
+            ),
+        )
+        resp = client.post_order(market_order, OrderType.FAK)
     except Exception as e:
         print(f"[clob] {finding['slug']}: order hatası — {e}")
         return None
@@ -73,43 +93,30 @@ async def execute(
     if not resp:
         return None
 
-    # py-clob-client dict veya object döndürebilir — her ikisini de destekle
     def _get(obj, key, default=None):
         return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
 
-    status         = _get(resp, "status", "")
-    success        = _get(resp, "success", False)
-    order_id       = _get(resp, "orderID", "")
-    taking_amount  = _get(resp, "takingAmount", None)   # v2: gerçek share sayısı
-    making_amount  = _get(resp, "makingAmount", None)   # v2: USDC harcanan
-    size_filled    = _get(resp, "sizeFilled", None)     # v1: fill edilen share
+    status        = _get(resp, "status", "")
+    success       = _get(resp, "success", False)
+    order_id      = _get(resp, "orderID", "")
+    taking_amount = _get(resp, "takingAmount", None)  # v2: fill edilen share
+    making_amount = _get(resp, "makingAmount", None)  # v2: harcanan USDC
 
-    matched = success is True or status.lower() == "matched"
+    # FAK: "matched" = fill oldu (tam veya kısmi) — docs statuses: matched/live/delayed/unmatched
+    matched = (status or "").lower() == "matched"
     if not matched:
-        print(f"[clob] {finding['slug']}: order UNMATCHED (status={status})")
+        print(f"[clob] {finding['slug']}: FAK UNMATCHED (status={status})")
         return None
 
-    # fill_shares: v2 takingAmount → v1 sizeFilled → FOK fallback (tümü doldu)
-    if taking_amount is not None and float(taking_amount) > 0:
-        fill_shares = float(taking_amount)
-    elif size_filled is not None and float(size_filled) > 0:
-        fill_shares = float(size_filled)
-    else:
-        fill_shares = shares
-
+    fill_shares = float(taking_amount) if taking_amount and float(taking_amount) > 0 else 0.0
     if fill_shares <= 0:
-        print(f"[clob] {finding['slug']}: fill_shares=0, pozisyon açılmadı")
+        print(f"[clob] {finding['slug']}: fill_shares=0")
         return None
 
-    # fill_price: v2'de making/taking → v1'de "price" alanı → limit fiyatı fallback
-    if making_amount and float(taking_amount or 0) > 0:
-        fill_price = round(float(making_amount) / float(taking_amount), 6)
-    else:
-        fill_price_s = _get(resp, "price", str(entry_price))
-        fill_price   = float(fill_price_s or entry_price)
+    pos_usd    = float(making_amount) if making_amount else position_usd
+    fill_price = round(pos_usd / fill_shares, 6) if fill_shares > 0 else worst_price
 
-    # position_usd: USDC gerçekten harcanan (v2 making_amount) veya fill × shares
-    pos_usd = float(making_amount) if making_amount else fill_price * fill_shares
+    print(f"[clob] {finding['slug']}: FILLED {fill_shares:.4f} shares @ ${fill_price:.4f} (${pos_usd:.2f})")
 
     return {
         "position_id":             str(uuid4()),

@@ -19,7 +19,7 @@ TELEGRAM_CHAT_ID        = os.getenv("TELEGRAM_CHAT_ID")
 DATABASE_URL            = os.getenv("DATABASE_URL", "postgresql://localhost/mispricing")
 
 # ── KILITLI GUARDRAIL KURALLARI ──
-DRY_RUN              = True   # True iken HICBIR gercek order gitmez, sadece loglar
+DRY_RUN              = False  # LIVE — gercek orderlar gidiyor
 MAX_TRADE_PCT        = 0.05   # Tek trade max sermayenin %5'i
 MAX_OPEN_POSITIONS   = 5      # Ayni anda max 5 acik pozisyon
 BUST_PROTECTION_PCT  = 0.50   # Bankroll baslangicin %50'sine dusunce → HARD STOP
@@ -33,5 +33,5 @@ HUMAN_APPROVAL_USD   = 50     # Bu tutar uzeri pozisyon insan onayi ister
 REQUIRE_FRESH_API_DATA = True  # Her sayi API'den taze cekilir, hafizadan asla
 HALT_ON_API_MISMATCH   = True  # API ile ajan celisirse islem durur
 
-# ── Izlenecek varliklar (baslangic: sadece BTC + ETH) ──
-TRACKED_ASSETS = ["BTC", "ETH"]
+# ── Izlenecek varliklar ──
+TRACKED_ASSETS = ["BTC", "ETH", "SOL", "XRP"]

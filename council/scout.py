@@ -65,6 +65,9 @@ async def _process_market(m: dict) -> dict | None:
     if asset is None:
         return None
 
+    if asset not in config.TRACKED_ASSETS:
+        return None
+
     window = parse_market_window(m)
     if window is None:
         return None

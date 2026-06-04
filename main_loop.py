@@ -95,6 +95,12 @@ async def _run_council(
                             veto_layer="verifier", veto_reason=verification.get("reason"))
         return None
 
+    # Taze fiyatları finding'e yaz — execute() stale scout fiyatı değil fresh_ask kullansın
+    if verification.get("fresh_best_ask", 0) > 0:
+        finding["best_ask"] = verification["fresh_best_ask"]
+    if verification.get("fresh_best_bid", 0) > 0:
+        finding["best_bid"] = verification["fresh_best_bid"]
+
     rt = await redteam_eval(finding, verification)
     if not rt["pass"]:
         await log_candidate(conn, finding, passed=False,
@@ -125,6 +131,7 @@ async def _scan_and_execute(
     closed_today:   list[dict],
     bankroll_usd:   float,
     conn=None,
+    failed_slugs: set | None = None,
 ) -> None:
     """Yeni fırsatları tarar, konsey geçenleri açar."""
     if len(open_positions) >= config.MAX_OPEN_POSITIONS:
@@ -132,12 +139,16 @@ async def _scan_and_execute(
 
     findings = await scan_edges()
     daily_loss = 0.0
-    open_slugs = {p["slug"] for p in open_positions}
+    open_slugs  = {p["slug"] for p in open_positions}
+    _failed     = failed_slugs if failed_slugs is not None else set()
 
     for finding in findings:
         if len(open_positions) >= config.MAX_OPEN_POSITIONS:
             break
-        if finding["slug"] in open_slugs:
+        slug = finding["slug"]
+        if slug in open_slugs:
+            continue
+        if slug in _failed:
             continue
 
         result = await _run_council(finding,
@@ -153,7 +164,9 @@ async def _scan_and_execute(
         if position:
             await log_position_open(conn, position)
             open_positions.append(position)
-            open_slugs.add(position["slug"])
+            open_slugs.add(slug)
+        else:
+            _failed.add(slug)  # FOK kill — bu pencerede tekrar deneme
 
 
 async def _heal_pending_resolutions(
@@ -266,6 +279,7 @@ async def _monitor_positions(
 async def main() -> None:
     open_positions: list[dict] = []
     closed_today:   list[dict] = []
+    failed_slugs:   set[str]   = set()
     print(f"[bot] Başladı — DRY_RUN={config.DRY_RUN}, tarama={SCAN_INTERVAL_SECS}s")
     asyncio.create_task(poll_commands())
     conn = await get_connection()
@@ -320,7 +334,7 @@ async def main() -> None:
 
                 n_open_before = len(open_positions)  # monitor sonrası al: kapananlar düşüldü
                 effective_bankroll = await get_effective_bankroll(BANKROLL_CONFIG)
-                await _scan_and_execute(open_positions, closed_today, effective_bankroll, conn=conn)
+                await _scan_and_execute(open_positions, closed_today, effective_bankroll, conn=conn, failed_slugs=failed_slugs)
                 for pos in open_positions[n_open_before:]:
                     notify_open(pos)
 

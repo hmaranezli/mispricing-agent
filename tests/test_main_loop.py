@@ -69,6 +69,37 @@ async def test_run_council_returns_gate_and_risk_on_success():
     assert risk_result["position_usd"] == 25.0
 
 
+@pytest.mark.asyncio
+async def test_run_council_updates_finding_with_fresh_price_after_verify():
+    """verify() taze fiyat döndürünce finding güncellenir — execute stale fiyat kullanmaz.
+
+    Scout: best_ask=0.35 (T+0).
+    Verify: fresh_best_ask=0.42 (T+3s) — fiyat 7 cent hareket etti.
+    execute() finding["best_ask"] ile çalıştığından finding güncellenmeli
+    ki FOK limit stale fiyat yerine taze fiyat kullansın.
+    """
+    finding = _finding()  # best_ask=0.35, best_bid=0.33
+    fresh_verify = {
+        **_pass_verify(),
+        "fresh_best_ask": 0.42,  # 7 cent yukarı hareket
+        "fresh_best_bid": 0.40,
+    }
+    with patch("main_loop.verify",       new_callable=AsyncMock) as mv, \
+         patch("main_loop.redteam_eval", new_callable=AsyncMock) as mr, \
+         patch("main_loop.risk_eval",    new=MagicMock(return_value=_pass_risk())), \
+         patch("main_loop.gate",         new_callable=AsyncMock) as mg:
+        mv.return_value = fresh_verify
+        mr.return_value = _pass_redteam()
+        mg.return_value = _pass_gate()
+        await _run_council(finding, bankroll_usd=1000.0, n_open=0, daily_loss_usd=0.0)
+    assert finding["best_ask"] == 0.42, (
+        f"finding['best_ask'] taze fiyatla güncellenmeli idi: {finding['best_ask']} (beklenen 0.42)"
+    )
+    assert finding["best_bid"] == 0.40, (
+        f"finding['best_bid'] taze fiyatla güncellenmeli idi: {finding['best_bid']} (beklenen 0.40)"
+    )
+
+
 # ── Task 2: _scan_and_execute() ──────────────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -129,6 +160,69 @@ async def test_scan_does_not_open_same_slug_twice_in_one_scan():
     assert mock_exec.call_count == 1, f"execute {mock_exec.call_count} kez çağrıldı"
 
 
+# ── Task 2b: failed_slugs thrashing fix ──────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_fok_failed_slug_added_to_failed_set():
+    """FOK kill (execute→None) olan slug failed_slugs'a eklenir."""
+    failed: set[str] = set()
+    with patch("main_loop.scan_edges",   new_callable=AsyncMock) as mock_scan, \
+         patch("main_loop._run_council", new_callable=AsyncMock) as mock_council, \
+         patch("main_loop.execute",      new_callable=AsyncMock) as mock_exec:
+        mock_scan.return_value    = [_finding()]
+        mock_council.return_value = (_pass_gate(), _pass_risk())
+        mock_exec.return_value    = None          # FOK kill
+        await _scan_and_execute([], [], bankroll_usd=1000.0, failed_slugs=failed)
+    assert _finding()["slug"] in failed, "FOK kill sonrası slug failed_slugs'a eklenmeli"
+
+
+@pytest.mark.asyncio
+async def test_fok_failed_slug_skipped_before_council():
+    """failed_slugs'taki slug için _run_council hiç çağrılmaz."""
+    slug = _finding()["slug"]
+    failed: set[str] = {slug}
+    with patch("main_loop.scan_edges",   new_callable=AsyncMock) as mock_scan, \
+         patch("main_loop._run_council", new_callable=AsyncMock) as mock_council:
+        mock_scan.return_value = [_finding()]
+        await _scan_and_execute([], [], bankroll_usd=1000.0, failed_slugs=failed)
+    mock_council.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fok_failed_slug_does_not_block_different_slug():
+    """failed_slugs'ta farklı bir slug varsa mevcut finding engellenmez."""
+    failed: set[str] = {"some-completely-different-slug-99999"}
+    fake_pos = {"position_id": "ok-001", "slug": _finding()["slug"],
+                "status": "open", "asset": "BTC", "action": "YES"}
+    with patch("main_loop.scan_edges",   new_callable=AsyncMock) as mock_scan, \
+         patch("main_loop._run_council", new_callable=AsyncMock) as mock_council, \
+         patch("main_loop.execute",      new_callable=AsyncMock) as mock_exec:
+        mock_scan.return_value    = [_finding()]
+        mock_council.return_value = (_pass_gate(), _pass_risk())
+        mock_exec.return_value    = fake_pos
+        open_pos = []
+        await _scan_and_execute(open_pos, [], bankroll_usd=1000.0, failed_slugs=failed)
+    mock_council.assert_called_once()
+    assert len(open_pos) == 1
+
+
+@pytest.mark.asyncio
+async def test_successful_fill_not_added_to_failed_slugs():
+    """Başarılı fill (execute→position) olan slug failed_slugs'a eklenmez."""
+    failed: set[str] = set()
+    slug = _finding()["slug"]
+    fake_pos = {"position_id": "win-001", "slug": slug,
+                "status": "open", "asset": "BTC", "action": "YES"}
+    with patch("main_loop.scan_edges",   new_callable=AsyncMock) as mock_scan, \
+         patch("main_loop._run_council", new_callable=AsyncMock) as mock_council, \
+         patch("main_loop.execute",      new_callable=AsyncMock) as mock_exec:
+        mock_scan.return_value    = [_finding()]
+        mock_council.return_value = (_pass_gate(), _pass_risk())
+        mock_exec.return_value    = fake_pos
+        await _scan_and_execute([], [], bankroll_usd=1000.0, failed_slugs=failed)
+    assert slug not in failed, "Başarılı fill failed_slugs'a eklenmemeli"
+
+
 # ── Task 3: _monitor_positions() ─────────────────────────────────────────────
 
 def _open_position():
@@ -148,6 +242,7 @@ def _open_position():
 @pytest.mark.asyncio
 async def test_monitor_closes_position_on_exit_signal():
     """check_exit sinyal verince pozisyon open'dan closed'a geçer."""
+    import config as _cfg
     pos = _open_position()
     open_pos = [pos]
     closed = []
@@ -156,7 +251,8 @@ async def test_monitor_closes_position_on_exit_signal():
     with patch("main_loop.current_price",     new_callable=AsyncMock) as mock_hl, \
          patch("main_loop.fetch_by_slug",     new_callable=AsyncMock) as mock_pm, \
          patch("main_loop.parse_market_window", return_value=fake_window), \
-         patch("main_loop.check_exit",        return_value="max_hold_time"):
+         patch("main_loop.check_exit",        return_value="max_hold_time"), \
+         patch.object(_cfg, "DRY_RUN", True):
         mock_hl.return_value = 95000.0
         mock_pm.return_value = {}
         await _monitor_positions(open_pos, closed)
@@ -257,11 +353,13 @@ async def test_monitor_no_position_exit_uses_no_price():
         "seconds_remaining": 500,
         "neg_risk": False,
     }
+    import config as _cfg
     with patch("main_loop.current_price",       new_callable=AsyncMock) as mock_hl, \
          patch("main_loop.fetch_by_slug",       new_callable=AsyncMock) as mock_pm, \
          patch("main_loop.parse_market_window", return_value=fake_window), \
          patch("main_loop.fetch_resolved",      new_callable=AsyncMock, return_value=None), \
-         patch("main_loop.check_exit",          return_value="thesis_invalidated"):
+         patch("main_loop.check_exit",          return_value="thesis_invalidated"), \
+         patch.object(_cfg, "DRY_RUN", True):
         mock_hl.return_value = 95000.0
         mock_pm.return_value = {}
         await _monitor_positions(open_pos, closed)
@@ -282,11 +380,13 @@ async def test_monitor_yes_position_exit_uses_best_bid_not_ask():
         "seconds_remaining": 500,
         "neg_risk": False,
     }
+    import config as _cfg
     with patch("main_loop.current_price",       new_callable=AsyncMock) as mock_hl, \
          patch("main_loop.fetch_by_slug",       new_callable=AsyncMock) as mock_pm, \
          patch("main_loop.parse_market_window", return_value=fake_window), \
          patch("main_loop.fetch_resolved",      new_callable=AsyncMock, return_value=None), \
-         patch("main_loop.check_exit",          return_value="thesis_invalidated"):
+         patch("main_loop.check_exit",          return_value="thesis_invalidated"), \
+         patch.object(_cfg, "DRY_RUN", True):
         mock_hl.return_value = 95000.0
         mock_pm.return_value = {}
         await _monitor_positions(open_pos, closed)
@@ -560,11 +660,13 @@ async def test_monitor_passes_exit_hl_price_to_closed_position():
     closed = []
     fake_window = {"best_ask": 0.72, "best_bid": 0.70,
                    "seconds_remaining": 500, "neg_risk": False}
+    import config as _cfg
     with patch("main_loop.current_price",       new_callable=AsyncMock) as mock_hl, \
          patch("main_loop.fetch_by_slug",       new_callable=AsyncMock) as mock_pm, \
          patch("main_loop.parse_market_window", return_value=fake_window), \
          patch("main_loop.fetch_resolved",      new_callable=AsyncMock, return_value=None), \
-         patch("main_loop.check_exit",          return_value="thesis_invalidated"):
+         patch("main_loop.check_exit",          return_value="thesis_invalidated"), \
+         patch.object(_cfg, "DRY_RUN", True):
         mock_hl.return_value = 66502.0
         mock_pm.return_value = {}
         await _monitor_positions(open_pos, closed)

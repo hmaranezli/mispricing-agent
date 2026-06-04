@@ -1,9 +1,9 @@
-"""tests/test_clob_executor.py — clob_executor execute() testleri."""
+"""tests/test_clob_executor.py — clob_executor execute() testleri (FAK + MarketOrderArgs)."""
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 
 def _finding(action="YES"):
@@ -22,19 +22,26 @@ def _risk():
     return {"pass": True, "position_usd": 25.0, "kelly_f": 0.15,
             "kelly_fraction_applied": 0.25, "reason": ""}
 
+def _fake_matched_resp():
+    return {
+        "status": "matched", "success": True, "orderID": "ord-abc",
+        "takingAmount": "71.43",   # shares received
+        "makingAmount": "25.00",   # USDC spent
+    }
+
+
+# ── Temel FAK fill davranışı ─────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_execute_returns_position_on_matched_order():
-    """Order MATCHED → position dict döner, gerekli alanlar dolu."""
+async def test_execute_returns_position_on_matched_fak():
+    """FAK 'matched' → position dict döner, gerekli alanlar dolu."""
     fake_client = MagicMock()
-    fake_client.create_and_post_order.return_value = {
-        "status": "MATCHED", "orderID": "ord-abc",
-        "sizeFilled": "71.43", "price": "0.35",
-    }
-    with patch("execution.clob_executor.get_client", return_value=fake_client):
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.return_value = _fake_matched_resp()
+    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.35):
         from execution.clob_executor import execute
         result = await execute(_finding("YES"), _gate(), _risk(), [])
-
     assert result is not None
     assert result["asset"] == "BTC"
     assert result["action"] == "YES"
@@ -45,13 +52,13 @@ async def test_execute_returns_position_on_matched_order():
 
 
 @pytest.mark.asyncio
-async def test_execute_returns_none_when_not_matched():
-    """Order UNMATCHED → None döner, pozisyon açılmaz."""
+async def test_execute_returns_none_when_fak_unmatched():
+    """FAK UNMATCHED → None döner, pozisyon açılmaz."""
     fake_client = MagicMock()
-    fake_client.create_and_post_order.return_value = {
-        "status": "UNMATCHED", "orderID": "ord-xyz", "sizeFilled": "0", "price": "0.35",
-    }
-    with patch("execution.clob_executor.get_client", return_value=fake_client):
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.return_value = {"status": "unmatched", "orderID": "x"}
+    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.35):
         from execution.clob_executor import execute
         result = await execute(_finding("YES"), _gate(), _risk(), [])
     assert result is None
@@ -59,126 +66,176 @@ async def test_execute_returns_none_when_not_matched():
 
 @pytest.mark.asyncio
 async def test_execute_uses_yes_token_for_yes_action():
-    """YES action → yes_token_id order'a gönderilir."""
+    """YES action → yes_token_id FAK order'a gönderilir."""
     fake_client = MagicMock()
-    fake_client.create_and_post_order.return_value = {
-        "status": "MATCHED", "orderID": "x", "sizeFilled": "71.0", "price": "0.35",
-    }
-    with patch("execution.clob_executor.get_client", return_value=fake_client):
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.return_value = _fake_matched_resp()
+    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.35):
         from execution.clob_executor import execute
         await execute(_finding("YES"), _gate(), _risk(), [])
-    call_args = fake_client.create_and_post_order.call_args[0][0]
-    assert call_args.token_id == "yes-tok-111"
-    assert call_args.side == "BUY"
+    market_order_args = fake_client.create_market_order.call_args[1]["order_args"]
+    assert market_order_args.token_id == "yes-tok-111"
 
 
 @pytest.mark.asyncio
 async def test_execute_uses_no_token_for_no_action():
-    """NO action → no_token_id order'a gönderilir."""
+    """NO action → no_token_id FAK order'a gönderilir."""
     fake_client = MagicMock()
-    fake_client.create_and_post_order.return_value = {
-        "status": "MATCHED", "orderID": "x", "sizeFilled": "71.0", "price": "0.67",
-    }
-    with patch("execution.clob_executor.get_client", return_value=fake_client):
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.return_value = _fake_matched_resp()
+    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.35):
         from execution.clob_executor import execute
         await execute(_finding("NO"), _gate(), _risk(), [])
-    call_args = fake_client.create_and_post_order.call_args[0][0]
-    assert call_args.token_id == "no-tok-222"
-
-
-# ── v2 API format testleri ──────────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_execute_v2_lowercase_matched_status():
-    """v2 API 'matched' (küçük harf) döndürür → pozisyon açılmalı."""
-    fake_client = MagicMock()
-    fake_client.create_and_post_order.return_value = {
-        "status": "matched",          # küçük harf — v2 gerçek API yanıtı
-        "orderID": "0xabc",
-        "takingAmount": "71",
-        "makingAmount": "24.85",
-        "success": True,
-        "transactionsHashes": ["0xdef"],
-    }
-    with patch("execution.clob_executor.get_client", return_value=fake_client):
-        from execution.clob_executor import execute
-        result = await execute(_finding("YES"), _gate(), _risk(), [])
-    assert result is not None, "lowercase 'matched' pozisyon açmalı"
-    assert result["order_id"] == "0xabc"
+    market_order_args = fake_client.create_market_order.call_args[1]["order_args"]
+    assert market_order_args.token_id == "no-tok-222"
 
 
 @pytest.mark.asyncio
-async def test_execute_v2_takingamount_used_for_shares():
-    """v2'de takingAmount gerçek share sayısıdır — sizeFilled yoktur."""
+async def test_execute_uses_fak_order_type():
+    """post_order OrderType.FAK ile çağrılır — FOK değil."""
+    from py_clob_client_v2 import OrderType
     fake_client = MagicMock()
-    fake_client.create_and_post_order.return_value = {
-        "status": "matched",
-        "orderID": "0xbcd",
-        "takingAmount": "102",        # gerçek fill edilen share
-        "makingAmount": "1.02",       # USDC harcanan
-        "success": True,
-        "transactionsHashes": ["0xeff"],
-        # sizeFilled yok — v2 yanıtında gelmez
-    }
-    with patch("execution.clob_executor.get_client", return_value=fake_client):
-        from execution.clob_executor import execute
-        result = await execute(_finding("YES"), _gate(), _risk(), [])
-    assert result is not None
-    assert abs(result["shares"] - 102.0) < 0.01,        "fill_shares takingAmount'dan gelmeli"
-    assert abs(result["position_usd"] - 1.02) < 0.01,   "position_usd makingAmount olmalı"
-    assert abs(result["pm_entry_price"] - 0.01) < 0.001, "fill_price = making/taking = 0.01"
-
-
-@pytest.mark.asyncio
-async def test_execute_v2_sizefilled_none_no_crash():
-    """sizeFilled key'i yanıtta hiç yoksa (None default) — fill_shares 0 dönmemeli."""
-    fake_client = MagicMock()
-    fake_client.create_and_post_order.return_value = {
-        "status": "matched",
-        "orderID": "0xcde",
-        "takingAmount": "50",
-        "makingAmount": "17.50",
-        "success": True,
-        "transactionsHashes": ["0xfff"],
-    }
-    with patch("execution.clob_executor.get_client", return_value=fake_client):
-        from execution.clob_executor import execute
-        result = await execute(_finding("YES"), _gate(), _risk(), [])
-    assert result is not None, "sizeFilled eksikliği crash veya None döndürmemeli"
-    assert result["shares"] > 0
-
-
-@pytest.mark.asyncio
-async def test_clob_order_uses_price_premium():
-    """LIVE order fiyatı = best_ask + PRICE_PREMIUM olmalı — fill rate iyileştirmesi."""
-    from execution.clob_executor import PRICE_PREMIUM
-    fake_client = MagicMock()
-    fake_client.create_and_post_order.return_value = {
-        "status": "matched", "success": True, "orderID": "ord-prem",
-        "takingAmount": "69.0", "makingAmount": "24.84",
-    }
-    with patch("execution.clob_executor.get_client", return_value=fake_client):
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.return_value = _fake_matched_resp()
+    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.35):
         from execution.clob_executor import execute
         await execute(_finding("YES"), _gate(), _risk(), [])
-    call_args = fake_client.create_and_post_order.call_args
-    order_args = call_args[0][0]
-    expected = round(0.35 + PRICE_PREMIUM, 6)
-    assert abs(order_args.price - expected) < 1e-6, \
-        f"Order fiyatı {order_args.price:.4f} — beklenen {expected:.4f} (best_ask+PRICE_PREMIUM)"
+    order_type_arg = fake_client.post_order.call_args[0][1]
+    assert order_type_arg == OrderType.FAK, f"FAK beklendi, {order_type_arg} geldi"
 
 
 @pytest.mark.asyncio
-async def test_clob_position_includes_entry_hl_price():
+async def test_execute_passes_dollar_amount_not_shares():
+    """BUY market order'da amount = dolar miktarı (shares değil) — docs zorunluluğu."""
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.return_value = _fake_matched_resp()
+    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.35):
+        from execution.clob_executor import execute
+        await execute(_finding("YES"), _gate(), _risk(), [])
+    market_order_args = fake_client.create_market_order.call_args[1]["order_args"]
+    # amount == position_usd (25.0), shares olmayacak (25/0.38 ~ 65 gibi bir şey)
+    assert abs(market_order_args.amount - 25.0) < 0.01, \
+        f"amount dolar miktarı olmalı (25.0), {market_order_args.amount} geldi"
+
+
+@pytest.mark.asyncio
+async def test_execute_passes_tick_size_options():
+    """PartialCreateOrderOptions tick_size geçirilir — docs zorunluluğu."""
+    from py_clob_client_v2 import PartialCreateOrderOptions
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.return_value = _fake_matched_resp()
+    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.35):
+        from execution.clob_executor import execute
+        await execute(_finding("YES"), _gate(), _risk(), [])
+    opts = fake_client.create_market_order.call_args[1]["options"]
+    assert isinstance(opts, PartialCreateOrderOptions)
+    assert opts.tick_size == "0.01"
+    assert opts.neg_risk is False
+
+
+@pytest.mark.asyncio
+async def test_execute_worst_price_includes_premium():
+    """worst_price = live_ask + PRICE_PREMIUM — slippage koruması."""
+    from execution.clob_executor import PRICE_PREMIUM
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.return_value = _fake_matched_resp()
+    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.52):
+        from execution.clob_executor import execute
+        await execute(_finding("YES"), _gate(), _risk(), [])
+    market_order_args = fake_client.create_market_order.call_args[1]["order_args"]
+    expected = round(0.52 + PRICE_PREMIUM, 4)
+    assert abs(market_order_args.price - expected) < 1e-4, \
+        f"worst_price={market_order_args.price:.4f}, beklenen={expected:.4f}"
+
+
+@pytest.mark.asyncio
+async def test_execute_falls_back_to_finding_ask_when_clob_price_fails():
+    """_get_clob_price None → finding['best_ask'] + PRICE_PREMIUM fallback."""
+    from execution.clob_executor import PRICE_PREMIUM
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.return_value = _fake_matched_resp()
+    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=None):
+        from execution.clob_executor import execute
+        await execute(_finding("YES"), _gate(), _risk(), [])
+    market_order_args = fake_client.create_market_order.call_args[1]["order_args"]
+    expected = round(0.35 + PRICE_PREMIUM, 4)  # finding["best_ask"] = 0.35
+    assert abs(market_order_args.price - expected) < 1e-4
+
+
+@pytest.mark.asyncio
+async def test_execute_position_includes_entry_hl_price():
     """LIVE position dict'te entry_hl_price = finding['cur_price'] olmalı."""
     fake_client = MagicMock()
-    fake_client.create_and_post_order.return_value = {
-        "status": "matched", "success": True, "orderID": "ord-hl",
-        "takingAmount": "69.0", "makingAmount": "24.84",
-    }
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.return_value = _fake_matched_resp()
     finding = {**_finding("YES"), "cur_price": 66500.0}
-    with patch("execution.clob_executor.get_client", return_value=fake_client):
+    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.35):
         from execution.clob_executor import execute
         result = await execute(finding, _gate(), _risk(), [])
     assert result is not None
-    assert result.get("entry_hl_price") == 66500.0, \
-        f"entry_hl_price={result.get('entry_hl_price')}, beklenen 66500.0"
+    assert result.get("entry_hl_price") == 66500.0
+
+
+@pytest.mark.asyncio
+async def test_execute_returns_none_when_token_id_missing():
+    """token_id yoksa order gönderilmez, None döner."""
+    finding = {**_finding("YES"), "yes_token_id": None}
+    with patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.35):
+        from execution.clob_executor import execute
+        result = await execute(finding, _gate(), _risk(), [])
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_execute_returns_none_when_position_too_small():
+    """position_usd < $1 → order gönderilmez."""
+    risk = {**_risk(), "position_usd": 0.50}
+    with patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.35):
+        from execution.clob_executor import execute
+        result = await execute(_finding("YES"), _gate(), risk, [])
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_execute_market_order_args_has_fak_order_type():
+    """MarketOrderArgs.order_type=FAK geçirilmeli — kütüphane default'u FOK, açıkça override zorunlu."""
+    from py_clob_client_v2 import OrderType
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.return_value = _fake_matched_resp()
+    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.35):
+        from execution.clob_executor import execute
+        await execute(_finding("YES"), _gate(), _risk(), [])
+    order_args = fake_client.create_market_order.call_args[1]["order_args"]
+    assert order_args.order_type == OrderType.FAK, \
+        f"MarketOrderArgs.order_type FAK olmalı (kütüphane default FOK!), geldi: {order_args.order_type}"
+
+
+@pytest.mark.asyncio
+async def test_execute_matched_without_success_field():
+    """status='matched' yeterli — 'success' field dokümante değil, olmaması gerekmez."""
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    # success alanı yok — sadece status var
+    fake_client.post_order.return_value = {
+        "status": "matched", "orderID": "ord-xyz",
+        "takingAmount": "71.43", "makingAmount": "25.00",
+    }
+    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.35):
+        from execution.clob_executor import execute
+        result = await execute(_finding("YES"), _gate(), _risk(), [])
+    assert result is not None, "status='matched' ile position açılmalıydı"

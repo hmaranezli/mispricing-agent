@@ -85,10 +85,10 @@ def _query_stats(hours: int | None) -> dict:
     params: tuple = ()
     if hours:
         since  = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-        where  = "WHERE ts_close > ? AND status='closed'"
+        where  = "WHERE ts_close > ? AND status='closed' AND dry_run=0"
         params = (since,)
     else:
-        where  = "WHERE status='closed'"
+        where  = "WHERE status='closed' AND dry_run=0"
     c.execute(
         f"SELECT COUNT(*), SUM(realized_pnl), "
         f"COUNT(CASE WHEN realized_pnl>0 THEN 1 END), "
@@ -116,7 +116,7 @@ def _query_open_positions() -> list[dict]:
     c    = conn.cursor()
     c.execute(
         "SELECT slug, action, pm_entry_price, position_usd "
-        "FROM positions WHERE status='open' ORDER BY ts_open DESC LIMIT 5"
+        "FROM positions WHERE status='open' AND dry_run=0 ORDER BY ts_open DESC LIMIT 5"
     )
     rows = c.fetchall()
     conn.close()
@@ -134,7 +134,7 @@ def _query_daily_pnl() -> float:
     c     = conn.cursor()
     c.execute(
         "SELECT SUM(realized_pnl) FROM positions "
-        "WHERE date(ts_close)=? AND status='closed'", (today,)
+        "WHERE date(ts_close)=? AND status='closed' AND dry_run=0", (today,)
     )
     val = c.fetchone()[0]
     conn.close()

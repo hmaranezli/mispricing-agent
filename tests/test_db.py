@@ -63,9 +63,12 @@ async def test_log_candidate_vetoed(conn):
 @pytest.mark.asyncio
 async def test_dry_run_flag_written(conn):
     """DRY_RUN=True iken candidates.dry_run=1."""
+    import config as _cfg
+    from unittest.mock import patch
     finding = {"slug": "sol-up-1h", "asset": "SOL", "action": "YES",
                "fair_value": 0.60, "best_ask": 0.40, "edge": 0.20}
-    await logger.log_candidate(conn, finding, passed=True)
+    with patch.object(_cfg, "DRY_RUN", True):
+        await logger.log_candidate(conn, finding, passed=True)
     async with conn.execute("SELECT dry_run FROM candidates") as cur:
         row = await cur.fetchone()
     assert row[0] == 1
