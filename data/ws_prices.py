@@ -91,8 +91,8 @@ def _handle_book(event: dict) -> None:
     token_id = event.get("asset_id")
     bids = event.get("bids", [])
     asks = event.get("asks", [])
-    best_bid = float(bids[-1]["price"]) if bids else None
-    best_ask = float(asks[0]["price"])  if asks else None
+    best_bid = float(max(bids, key=lambda x: float(x["price"]))["price"]) if bids else None
+    best_ask = float(min(asks, key=lambda x: float(x["price"]))["price"]) if asks else None
     _update_cache(token_id, best_bid, best_ask)
 
 
@@ -127,10 +127,10 @@ def _handle_market_resolved(event: dict) -> None:
 
 
 async def _flush_pending(ws) -> None:
-    global _pending
     if not _pending:
         return
     batch = list(_pending)
+    _pending.clear()          # atomic clear before await — no TOCTOU
     msg = json.dumps({
         "assets_ids":            batch,
         "type":                  "market",
@@ -138,7 +138,6 @@ async def _flush_pending(ws) -> None:
     })
     await ws.send(msg)
     _subscribed.update(batch)
-    _pending -= set(batch)
 
 
 async def _connect_and_run() -> None:
