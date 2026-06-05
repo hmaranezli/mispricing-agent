@@ -13,30 +13,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datetime import datetime, timezone
 from uuid import uuid4
-import aiohttp
 from execution.clob_client import get_client
 from py_clob_client_v2 import MarketOrderArgs, OrderType, PartialCreateOrderOptions
 from py_clob_client_v2.order_builder.constants import BUY
+from data.clob_price import get_clob_price as _get_clob_price
 
-CLOB_HOST     = "https://clob.polymarket.com"
 PRICE_PREMIUM = 0.03   # worst-price slippage buffer: live_ask + 3 cent
 TICK_SIZE     = "0.01" # binary prediction markets default tick size
-
-
-async def _get_clob_price(token_id: str) -> float | None:
-    """CLOB /price?side=BUY → token için anlık best ask fiyatı."""
-    try:
-        timeout = aiohttp.ClientTimeout(total=3)
-        async with aiohttp.ClientSession(timeout=timeout) as s:
-            async with s.get(f"{CLOB_HOST}/price",
-                             params={"token_id": token_id, "side": "BUY"}) as r:
-                if r.status == 200:
-                    data = await r.json()
-                    p = float(data.get("price", 0))
-                    return p if p > 0 else None
-    except Exception:
-        pass
-    return None
 
 
 async def execute(
