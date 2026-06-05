@@ -1,0 +1,166 @@
+"""tests/test_ws_prices.py — ws_prices birim testleri. Gerçek WS bağlantısı yok."""
+import asyncio
+import time
+import pytest
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import data.ws_prices as ws
+
+
+def _reset():
+    ws._cache.clear()
+    ws._subscribed.clear()
+    ws._pending.clear()
+    ws._resolved_queue = None
+
+
+def test_get_ask_returns_none_when_not_cached():
+    _reset()
+    assert ws.get_ask("tok_missing") is None
+
+
+def test_get_bid_returns_none_when_not_cached():
+    _reset()
+    assert ws.get_bid("tok_missing") is None
+
+
+def test_update_cache_and_get_ask():
+    _reset()
+    ws._update_cache("tok1", best_bid=0.48, best_ask=0.52)
+    assert ws.get_ask("tok1") == 0.52
+    assert ws.get_bid("tok1") == 0.48
+
+
+def test_update_cache_spread():
+    _reset()
+    ws._update_cache("tok2", best_bid=0.73, best_ask=0.77, spread=0.04)
+    assert ws.get_spread("tok2") == 0.04
+
+
+def test_handle_book_extracts_best_bid_and_ask():
+    _reset()
+    # bids ascending (son = en yüksek), asks ascending (ilk = en düşük)
+    event = {
+        "event_type": "book",
+        "asset_id": "tok3",
+        "bids": [{"price": "0.48", "size": "30"}, {"price": "0.50", "size": "15"}],
+        "asks": [{"price": "0.52", "size": "25"}, {"price": "0.54", "size": "10"}],
+        "timestamp": "1234567890",
+    }
+    ws._handle_book(event)
+    assert ws.get_ask("tok3") == 0.52
+    assert ws.get_bid("tok3") == 0.50
+
+
+def test_handle_book_empty_bids_does_not_crash():
+    _reset()
+    event = {
+        "event_type": "book", "asset_id": "tok_empty",
+        "bids": [], "asks": [{"price": "0.60", "size": "10"}], "timestamp": "1",
+    }
+    ws._handle_book(event)
+    assert ws.get_ask("tok_empty") == 0.60
+    assert ws.get_bid("tok_empty") is None
+
+
+def test_handle_price_change_updates_best_bid_ask():
+    _reset()
+    event = {
+        "event_type": "price_change",
+        "market": "0x123",
+        "price_changes": [{
+            "asset_id": "tok4",
+            "price": "0.51", "size": "100", "side": "BUY", "hash": "abc",
+            "best_bid": "0.51",
+            "best_ask": "0.53",
+        }],
+        "timestamp": "123",
+    }
+    ws._handle_price_change(event)
+    assert ws.get_ask("tok4") == 0.53
+    assert ws.get_bid("tok4") == 0.51
+
+
+def test_handle_price_change_without_best_fields_does_not_crash():
+    _reset()
+    event = {
+        "event_type": "price_change", "market": "0x1",
+        "price_changes": [{"asset_id": "tok5", "price": "0.50", "size": "0",
+                           "side": "BUY", "hash": "x"}],
+        "timestamp": "1",
+    }
+    ws._handle_price_change(event)  # best_bid/best_ask yok → crash yok
+    assert ws.get_ask("tok5") is None
+
+
+def test_handle_best_bid_ask_event():
+    _reset()
+    event = {
+        "event_type": "best_bid_ask",
+        "asset_id": "tok6",
+        "market": "0x456",
+        "best_bid": "0.73",
+        "best_ask": "0.77",
+        "spread": "0.04",
+        "timestamp": "123",
+    }
+    ws._handle_best_bid_ask(event)
+    assert ws.get_ask("tok6") == 0.77
+    assert ws.get_bid("tok6") == 0.73
+    assert ws.get_spread("tok6") == 0.04
+
+
+def test_handle_market_resolved_queues_event():
+    _reset()
+    ws._resolved_queue = asyncio.Queue()
+    event = {
+        "event_type": "market_resolved",
+        "id": "1234", "market": "0x789",
+        "assets_ids": ["yes_tok", "no_tok"],
+        "winning_asset_id": "yes_tok",
+        "winning_outcome": "Yes",
+        "timestamp": "123",
+    }
+    ws._handle_market_resolved(event)
+    assert ws._resolved_queue.qsize() == 1
+    queued = ws._resolved_queue.get_nowait()
+    assert queued["winning_outcome"] == "Yes"
+    assert "yes_tok" in queued["assets_ids"]
+
+
+def test_handle_market_resolved_no_queue_does_not_crash():
+    _reset()
+    ws._resolved_queue = None
+    event = {"event_type": "market_resolved", "winning_outcome": "No", "assets_ids": []}
+    ws._handle_market_resolved(event)  # crash yok
+
+
+def test_subscribe_adds_to_pending():
+    _reset()
+    ws.subscribe(["tok_a", "tok_b"])
+    assert "tok_a" in ws._pending
+    assert "tok_b" in ws._pending
+
+
+def test_subscribe_skips_already_subscribed():
+    _reset()
+    ws._subscribed.add("tok_existing")
+    ws.subscribe(["tok_existing", "tok_new"])
+    assert "tok_existing" not in ws._pending
+    assert "tok_new" in ws._pending
+
+
+def test_subscribe_skips_empty_string():
+    _reset()
+    ws.subscribe(["", "tok_ok"])
+    assert "" not in ws._pending
+    assert "tok_ok" in ws._pending
+
+
+def test_stale_cache_returns_none():
+    _reset()
+    ws._update_cache("tok_stale", best_bid=0.48, best_ask=0.52)
+    ws._cache["tok_stale"]["ts"] = time.time() - (ws.STALE_SECS + 5)
+    assert ws.get_ask("tok_stale") is None
+    assert ws.get_bid("tok_stale") is None
