@@ -27,3 +27,27 @@ async def get_clob_price(token_id: str, side: str = "BUY") -> float | None:
     except Exception:
         pass
     return None
+
+
+async def get_book(token_id: str) -> dict | None:
+    """CLOB GET /book?token_id=<id> → tam OrderBookSummary.
+
+    bids: fiyata göre azalan (bids[0] = en iyi bid)
+    asks: fiyata göre artan (asks[0] = en iyi ask)
+    Her level: {"price": "0.46", "size": "150"}
+    Returns: dict veya None (hata / token yok).
+    """
+    if not token_id:
+        return None
+    try:
+        timeout = aiohttp.ClientTimeout(total=3)
+        async with aiohttp.ClientSession(timeout=timeout) as s:
+            async with s.get(
+                f"{CLOB_HOST}/book",
+                params={"token_id": token_id},
+            ) as r:
+                if r.status == 200:
+                    return await r.json()
+    except Exception:
+        pass
+    return None
