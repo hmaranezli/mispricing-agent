@@ -137,12 +137,15 @@ async def redteam(finding: dict, verification: dict) -> dict:
     if book:
         asks = book.get("asks") or []
         bids = book.get("bids") or []
+        # Polymarket /book: asks descending (0.99→best), bids ascending (0.01→best)
+        # Best ask = asks[-1] (cheapest seller), best bid = bids[-1] (highest buyer)
         if asks:
-            depth_usd = float(asks[0].get("size", 0)) * float(asks[0].get("price", 0))
+            best_ask = asks[-1]
+            depth_usd = float(best_ask.get("size", 0)) * float(best_ask.get("price", 0))
             if depth_usd < MIN_BOOK_DEPTH_USD:
                 vetoes.append("book_too_thin")
         if asks and bids:
-            clob_spread = float(asks[0]["price"]) - float(bids[0]["price"])
+            clob_spread = float(asks[-1]["price"]) - float(bids[-1]["price"])
             if clob_spread > SPREAD_VETO:
                 vetoes.append("clob_spread_too_wide")
 

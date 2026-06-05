@@ -336,3 +336,39 @@ async def test_clob_spread_too_wide_veto():
     assert "clob_spread_too_wide" in result["vetoes"], (
         f"clob_spread_too_wide beklendi, gelen: {result['vetoes']}"
     )
+
+
+@pytest.mark.asyncio
+async def test_polymarket_descending_asks_uses_best_not_sentinel():
+    """Polymarket /book: asks DESC (0.99→best), bids ASC (0.01→best).
+    Sentinel orders (0.99/0.01) MUST NOT trigger false clob_spread_too_wide.
+    Best ask=asks[-1], best bid=bids[-1].
+    """
+    from unittest.mock import patch, AsyncMock
+
+    # Realistic Polymarket book: sentinels at top, real orders at bottom
+    pm_book = {
+        "asks": [
+            {"price": "0.99", "size": "5000"},  # sentinel — DO NOT USE
+            {"price": "0.98", "size": "800"},
+            {"price": "0.48", "size": "50"},    # best ask (last)
+        ],
+        "bids": [
+            {"price": "0.01", "size": "5000"},  # sentinel — DO NOT USE
+            {"price": "0.02", "size": "800"},
+            {"price": "0.46", "size": "50"},    # best bid (last)
+        ],
+    }
+    # Real spread = 0.48 - 0.46 = 0.02 < SPREAD_VETO=0.05 → no veto
+    fake_market = {"spread": 0.01, "liquidityClob": 1000, "volume24hr": 100, "takerBaseFee": 1000}
+
+    with patch("council.redteam.fetch_by_slug", new_callable=AsyncMock, return_value=fake_market), \
+         patch("council.redteam.get_book", new_callable=AsyncMock, return_value=pm_book):
+        result = await redteam(
+            _fake_finding(action="YES"),
+            _fake_verification(fresh_fair=0.65, fresh_ask=0.47, fresh_edge=0.18),
+        )
+
+    assert "clob_spread_too_wide" not in result["vetoes"], (
+        f"Sentinel orders yanlışlıkla spread veto tetikledi: {result['vetoes']}"
+    )
