@@ -47,7 +47,9 @@ async def get_book(token_id: str) -> dict | None:
                 params={"token_id": token_id},
             ) as r:
                 if r.status == 200:
-                    return await r.json()
+                    data = await r.json()
+                    if isinstance(data, dict) and "asks" in data and "bids" in data:
+                        return data
     except Exception:
         pass
     return None

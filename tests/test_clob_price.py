@@ -131,6 +131,15 @@ async def test_get_book_returns_none_for_empty_token():
 
 
 @pytest.mark.asyncio
+async def test_get_book_returns_none_for_none_token():
+    """None token_id → API çağrısı yapılmaz, None döner."""
+    with patch("data.clob_price.aiohttp.ClientSession") as mock_cls:
+        result = await get_book(None)
+    mock_cls.assert_not_called()
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_get_book_returns_none_on_http_404():
     """HTTP 404 (token yok / sona ermiş market) → None döner."""
     mock_resp = MagicMock()
