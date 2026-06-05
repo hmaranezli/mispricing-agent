@@ -18,7 +18,7 @@ from py_clob_client_v2 import MarketOrderArgs, OrderType, PartialCreateOrderOpti
 from py_clob_client_v2.order_builder.constants import BUY
 from data.clob_price import get_clob_price as _get_clob_price
 
-PRICE_PREMIUM = 0.03   # worst-price slippage buffer: live_ask + 3 cent
+PRICE_PREMIUM = 0.01   # worst-price slippage buffer: live_ask + 1 cent
 TICK_SIZE     = "0.01" # binary prediction markets default tick size
 
 
