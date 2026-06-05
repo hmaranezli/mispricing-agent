@@ -138,7 +138,6 @@ async def _scan_and_execute(
         return
 
     findings = await scan_edges()
-    print(f"[scan] {len(findings)} bulgu, {len(open_positions)}/{config.MAX_OPEN_POSITIONS} açık pozisyon")
     daily_loss = 0.0
     open_slugs  = {p["slug"] for p in open_positions}
     _failed     = failed_slugs if failed_slugs is not None else set()
@@ -294,14 +293,10 @@ async def main() -> None:
     if closed_today:
         print(f"[bot] Bugün {len(closed_today)} kapanan pozisyon geri yüklendi.")
 
-    print("[bot] bankroll sorgulanıyor...")
     starting_bankroll = await get_effective_bankroll(BANKROLL_CONFIG)
-    print(f"[bot] bankroll={starting_bankroll:.2f}")
     circuit_breaker.BUST_PROTECTION_PCT = config.BUST_PROTECTION_PCT
     circuit_breaker.STREAK_WARN_COUNT   = config.STREAK_WARN_COUNT
-    print("[bot] notify_restart...")
     notify_restart(dry_run=config.DRY_RUN, bankroll=starting_bankroll)
-    print("[bot] döngü başlıyor...")
 
     try:
         while True:
