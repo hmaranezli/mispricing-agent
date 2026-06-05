@@ -178,6 +178,7 @@ async def _handle_ws_resolved(
     open_positions: list[dict],
     closed_today:   list[dict],
     conn=None,
+    failed_slugs: set | None = None,
 ) -> None:
     """WS market_resolved event'ına göre açık pozisyonu anında kapat."""
     winning_outcome = event.get("winning_outcome")   # "Yes" veya "No"
@@ -202,6 +203,8 @@ async def _handle_ws_resolved(
         await log_position_close(conn, closed)
         open_positions.remove(pos)
         closed_today.append(closed)
+        if failed_slugs is not None:
+            failed_slugs.add(pos["slug"])
         notify_close(closed)
         print(f"[ws] {pos['slug']} resolved — {winning_outcome} wins → pm_exit={pm_exit}")
 
@@ -385,7 +388,8 @@ async def main() -> None:
                 if ws_prices._resolved_queue:
                     while not ws_prices._resolved_queue.empty():
                         ev = ws_prices._resolved_queue.get_nowait()
-                        await _handle_ws_resolved(ev, open_positions, closed_today, conn=conn)
+                        await _handle_ws_resolved(ev, open_positions, closed_today, conn=conn,
+                                                  failed_slugs=failed_slugs)
                 for pos in closed_today[n_closed_before:]:
                     notify_close(pos)
                     pnl = pos.get("realized_pnl") or 0.0
