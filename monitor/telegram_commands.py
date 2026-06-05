@@ -206,12 +206,16 @@ async def poll_commands() -> None:
     offset = 0
     base   = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 
+    loop = asyncio.get_event_loop()
     while True:
         try:
-            resp = requests.get(
-                f"{base}/getUpdates",
-                params={"offset": offset, "timeout": POLL_TIMEOUT},
-                timeout=POLL_TIMEOUT + 5,
+            resp = await loop.run_in_executor(
+                None,
+                lambda off=offset: requests.get(
+                    f"{base}/getUpdates",
+                    params={"offset": off, "timeout": POLL_TIMEOUT},
+                    timeout=POLL_TIMEOUT + 5,
+                ),
             )
             data = resp.json()
             if not data.get("ok"):
