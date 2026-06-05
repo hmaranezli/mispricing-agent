@@ -2,11 +2,13 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import asyncio
 import config
 from execution.clob_client import get_client
 from py_clob_client_v2.clob_types import BalanceAllowanceParams, AssetType
 
 _MICRO = 1_000_000  # 1 USDC = 1_000_000 mikro-USDC
+_TIMEOUT = 8.0      # senkron CLOB çağrısı için max bekleme
 
 
 async def get_effective_bankroll(bankroll_config: float) -> float:
@@ -20,8 +22,16 @@ async def get_effective_bankroll(bankroll_config: float) -> float:
 
     try:
         client = get_client()
-        bal = client.get_balance_allowance(
-            params=BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
+        loop = asyncio.get_event_loop()
+        # senkron CLOB istemcisi thread'de çalıştırılır — event loop bloke olmaz
+        bal = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                lambda: client.get_balance_allowance(
+                    params=BalanceAllowanceParams(asset_type=AssetType.COLLATERAL)
+                ),
+            ),
+            timeout=_TIMEOUT,
         )
         usdc = float(bal.get("balance", 0)) / _MICRO
         effective = min(usdc, bankroll_config)
