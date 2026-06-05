@@ -293,10 +293,14 @@ async def main() -> None:
     if closed_today:
         print(f"[bot] Bugün {len(closed_today)} kapanan pozisyon geri yüklendi.")
 
+    print("[bot] bankroll sorgulanıyor...")
     starting_bankroll = await get_effective_bankroll(BANKROLL_CONFIG)
+    print(f"[bot] bankroll={starting_bankroll:.2f}")
     circuit_breaker.BUST_PROTECTION_PCT = config.BUST_PROTECTION_PCT
     circuit_breaker.STREAK_WARN_COUNT   = config.STREAK_WARN_COUNT
+    print("[bot] notify_restart...")
     notify_restart(dry_run=config.DRY_RUN, bankroll=starting_bankroll)
+    print("[bot] döngü başlıyor...")
 
     try:
         while True:
