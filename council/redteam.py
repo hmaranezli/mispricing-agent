@@ -10,6 +10,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.shortterm import fetch_by_slug
+from data.clob_price import get_book
 import config
 
 SPREAD_VETO        = 0.05   # bid-ask spread > 5 cent → veto
@@ -17,6 +18,7 @@ LIQUIDITY_VETO_USD = 500    # CLOB likidite < $500 → veto
 VOLUME_WARN_USD    = 50     # 24s hacim < $50 → warning (bloklamaz)
 MIN_THESIS_SECS    = 120    # < 2dk → PM yeniden fiyatlanamaz → veto
 EDGE_SANITY_MAX    = 0.35   # edge > %35 → veri hatası şüphesi → veto
+MIN_BOOK_DEPTH_USD = 2.0    # En iyi ask level'ında min $2 USD derinlik (order ~$1.25)
 
 
 def _parse_taker_fee(raw) -> float:
@@ -31,15 +33,19 @@ def _parse_taker_fee(raw) -> float:
 
 
 def _fee_adjusted_edge(fair: float, ask: float, bid: float,
-                        action: str, fee: float) -> float:
+                        action: str, fee: float,
+                        no_ask: float | None = None) -> float:
     """
     Fee sonrası gerçek edge.
     YES: fair × (1−fee) − ask
-    NO:  (1−fair) × (1−fee) − (1−bid)
+    NO:  (1−fair) × (1−fee) − entry
+         entry = no_ask (Scout'tan gerçek NO ask, varsa)
+                 veya 1−bid (YES_bid tabanlı yaklaşım, fallback)
     """
     if action == "YES":
         return fair * (1 - fee) - ask
-    return (1 - fair) * (1 - fee) - (1 - bid)
+    entry = no_ask if no_ask is not None else (1 - bid)
+    return (1 - fair) * (1 - fee) - entry
 
 
 def _result(pass_: bool, vetoes: list, warnings: list,
@@ -96,6 +102,7 @@ async def redteam(finding: dict, verification: dict) -> dict:
             bid=verification["fresh_best_bid"],
             action=finding["action"],
             fee=taker_fee,
+            no_ask=finding.get("no_ask"),
         )
         if fee_adj < config.MIN_EDGE_PCT:
             vetoes.append("edge_killed_by_fee")
@@ -123,6 +130,22 @@ async def redteam(finding: dict, verification: dict) -> dict:
     if volume_24hr < VOLUME_WARN_USD:
         warnings.append("low_volume")
 
+    # ── 4b. CLOB book derinliği ve spread ────────────────────────────────────
+    action_token = (finding.get("no_token_id") if finding.get("action") == "NO"
+                    else finding.get("yes_token_id"))
+    book = await get_book(action_token) if action_token else None
+    if book:
+        asks = book.get("asks") or []
+        bids = book.get("bids") or []
+        if asks:
+            depth_usd = float(asks[0].get("size", 0)) * float(asks[0].get("price", 0))
+            if depth_usd < MIN_BOOK_DEPTH_USD:
+                vetoes.append("book_too_thin")
+        if asks and bids:
+            clob_spread = float(asks[0]["price"]) - float(bids[0]["price"])
+            if clob_spread > SPREAD_VETO:
+                vetoes.append("clob_spread_too_wide")
+
     # ── 6. Fee sonrası edge kontrolü ─────────────────────────────────────────
     fee_adj = _fee_adjusted_edge(
         fair=verification["fresh_fair"],
@@ -130,6 +153,7 @@ async def redteam(finding: dict, verification: dict) -> dict:
         bid=verification["fresh_best_bid"],
         action=finding["action"],
         fee=taker_fee,
+        no_ask=finding.get("no_ask"),
     )
     if fee_adj < config.MIN_EDGE_PCT:
         vetoes.append("edge_killed_by_fee")
