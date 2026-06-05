@@ -808,3 +808,143 @@ async def test_monitor_closes_on_definitive_resolution():
     assert len(open_positions) == 0, "Resolved market pozisyonu kapatmalı"
     assert len(closed_today) == 1
     assert closed_today[0]["exit_reason"] == "market_resolved"
+
+
+# ── WS resolved handler testleri ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_handle_ws_resolved_closes_yes_position_on_yes_win(monkeypatch):
+    """YES pozisyon + 'Yes' kazanınca pm_exit=1.0 ile kapanmalı."""
+    from main_loop import _handle_ws_resolved
+    from unittest.mock import AsyncMock, patch
+
+    pos = {
+        "position_id": "pos-ws-1", "slug": "btc-up-5m", "asset": "BTC",
+        "action": "YES", "yes_token_id": "yes_tok_1", "no_token_id": "no_tok_1",
+        "pm_entry_price": 0.55, "fair_value": 0.70, "edge": 0.15,
+        "position_usd": 1.25, "kelly_f": 0.10, "confidence_score": 80.0,
+        "seconds_remaining": 300, "status": "open", "dry_run": False,
+        "opened_at": "2026-01-01T00:00:00+00:00", "exit_reason": None, "closed_at": None,
+        "entry_hl_price": 95000.0,
+    }
+    open_positions = [pos]
+    closed_today   = []
+    event = {
+        "event_type": "market_resolved",
+        "assets_ids": ["yes_tok_1", "no_tok_1"],
+        "winning_asset_id": "yes_tok_1",
+        "winning_outcome": "Yes",
+        "timestamp": "123",
+    }
+
+    monkeypatch.setattr("main_loop.current_price", AsyncMock(return_value=96000.0))
+
+    with patch("main_loop.log_position_close", new=AsyncMock()), \
+         patch("main_loop.notify_close"):
+        await _handle_ws_resolved(event, open_positions, closed_today, conn=None)
+
+    assert len(open_positions) == 0
+    assert len(closed_today) == 1
+    assert closed_today[0]["pm_exit_price"] == 1.0
+    assert closed_today[0]["exit_reason"] == "market_resolved"
+
+
+@pytest.mark.asyncio
+async def test_handle_ws_resolved_closes_no_position_on_no_win(monkeypatch):
+    """NO pozisyon + 'No' kazanınca pm_exit=1.0 ile kapanmalı."""
+    from main_loop import _handle_ws_resolved
+    from unittest.mock import AsyncMock, patch
+
+    pos = {
+        "position_id": "pos-ws-2", "slug": "eth-down-15m", "asset": "ETH",
+        "action": "NO", "yes_token_id": "yes_tok_2", "no_token_id": "no_tok_2",
+        "pm_entry_price": 0.40, "fair_value": 0.20, "edge": 0.20,
+        "position_usd": 1.25, "kelly_f": 0.10, "confidence_score": 80.0,
+        "seconds_remaining": 300, "status": "open", "dry_run": False,
+        "opened_at": "2026-01-01T00:00:00+00:00", "exit_reason": None, "closed_at": None,
+        "entry_hl_price": 3000.0,
+    }
+    open_positions = [pos]
+    closed_today   = []
+    event = {
+        "event_type": "market_resolved",
+        "assets_ids": ["yes_tok_2", "no_tok_2"],
+        "winning_asset_id": "no_tok_2",
+        "winning_outcome": "No",
+        "timestamp": "123",
+    }
+
+    monkeypatch.setattr("main_loop.current_price", AsyncMock(return_value=2900.0))
+
+    with patch("main_loop.log_position_close", new=AsyncMock()), \
+         patch("main_loop.notify_close"):
+        await _handle_ws_resolved(event, open_positions, closed_today, conn=None)
+
+    assert len(open_positions) == 0
+    assert closed_today[0]["pm_exit_price"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_handle_ws_resolved_yes_position_loses(monkeypatch):
+    """YES pozisyon + 'No' kazanınca pm_exit=0.0 ile kapanmalı."""
+    from main_loop import _handle_ws_resolved
+    from unittest.mock import AsyncMock, patch
+
+    pos = {
+        "position_id": "pos-ws-3", "slug": "btc-up-5m", "asset": "BTC",
+        "action": "YES", "yes_token_id": "yes_tok_3", "no_token_id": "no_tok_3",
+        "pm_entry_price": 0.55, "fair_value": 0.70, "edge": 0.15,
+        "position_usd": 1.25, "kelly_f": 0.10, "confidence_score": 80.0,
+        "seconds_remaining": 300, "status": "open", "dry_run": False,
+        "opened_at": "2026-01-01T00:00:00+00:00", "exit_reason": None, "closed_at": None,
+        "entry_hl_price": 95000.0,
+    }
+    open_positions = [pos]
+    closed_today   = []
+    event = {
+        "event_type": "market_resolved",
+        "assets_ids": ["yes_tok_3", "no_tok_3"],
+        "winning_asset_id": "no_tok_3",
+        "winning_outcome": "No",
+        "timestamp": "123",
+    }
+
+    monkeypatch.setattr("main_loop.current_price", AsyncMock(return_value=94000.0))
+
+    with patch("main_loop.log_position_close", new=AsyncMock()), \
+         patch("main_loop.notify_close"):
+        await _handle_ws_resolved(event, open_positions, closed_today, conn=None)
+
+    assert closed_today[0]["pm_exit_price"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_handle_ws_resolved_ignores_unrelated_market(monkeypatch):
+    """assets_ids eşleşmiyorsa pozisyona dokunmamalı."""
+    from main_loop import _handle_ws_resolved
+    from unittest.mock import AsyncMock
+
+    pos = {
+        "position_id": "pos-ws-4", "slug": "btc-up-5m", "asset": "BTC",
+        "action": "YES", "yes_token_id": "yes_tok_4", "no_token_id": "no_tok_4",
+        "pm_entry_price": 0.55, "fair_value": 0.70, "edge": 0.15,
+        "position_usd": 1.25, "kelly_f": 0.10, "confidence_score": 80.0,
+        "seconds_remaining": 300, "status": "open", "dry_run": False,
+        "opened_at": "2026-01-01T00:00:00+00:00", "exit_reason": None, "closed_at": None,
+        "entry_hl_price": 95000.0,
+    }
+    open_positions = [pos]
+    closed_today   = []
+    event = {
+        "event_type": "market_resolved",
+        "assets_ids": ["other_tok_1", "other_tok_2"],
+        "winning_asset_id": "other_tok_1",
+        "winning_outcome": "Yes",
+        "timestamp": "123",
+    }
+
+    monkeypatch.setattr("main_loop.current_price", AsyncMock(return_value=95000.0))
+    await _handle_ws_resolved(event, open_positions, closed_today, conn=None)
+
+    assert len(open_positions) == 1
+    assert len(closed_today) == 0

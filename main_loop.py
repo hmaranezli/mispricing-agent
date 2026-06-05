@@ -7,6 +7,7 @@ from datetime import date, datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import config
+from data import ws_prices
 from council.scout import scan_edges
 from council.verifier import verify
 from council.redteam import redteam as redteam_eval
@@ -165,8 +166,44 @@ async def _scan_and_execute(
             await log_position_open(conn, position)
             open_positions.append(position)
             open_slugs.add(slug)
+            ws_prices.subscribe([
+                t for t in (position.get("yes_token_id"), position.get("no_token_id")) if t
+            ])
         else:
             _failed.add(slug)  # FOK kill — bu pencerede tekrar deneme
+
+
+async def _handle_ws_resolved(
+    event: dict,
+    open_positions: list[dict],
+    closed_today:   list[dict],
+    conn=None,
+) -> None:
+    """WS market_resolved event'ına göre açık pozisyonu anında kapat."""
+    winning_outcome = event.get("winning_outcome")   # "Yes" veya "No"
+    assets_ids      = set(event.get("assets_ids", []))
+    if not assets_ids:
+        return
+
+    for pos in list(open_positions):
+        if pos.get("yes_token_id") not in assets_ids \
+           and pos.get("no_token_id") not in assets_ids:
+            continue
+        if pos["action"] == "YES":
+            pm_exit = 1.0 if winning_outcome == "Yes" else 0.0
+        else:  # NO
+            pm_exit = 1.0 if winning_outcome == "No" else 0.0
+        try:
+            hl_price = await current_price(pos["asset"])
+        except Exception:
+            hl_price = None
+        closed = close_position(pos, "market_resolved", pm_exit_price=pm_exit,
+                                exit_hl_price=hl_price)
+        await log_position_close(conn, closed)
+        open_positions.remove(pos)
+        closed_today.append(closed)
+        notify_close(closed)
+        print(f"[ws] {pos['slug']} resolved — {winning_outcome} wins → pm_exit={pm_exit}")
 
 
 async def _heal_pending_resolutions(
@@ -252,28 +289,32 @@ async def _monitor_positions(
                 # Pozisyonu kapatma: bir sonraki scan döngüsünde tekrar dene
                 continue
 
-            # YES: satış best_bid'den olur → profit_target'ı best_bid ile kontrol et
-            # NO:  NO değeri = 1-YES_ask → best_ask kullan
-            pm_yes_price = (
-                window["best_bid"] if pos["action"] == "YES" else window["best_ask"]
-            )
+            # YES: gerçek SELL fiyatı WS bid'den; fallback Gamma window bid
+            if pos["action"] == "YES":
+                _ws_bid = ws_prices.get_bid(pos.get("yes_token_id", ""))
+                pm_yes_price = _ws_bid if _ws_bid is not None else window["best_bid"]
+            else:
+                _ws_bid = ws_prices.get_bid(pos.get("no_token_id", ""))
+                pm_yes_price = _ws_bid if _ws_bid is not None else window["best_ask"]
             exit_reason = check_exit(pos, hl_price,
                                      pm_yes_price,
                                      window["seconds_remaining"])
             if exit_reason:
                 if config.DRY_RUN:
-                    # DRY_RUN: modelled exit fiyatı
                     if pos["action"] == "NO":
-                        pm_exit = round(1 - window["best_ask"], 4)
+                        _no_bid = ws_prices.get_bid(pos.get("no_token_id", ""))
+                        pm_exit = _no_bid if _no_bid is not None else round(1 - window["best_ask"], 4)
                     else:
-                        pm_exit = window["best_bid"]
+                        _yes_bid = ws_prices.get_bid(pos.get("yes_token_id", ""))
+                        pm_exit = _yes_bid if _yes_bid is not None else window["best_bid"]
                 else:
-                    # LIVE: gerçek SELL order gönder
-                    pos["current_bid"] = (
-                        round(1 - window["best_ask"], 4)
-                        if pos["action"] == "NO"
-                        else window["best_bid"]
-                    )
+                    # LIVE: gerçek SELL order gönder — WS bid varsa kullan
+                    if pos["action"] == "NO":
+                        _no_bid = ws_prices.get_bid(pos.get("no_token_id", ""))
+                        pos["current_bid"] = _no_bid if _no_bid is not None else round(1 - window["best_ask"], 4)
+                    else:
+                        _yes_bid = ws_prices.get_bid(pos.get("yes_token_id", ""))
+                        pos["current_bid"] = _yes_bid if _yes_bid is not None else window["best_bid"]
                     pm_exit = await sell_position(pos)
                     if pm_exit is None:
                         # FAK kill veya hata — pozisyonu açık bırak, sonraki döngüde tekrar dene
@@ -309,6 +350,14 @@ async def main() -> None:
     if closed_today:
         print(f"[bot] Bugün {len(closed_today)} kapanan pozisyon geri yüklendi.")
 
+    initial_tids = [
+        tid
+        for pos in open_positions
+        for tid in (pos.get("yes_token_id"), pos.get("no_token_id"))
+        if tid
+    ]
+    asyncio.create_task(ws_prices.run(initial_tids))
+
     starting_bankroll = await get_effective_bankroll(BANKROLL_CONFIG)
     circuit_breaker.BUST_PROTECTION_PCT = config.BUST_PROTECTION_PCT
     circuit_breaker.STREAK_WARN_COUNT   = config.STREAK_WARN_COUNT
@@ -332,6 +381,11 @@ async def main() -> None:
                 n_closed_before = len(closed_today)
 
                 await _monitor_positions(open_positions, closed_today, conn=conn, failed_slugs=failed_slugs)
+                # WS üzerinden gelen anlık resolution olaylarını işle
+                if ws_prices._resolved_queue:
+                    while not ws_prices._resolved_queue.empty():
+                        ev = ws_prices._resolved_queue.get_nowait()
+                        await _handle_ws_resolved(ev, open_positions, closed_today, conn=conn)
                 for pos in closed_today[n_closed_before:]:
                     notify_close(pos)
                     pnl = pos.get("realized_pnl") or 0.0
