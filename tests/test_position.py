@@ -104,8 +104,8 @@ def test_check_exit_holds_when_no_condition_met():
 # ── Task 3: check_exit — thesis + kâr hedefi ─────────────────────────────────
 
 def test_check_exit_thesis_invalidated_yes():
-    """YES: HL düşünce fair_yes < pm_price → 'thesis_invalidated'."""
-    # fair_yes(94800, 95000, 900, 'BTC') = 0.3109 < pm_yes_price=0.35
+    """YES: HL ref'in altına düşünce fair_yes < 0.48 → 'thesis_invalidated'."""
+    # fair_yes(94800, 95000, 900, 'BTC') ≈ 0.31 < 0.48 → thesis broken
     pos = _position(action="YES", held_minutes=5)
     result = check_exit(pos, hl_price=94800, pm_yes_price=0.35,
                         time_to_expiry_secs=900)
@@ -113,10 +113,13 @@ def test_check_exit_thesis_invalidated_yes():
 
 
 def test_check_exit_thesis_invalidated_no():
-    """NO: HL yükselince fair_yes > pm_price → 'thesis_invalidated'."""
-    # fair_yes(95200, 95000, 900, 'BTC') = 0.6887 > pm_yes_price=0.30
+    """NO: HL ref'in üstüne çıkınca fair_yes > 0.52 → 'thesis_invalidated'.
+
+    fair_yes(95200, 95000, 900, 'BTC') ≈ 0.69 > 0.52 → thesis broken (HL bullish'e döndü)
+    pm_yes_price=0.60 → NO değer=0.40, kâr henüz hedefte değil (0.22 < 0.85)
+    """
     pos = _position(action="NO", held_minutes=5)
-    result = check_exit(pos, hl_price=95200, pm_yes_price=0.30,
+    result = check_exit(pos, hl_price=95200, pm_yes_price=0.60,
                         time_to_expiry_secs=900)
     assert result == "thesis_invalidated"
 
@@ -142,6 +145,20 @@ def test_check_exit_profit_target_hit_no():
     result = check_exit(pos, hl_price=94800, pm_yes_price=0.38,
                         time_to_expiry_secs=900)
     assert result == "profit_target_hit"
+
+
+def test_check_exit_no_holds_when_hl_at_ref():
+    """NO: HL ref fiyatında (flat) → thesis BOZULMAZ, pozisyon tutulur.
+
+    Eski bug: NO_entry=0.64 → threshold=1-0.64-0.02=0.34, fair_yes(ref,ref)=0.50 > 0.34 → anında ateşleniyordu.
+    Yeni fix: threshold=0.52, fair_yes(ref,ref)=0.50 < 0.52 → holds ✓
+    """
+    pos = _position(action="NO", held_minutes=1)
+    # HL ref fiyatında (p_now == p_ref → fair_yes = 0.50)
+    result = check_exit(pos, hl_price=95000, pm_yes_price=0.60,
+                        time_to_expiry_secs=900)
+    assert result is None, f"HL ref'te flat → thesis bozulmamalı, sonuç: {result}"
+
 
 
 def test_close_position_includes_exit_hl_price():

@@ -636,6 +636,46 @@ async def test_live_monitor_calls_sell_position_on_exit():
 
 
 @pytest.mark.asyncio
+async def test_live_monitor_keeps_position_open_when_sell_returns_none():
+    """DRY_RUN=False iken sell_position None → pozisyon AÇIK kalır, kapatılmaz.
+
+    FAK SELL kill edildiğinde None döner. main_loop pozisyonu açık_positions'tan
+    çıkarmamalı — sonraki döngüde tekrar deneyecek.
+    """
+    import config
+    from datetime import datetime, timedelta, timezone
+    opened_at = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    pos = {
+        "position_id": "live-pos-002", "asset": "SOL", "action": "YES",
+        "slug": "sol-up-5m-test", "pm_entry_price": 0.30, "fair_value": 0.60,
+        "ref_price": 150.0, "position_usd": 10.0, "kelly_f": 0.10,
+        "confidence_score": 75.0, "seconds_remaining": 600,
+        "opened_at": opened_at, "status": "open",
+        "requires_human_approval": False, "dry_run": False,
+        "exit_reason": None, "closed_at": None,
+        "shares": 4.0, "order_id": "ord-002",
+        "yes_token_id": "yes-tok-sol", "no_token_id": "no-tok-sol",
+        "entry_hl_price": 150.0,
+    }
+    open_pos = [pos]
+    closed   = []
+    fake_window = {"best_ask": 0.50, "best_bid": 0.48,
+                   "seconds_remaining": 600, "neg_risk": False}
+
+    with patch.object(config, "DRY_RUN", False), \
+         patch("main_loop.current_price",       new_callable=AsyncMock, return_value=150.0), \
+         patch("main_loop.fetch_by_slug",       new_callable=AsyncMock, return_value={}), \
+         patch("main_loop.parse_market_window",  return_value=fake_window), \
+         patch("main_loop.check_exit",           return_value="thesis_invalidated"), \
+         patch("main_loop.sell_position",        new_callable=AsyncMock, return_value=None):
+        await _monitor_positions(open_pos, closed)
+
+    # SELL None → pozisyon hala açık
+    assert len(open_pos) == 1, "sell_position=None → pozisyon açık_positions'ta kalmalı"
+    assert len(closed) == 0, "sell_position=None → closed_today'e eklenmemeli"
+
+
+@pytest.mark.asyncio
 async def test_load_open_positions_includes_entry_hl_price(mem_db):
     """DB'den yüklenen pozisyonda entry_hl_price alanı olmalı."""
     pos = {

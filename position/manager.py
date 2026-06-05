@@ -84,18 +84,10 @@ def check_exit(
     if held_minutes >= config.MAX_HOLD_MINUTES:
         return "max_hold_time"
 
-    # 3. Thesis kontrolü — HL tersine döndü mü?
-    new_fair = fair_yes(hl_price, position["ref_price"],
-                        time_to_expiry_secs, position["asset"])
-    if position["action"] == "YES":
-        thesis_broken = new_fair < pm_yes_price
-    else:
-        thesis_broken = new_fair > pm_yes_price
+    entry_price = position["pm_entry_price"]
 
-    if thesis_broken:
-        return "thesis_invalidated"
-
-    # 4. Kâr hedefi — edge'in PROFIT_TARGET_FRACTION kadarı yakalandı mı?
+    # 3. Kâr hedefi — edge'in PROFIT_TARGET_FRACTION kadarı yakalandı mı?
+    # Önce kâr kontrolü: thesis_invalidated'dan önce gelmeli ki kazancı kaçırmasın
     if position["action"] == "YES":
         current_val = pm_yes_price
         target_val  = position["fair_value"]
@@ -103,9 +95,24 @@ def check_exit(
         current_val = 1 - pm_yes_price
         target_val  = 1 - position["fair_value"]
 
-    entry_price = position["pm_entry_price"]
     edge = target_val - entry_price
     if edge > 0 and (current_val - entry_price) / edge >= PROFIT_TARGET_FRACTION:
         return "profit_target_hit"
+
+    # 4. Thesis kontrolü — HL yön kaybetti mi?
+    # YES girişi: HL ref'in ÜSTÜNDEYDI (bullish). Thesis bozulur → HL ref'in altına düşünce.
+    # NO girişi: HL ref'in ALTINDAYDI (bearish). Thesis bozulur → HL ref'in üstüne çıkınca.
+    # Eşik: her zaman 0.50 ± buffer — entry fiyatına bağlı DEĞİL.
+    # (entry price bazlı eşik: NO_entry=0.64 → threshold=0.34, HL ref'e döner dönmez ateşliyordu)
+    new_fair = fair_yes(hl_price, position["ref_price"],
+                        time_to_expiry_secs, position["asset"])
+    thesis_buffer = 0.02
+    if position["action"] == "YES":
+        thesis_broken = new_fair < (0.50 - thesis_buffer)   # HL bearish'e döndü
+    else:
+        thesis_broken = new_fair > (0.50 + thesis_buffer)   # HL bullish'e döndü
+
+    if thesis_broken:
+        return "thesis_invalidated"
 
     return None

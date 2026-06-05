@@ -227,8 +227,12 @@ async def _monitor_positions(
     open_positions: list[dict],
     closed_today:   list[dict],
     conn=None,
+    failed_slugs: set | None = None,
 ) -> None:
-    """Açık pozisyonları izler, çıkış koşulu varsa kapatır."""
+    """Açık pozisyonları izler, çıkış koşulu varsa kapatır.
+
+    failed_slugs: kapanan pozisyon slug'ları buraya eklenir → aynı pencere yeniden açılmaz.
+    """
     for pos in list(open_positions):
         try:
             hl_price   = await current_price(pos["asset"])
@@ -248,8 +252,13 @@ async def _monitor_positions(
                 # Pozisyonu kapatma: bir sonraki scan döngüsünde tekrar dene
                 continue
 
+            # YES: satış best_bid'den olur → profit_target'ı best_bid ile kontrol et
+            # NO:  NO değeri = 1-YES_ask → best_ask kullan
+            pm_yes_price = (
+                window["best_bid"] if pos["action"] == "YES" else window["best_ask"]
+            )
             exit_reason = check_exit(pos, hl_price,
-                                     window["best_ask"],
+                                     pm_yes_price,
                                      window["seconds_remaining"])
             if exit_reason:
                 if config.DRY_RUN:
@@ -266,11 +275,18 @@ async def _monitor_positions(
                         else window["best_bid"]
                     )
                     pm_exit = await sell_position(pos)
+                    if pm_exit is None:
+                        # FAK kill veya hata — pozisyonu açık bırak, sonraki döngüde tekrar dene
+                        print(f"[monitor] {pos['slug']} SELL başarısız — pozisyon açık kalıyor")
+                        continue
                 closed = close_position(pos, exit_reason, pm_exit_price=pm_exit,
                                         exit_hl_price=hl_price)
                 await log_position_close(conn, closed)
                 open_positions.remove(pos)
                 closed_today.append(closed)
+                # Bu pencere tekrar açılmasın — aynı HL sinyali devam ederse scout yeniden tetikler
+                if failed_slugs is not None:
+                    failed_slugs.add(pos["slug"])
 
         except Exception as e:
             print(f"[monitor] {pos['slug']} hata: {e}")
@@ -315,7 +331,7 @@ async def main() -> None:
             try:
                 n_closed_before = len(closed_today)
 
-                await _monitor_positions(open_positions, closed_today, conn=conn)
+                await _monitor_positions(open_positions, closed_today, conn=conn, failed_slugs=failed_slugs)
                 for pos in closed_today[n_closed_before:]:
                     notify_close(pos)
                     pnl = pos.get("realized_pnl") or 0.0

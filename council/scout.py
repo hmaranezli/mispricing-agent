@@ -3,8 +3,13 @@ council/scout.py — KATMAN 1: Keşif Ajanı.
 
 Edge tanımı (matematiksel):
   fair_yes = P(fiyat > referans | şimdiki, kalan_süre)  [Black-Scholes binary]
-  YES ucuz → fair_yes - best_ask > MIN_EDGE_PCT
-  NO ucuz  → best_bid - fair_yes > MIN_EDGE_PCT
+
+  YES ucuz → fair_yes - YES_ask > MIN_EDGE_PCT
+             (HL bullish, market henüz fiyatlamamış)
+
+  NO ucuz  → YES_ask - fair_yes > MIN_EDGE_PCT
+             (HL bearish, market YES'i hâlâ yüksek fiyatlıyor)
+             no_edge = YES_ask - fair_YES  [ince spread: YES_ask ≈ YES_bid]
 
 Referans fiyat: PM penceresinin eventStartTime'ındaki HL fiyatı.
 PM fiyatı: Gamma CLOB'dan bestAsk/bestBid (gerçek zamanlı).
@@ -40,18 +45,20 @@ def _asset_of(question) -> str | None:
 
 def _edge_signal(fair: float, best_ask: float, best_bid: float) -> dict | None:
     """
-    fair: fair_yes değeri [0,1]
-    best_ask: YES almak için ödeyeceğimiz fiyat
-    best_bid: YES satmak için alacağımız fiyat
+    fair:     fair_yes değeri [0,1]
+    best_ask: YES almak için ödeyeceğimiz fiyat (CLOB YES ask)
+    best_bid: NO bid ≈ 1-YES_ask — yalnızca fee hesabında kullanılır, edge'de değil
 
-    Edge hesabı:
-      YES edge = fair - best_ask         (YES ucuzsa pozitif)
-      NO edge  = best_bid - fair         (NO ucuzsa pozitif; fair_no=1-fair, no_ask=1-best_bid)
+    Edge hesabı (YES ve NO simetrik):
+      YES edge = fair - best_ask    (fair > market → YES ucuz → AL)
+      NO edge  = best_ask - fair    (market > fair → YES pahalı → NO ucuz → AL)
+
+    İki edge toplamı her zaman sıfır → aynı anda yalnızca biri pozitif olabilir.
 
     Returns None (edge yok/yetersiz) veya {"action": "YES"|"NO", "edge": float}
     """
     yes_edge = fair - best_ask
-    no_edge  = best_bid - fair
+    no_edge  = best_ask - fair   # ← DÜZELTİLDİ: best_bid - fair değil (formül hatası)
 
     if yes_edge >= config.MIN_EDGE_PCT:
         return {"action": "YES", "edge": yes_edge}
@@ -88,8 +95,8 @@ async def _process_market(m: dict) -> dict | None:
     if clob_yes is None:
         return None  # CLOB likidite yok → atla
 
-    clob_ask      = clob_yes                       # YES almak için ödeyeceğimiz fiyat (CLOB real-time)
-    no_bid_approx = max(0.0, 1.0 - clob_yes)     # NO bid ≈ 1 - YES_ask (spread ihmal edilir)
+    clob_ask      = clob_yes                  # YES almak için ödeyeceğimiz fiyat (CLOB real-time)
+    no_bid_approx = clob_yes                  # YES_ask ≈ YES_bid (ince spread); redteam: 1-bid=NO_bid ✓
 
     try:
         ref_price = await price_at_timestamp(asset, window["start_ms"])

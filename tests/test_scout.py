@@ -55,11 +55,14 @@ def test_edge_signal_yes_cheap():
 
 
 def test_edge_signal_no_cheap():
-    """bid > fair yeterince → NO al."""
+    """YES_ask > fair yeterince → NO al (market YES'i aşırı fiyatlıyor).
+    Senaryo: HL bearish (fair=0.30), piyasa hâlâ YES'e 0.62 diyor → NO ucuz.
+    no_edge = best_ask - fair = 0.62 - 0.30 = 0.32 (doğru formül)
+    """
     result = _edge_signal(fair=0.30, best_ask=0.62, best_bid=0.60)
     assert result is not None
     assert result["action"] == "NO"
-    assert abs(result["edge"] - 0.30) < 1e-6
+    assert abs(result["edge"] - 0.32) < 1e-6
 
 
 def test_edge_signal_no_edge_when_fair():
@@ -76,10 +79,65 @@ def test_edge_signal_below_min_threshold_yes():
 
 
 def test_edge_signal_below_min_threshold_no():
-    """NO edge ama MIN_EDGE_PCT altında → None."""
-    # best_bid - fair = 0.50 - 0.47 = 0.03 < 0.05
-    result = _edge_signal(fair=0.47, best_ask=0.52, best_bid=0.50)
+    """NO edge ama MIN_EDGE_PCT altında → None.
+    no_edge = best_ask - fair = 0.51 - 0.47 = 0.04 < 0.05 → None
+    """
+    result = _edge_signal(fair=0.47, best_ask=0.51, best_bid=0.49)
     assert result is None
+
+
+# ── Kök hata regression testleri ─────────────────────────────────────────────
+
+def test_edge_signal_no_false_signal_when_market_aligned():
+    """KRİTİK regression: market ve HL hemfikirken NO sinyali üretmemeli.
+
+    Senaryo (#1157 kaybının kökü):
+      HL bearish → fair_YES=0.40
+      Market da bearish → YES_ask=0.36 (zaten düşük fiyatlamış)
+      Gerçek edge = YES_ask - fair_YES = 0.36-0.40 = -0.04 → AÇMA!
+
+    Eski hatalı formül:
+      no_edge = (1-YES_ask) - fair = (1-0.36)-0.40 = +0.24 → yanlış açıyordu
+
+    Yeni doğru formül (best_ask - fair):
+      no_edge = 0.36 - 0.40 = -0.04 → None ✓
+    """
+    result = _edge_signal(fair=0.40, best_ask=0.36, best_bid=0.64)
+    assert result is None, (
+        f"Market ve HL hemfikirken NO açılmamalı! "
+        f"fair=0.40, YES_ask=0.36 → gerçek edge=-0.04, result={result}"
+    )
+
+
+def test_edge_signal_no_genuine_mispricing():
+    """Gerçek NO fırsatı: HL çok bearish ama market hâlâ bullish.
+
+    Senaryo:
+      HL drops 3% → fair_YES=0.10 (çok bearish)
+      Market hâlâ YES_ask=0.65 (lag — henüz fiyatlamadı)
+      Gerçek edge = 0.65 - 0.10 = 0.55 → AÇILMALI!
+
+    Eski formül: (1-0.65)-0.10 = 0.25 (açıyordu ama edge yanlış)
+    Yeni formül: 0.65-0.10 = 0.55 (doğru edge) ✓
+    """
+    result = _edge_signal(fair=0.10, best_ask=0.65, best_bid=0.35)
+    assert result is not None, "Gerçek NO fırsatı bulunmalı"
+    assert result["action"] == "NO"
+    assert abs(result["edge"] - 0.55) < 1e-6, (
+        f"Edge 0.55 olmalı, gelen: {result['edge']}"
+    )
+
+
+def test_edge_signal_no_only_when_ask_above_fair():
+    """NO yalnızca YES_ask > fair_YES olduğunda açılır (market YES'i aşırı fiyatladığında)."""
+    # YES_ask = fair_YES + MIN_EDGE_PCT → tam eşikte
+    # no_edge = 0.40 - 0.35 = 0.05 → geçmeli
+    result = _edge_signal(fair=0.35, best_ask=0.40, best_bid=0.60)
+    assert result is not None
+    assert result["action"] == "NO"
+    # YES_ask = fair_YES + MIN_EDGE_PCT - epsilon → geçmemeli
+    result2 = _edge_signal(fair=0.35, best_ask=0.395, best_bid=0.605)
+    assert result2 is None, "Tam eşik altında NO açılmamalı"
 
 
 def test_edge_signal_exact_min_threshold():

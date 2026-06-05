@@ -4,9 +4,11 @@ import aiohttp
 CLOB_HOST = "https://clob.polymarket.com"
 
 
-async def get_clob_price(token_id: str) -> float | None:
-    """CLOB /price?side=BUY → token için anlık best ask fiyatı.
+async def get_clob_price(token_id: str, side: str = "BUY") -> float | None:
+    """CLOB /price?side=BUY|SELL → token için anlık fiyat.
 
+    BUY  → best ask (almak için ödeyeceğin)
+    SELL → best bid (satmak için alacağın)
     Returns: float (>0) veya None (liquidity yok / hata).
     """
     if not token_id:
@@ -16,7 +18,7 @@ async def get_clob_price(token_id: str) -> float | None:
         async with aiohttp.ClientSession(timeout=timeout) as s:
             async with s.get(
                 f"{CLOB_HOST}/price",
-                params={"token_id": token_id, "side": "BUY"},
+                params={"token_id": token_id, "side": side},
             ) as r:
                 if r.status == 200:
                     data = await r.json()
