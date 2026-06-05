@@ -383,8 +383,6 @@ async def test_process_market_returns_none_when_no_clob_liquidity():
         "negRisk": False,
         "clobTokenIds": '["yes-tok-333","no-tok-444"]',
     }
-    with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=None), \
-         patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=100_000.0), \
-         patch("council.scout.current_price", new_callable=AsyncMock, return_value=104_000.0):
+    with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=None):
         result = await _process_market(market)
     assert result is None, "CLOB liquidity=None should return None (skip market)"

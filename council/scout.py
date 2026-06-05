@@ -88,8 +88,8 @@ async def _process_market(m: dict) -> dict | None:
     if clob_yes is None:
         return None  # CLOB likidite yok → atla
 
-    clob_ask = clob_yes                    # YES almak için ödeyeceğimiz fiyat
-    clob_bid = max(0.0, 1.0 - clob_yes)   # YES satmak için alacağımız fiyat (binary approximation)
+    clob_ask      = clob_yes                       # YES almak için ödeyeceğimiz fiyat (CLOB real-time)
+    no_bid_approx = max(0.0, 1.0 - clob_yes)     # NO bid ≈ 1 - YES_ask (spread ihmal edilir)
 
     try:
         ref_price = await price_at_timestamp(asset, window["start_ms"])
@@ -98,7 +98,7 @@ async def _process_market(m: dict) -> dict | None:
         return None
 
     fair = fair_yes(cur, ref_price, window["seconds_remaining"], asset)
-    signal = _edge_signal(fair, clob_ask, clob_bid)
+    signal = _edge_signal(fair, clob_ask, no_bid_approx)
     if signal is None:
         return None
 
@@ -111,7 +111,7 @@ async def _process_market(m: dict) -> dict | None:
         "ref_price":         ref_price,
         "cur_price":         cur,
         "best_ask":          clob_ask,       # CLOB gerçek fiyat (market API değil)
-        "best_bid":          clob_bid,       # 1 - clob_yes approximation
+        "best_bid":          no_bid_approx,  # NO bid approximation
         "seconds_remaining": window["seconds_remaining"],
         "edge":              round(signal["edge"], 4),
         "action":            signal["action"],
