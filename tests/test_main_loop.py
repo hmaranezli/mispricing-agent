@@ -263,8 +263,8 @@ async def test_monitor_closes_position_on_exit_signal():
 
 
 @pytest.mark.asyncio
-async def test_monitor_closes_on_missing_market():
-    """parse_market_window None + fetch_resolved None → market_expired ile kapatılır."""
+async def test_monitor_skips_on_missing_market_and_no_resolution():
+    """parse_market_window None + fetch_resolved None → geçici API hatası, pozisyon atlanır."""
     open_pos = [_open_position()]
     closed = []
     with patch("main_loop.current_price",       new_callable=AsyncMock) as mock_hl, \
@@ -275,9 +275,10 @@ async def test_monitor_closes_on_missing_market():
         mock_pm.return_value  = {}
         mock_res.return_value = None
         await _monitor_positions(open_pos, closed)
-    assert len(open_pos) == 0
-    assert len(closed) == 1
-    assert closed[0]["exit_reason"] == "market_expired"
+    # Her iki API None döndürünce pozisyon kapatılmamalı — bir sonraki döngüde tekrar dene
+    assert len(open_pos) == 1, "Geçici API hatasında pozisyon listede kalmalı"
+    assert len(closed) == 0, "Geçici API hatasında closed listesine eklenmemeli"
+    assert open_pos[0]["status"] == "open"
 
 
 @pytest.mark.asyncio
@@ -703,3 +704,67 @@ async def test_heal_passes_hl_prices_to_notify(mem_db):
         f"entry_hl_price={notify_calls[0].get('entry_hl_price')}, beklenen 66500.0"
     assert notify_calls[0].get("exit_hl_price") == 66510.0, \
         f"exit_hl_price={notify_calls[0].get('exit_hl_price')}, beklenen 66510.0"
+
+
+@pytest.mark.asyncio
+async def test_monitor_skips_position_on_transient_api_error():
+    """fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır."""
+    from main_loop import _monitor_positions
+
+    pos = {
+        "position_id": "pos-skip-001",
+        "slug": "btc-updown-5m-9999",
+        "asset": "BTC",
+        "action": "YES",
+        "pm_entry_price": 0.80,
+        "position_usd": 1.25,
+        "shares": 1.5,
+        "status": "open",
+        "seq_no": 1,
+    }
+    open_positions = [pos]
+    closed_today = []
+
+    with patch("main_loop.current_price", new_callable=AsyncMock, return_value=95_000.0), \
+         patch("main_loop.fetch_by_slug", new_callable=AsyncMock, return_value=None), \
+         patch("main_loop.fetch_resolved", new_callable=AsyncMock, return_value=None):
+        await _monitor_positions(open_positions, closed_today, conn=None)
+
+    # API error olduğunda pozisyon kapatılmaz
+    assert len(open_positions) == 1, "Geçici API hatasında pozisyon listeden çıkarılmamalı"
+    assert len(closed_today) == 0, "Geçici API hatasında closed_today'e eklenmemeli"
+    assert open_positions[0]["status"] == "open"
+
+
+@pytest.mark.asyncio
+async def test_monitor_closes_on_definitive_resolution():
+    """fetch_by_slug=None ama fetch_resolved sonuç döndürünce → market_resolved kapatılır."""
+    from main_loop import _monitor_positions
+
+    pos = {
+        "position_id": "pos-resolve-001",
+        "slug": "btc-updown-5m-8888",
+        "asset": "BTC",
+        "action": "YES",
+        "pm_entry_price": 0.75,
+        "position_usd": 1.25,
+        "shares": 1.5,
+        "status": "open",
+        "seq_no": 1,
+        "entry_hl_price": 95_000.0,
+        "fair_value": 0.80,
+        "dry_run": True,
+    }
+    open_positions = [pos]
+    closed_today = []
+
+    with patch("main_loop.current_price", new_callable=AsyncMock, return_value=95_000.0), \
+         patch("main_loop.fetch_by_slug", new_callable=AsyncMock, return_value=None), \
+         patch("main_loop.fetch_resolved", new_callable=AsyncMock,
+               return_value={"yes_exit": 1.0, "no_exit": 0.0}), \
+         patch("main_loop.log_position_close", new_callable=AsyncMock):
+        await _monitor_positions(open_positions, closed_today, conn=None)
+
+    assert len(open_positions) == 0, "Resolved market pozisyonu kapatmalı"
+    assert len(closed_today) == 1
+    assert closed_today[0]["exit_reason"] == "market_resolved"

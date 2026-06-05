@@ -241,11 +241,11 @@ async def _monitor_positions(
                     pm_exit = resolution["yes_exit"] if pos["action"] == "YES" else resolution["no_exit"]
                     closed = close_position(pos, "market_resolved", pm_exit_price=pm_exit,
                                             exit_hl_price=hl_price)
-                else:
-                    closed = close_position(pos, "market_expired", exit_hl_price=hl_price)
-                await log_position_close(conn, closed)
-                open_positions.remove(pos)
-                closed_today.append(closed)
+                    await log_position_close(conn, closed)
+                    open_positions.remove(pos)
+                    closed_today.append(closed)
+                # fetch_resolved da None → geçici API hatası, bu döngüde atla
+                # Pozisyonu kapatma: bir sonraki scan döngüsünde tekrar dene
                 continue
 
             exit_reason = check_exit(pos, hl_price,
