@@ -99,7 +99,8 @@ async def _process_market(m: dict) -> dict | None:
         return None  # Likidite yok → atla
 
     # YES bid: WS'den gerçek değer; yoksa YES_ask ≈ YES_bid (ince spread)
-    yes_bid       = _ws_prices.get_bid(yes_token) or clob_ask
+    _raw_yes_bid  = _ws_prices.get_bid(yes_token)
+    yes_bid       = _raw_yes_bid if _raw_yes_bid is not None else clob_ask
     no_bid_approx = yes_bid   # redteam: 1-yes_bid = NO_ask ✓
 
     try:
