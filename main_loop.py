@@ -138,6 +138,7 @@ async def _scan_and_execute(
         return
 
     findings = await scan_edges()
+    print(f"[scan] {len(findings)} bulgu, {len(open_positions)}/{config.MAX_OPEN_POSITIONS} açık pozisyon")
     daily_loss = 0.0
     open_slugs  = {p["slug"] for p in open_positions}
     _failed     = failed_slugs if failed_slugs is not None else set()
