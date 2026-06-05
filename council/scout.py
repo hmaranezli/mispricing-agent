@@ -19,6 +19,7 @@ from data.shortterm import find_shortterm, parse_market_window, _parse_token_ids
 from data.hl_candles import price_at_timestamp, current_price
 from data.fair_value import fair_yes
 from data.fee_rate import fetch_fee_rate
+from data.clob_price import get_clob_price
 import config
 
 MIN_SECONDS = 180  # Çözüme bu kadar saniyeden az kalmışsa atla (RedTeam 120s eşiği + 60s buffer)
@@ -78,8 +79,17 @@ async def _process_market(m: dict) -> dict | None:
     if window["seconds_remaining"] < MIN_SECONDS:
         return None
 
-    if window["best_ask"] <= 0 or window["best_bid"] <= 0:
-        return None
+    _tids = _parse_token_ids(m.get("clobTokenIds"))
+    yes_token = _tids[0] if _tids else None
+    no_token  = _tids[1] if len(_tids) > 1 else None
+
+    # CLOB gerçek zamanlı fiyat — market API bestAsk stale olduğundan kullanmıyoruz
+    clob_yes = await get_clob_price(yes_token) if yes_token else None
+    if clob_yes is None:
+        return None  # CLOB likidite yok → atla
+
+    clob_ask = clob_yes                    # YES almak için ödeyeceğimiz fiyat
+    clob_bid = max(0.0, 1.0 - clob_yes)   # YES satmak için alacağımız fiyat (binary approximation)
 
     try:
         ref_price = await price_at_timestamp(asset, window["start_ms"])
@@ -88,12 +98,10 @@ async def _process_market(m: dict) -> dict | None:
         return None
 
     fair = fair_yes(cur, ref_price, window["seconds_remaining"], asset)
-    signal = _edge_signal(fair, window["best_ask"], window["best_bid"])
+    signal = _edge_signal(fair, clob_ask, clob_bid)
     if signal is None:
         return None
 
-    _tids = _parse_token_ids(m.get("clobTokenIds"))
-    yes_token = _tids[0] if _tids else None
     taker_fee = await fetch_fee_rate(yes_token) if yes_token else 0.02
 
     return {
@@ -102,8 +110,8 @@ async def _process_market(m: dict) -> dict | None:
         "fair_value":        round(fair, 4),
         "ref_price":         ref_price,
         "cur_price":         cur,
-        "best_ask":          window["best_ask"],
-        "best_bid":          window["best_bid"],
+        "best_ask":          clob_ask,       # CLOB gerçek fiyat (market API değil)
+        "best_bid":          clob_bid,       # 1 - clob_yes approximation
         "seconds_remaining": window["seconds_remaining"],
         "edge":              round(signal["edge"], 4),
         "action":            signal["action"],
@@ -112,7 +120,7 @@ async def _process_market(m: dict) -> dict | None:
         "_window":           window,
         "_raw_market":       m,
         "yes_token_id":      yes_token,
-        "no_token_id":       _tids[1] if len(_tids) > 1 else None,
+        "no_token_id":       no_token,
         "taker_fee":         taker_fee,
     }
 
@@ -148,7 +156,7 @@ async def main():
         print(f"  Referans fiyat (pencere açılışı) : ${f['ref_price']:,.2f}")
         print(f"  Şimdiki fiyat (HL live)          : ${f['cur_price']:,.2f}")
         print(f"  Fair YES değeri                  : {f['fair_value']:.3f}")
-        print(f"  PM bestAsk / bestBid              : {f['best_ask']:.3f} / {f['best_bid']:.3f}")
+        print(f"  CLOB ask / bid                   : {f['best_ask']:.3f} / {f['best_bid']:.3f}")
         print(f"  EDGE                             : {f['edge']:+.3f}  >>> EŞİK ÜSTÜ")
         print(f"  Kalan süre                       : {f['seconds_remaining']:.0f}s")
         print(f"  Aksiyon                          : {f['action']} AL")

@@ -69,22 +69,22 @@ def test_edge_signal_no_edge_when_fair():
 
 
 def test_edge_signal_below_min_threshold_yes():
-    """Edge var ama MIN_EDGE_PCT altında → None. (MIN_EDGE_PCT=0.08)"""
-    # 0.57 - 0.50 = 0.07 < 0.08
-    result = _edge_signal(fair=0.57, best_ask=0.50, best_bid=0.49)
+    """Edge var ama MIN_EDGE_PCT altında → None. (MIN_EDGE_PCT=0.05)"""
+    # 0.54 - 0.51 = 0.03 < 0.05
+    result = _edge_signal(fair=0.54, best_ask=0.51, best_bid=0.50)
     assert result is None
 
 
 def test_edge_signal_below_min_threshold_no():
     """NO edge ama MIN_EDGE_PCT altında → None."""
-    # best_bid - fair = 0.50 - 0.44 = 0.06 < 0.08
-    result = _edge_signal(fair=0.44, best_ask=0.52, best_bid=0.50)
+    # best_bid - fair = 0.50 - 0.47 = 0.03 < 0.05
+    result = _edge_signal(fair=0.47, best_ask=0.52, best_bid=0.50)
     assert result is None
 
 
 def test_edge_signal_exact_min_threshold():
-    """MIN_EDGE_PCT (0.08) üstünde edge → geçer. Float kesinliğinden kaçınmak için 0.10 kullan."""
-    # 0.60 - 0.50 = 0.10 >= 0.08 → geçmeli
+    """MIN_EDGE_PCT (0.05) üstünde edge → geçer. Float kesinliğinden kaçınmak için 0.10 kullan."""
+    # 0.60 - 0.50 = 0.10 >= 0.05 → geçmeli
     result = _edge_signal(fair=0.60, best_ask=0.50, best_bid=0.49)
     assert result is not None
     assert result["action"] == "YES"
@@ -256,7 +256,9 @@ async def test_finding_contains_token_ids():
     with patch("council.scout.find_shortterm", new_callable=AsyncMock) as mock_find, \
          patch("council.scout.price_at_timestamp", new_callable=AsyncMock) as mock_ref, \
          patch("council.scout.current_price", new_callable=AsyncMock) as mock_cur, \
-         patch("council.scout.fair_yes", return_value=0.60):
+         patch("council.scout.fair_yes", return_value=0.60), \
+         patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02):
         mock_find.return_value = [fake_market]
         mock_ref.return_value = 95000.0
         mock_cur.return_value = 96000.0
@@ -319,7 +321,9 @@ async def test_finding_token_ids_single_element_no_crash():
     with patch("council.scout.find_shortterm", new_callable=AsyncMock) as mock_find, \
          patch("council.scout.price_at_timestamp", new_callable=AsyncMock) as mock_ref, \
          patch("council.scout.current_price", new_callable=AsyncMock) as mock_cur, \
-         patch("council.scout.fair_yes", return_value=0.60):
+         patch("council.scout.fair_yes", return_value=0.60), \
+         patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02):
         mock_find.return_value = [fake_market]
         mock_ref.return_value = 95000.0
         mock_cur.return_value = 96000.0
@@ -328,3 +332,59 @@ async def test_finding_token_ids_single_element_no_crash():
     if findings:
         assert findings[0].get("yes_token_id") == "only-yes-token"
         assert findings[0].get("no_token_id") is None
+
+
+# ── CLOB fiyat testleri ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_process_market_uses_clob_price_not_market_api():
+    """_process_market CLOB fiyatını kullanır, market API best_ask'ı değil."""
+    from unittest.mock import AsyncMock, patch
+    from datetime import datetime, timezone, timedelta
+    from council.scout import _process_market
+
+    now = datetime.now(timezone.utc)
+    market = {
+        "question": "Will BTC go up?",
+        "slug": "btc-updown-5m-clob-test",
+        "bestAsk": "0.80",   # stale market API price — should be IGNORED
+        "bestBid": "0.79",
+        "eventStartTime": (now - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "endDate": (now + timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "negRisk": False,
+        "clobTokenIds": '["yes-tok-111","no-tok-222"]',
+    }
+    # CLOB real price = 0.55, fair = 0.65 → YES edge = 0.65 - 0.55 = 0.10 ≥ 0.05
+    with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.55), \
+         patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=100_000.0), \
+         patch("council.scout.current_price", new_callable=AsyncMock, return_value=104_000.0), \
+         patch("council.scout.fair_yes", return_value=0.65), \
+         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02):
+        result = await _process_market(market)
+    assert result is not None, "Should find edge with CLOB price"
+    assert abs(result["best_ask"] - 0.55) < 1e-6, f"best_ask should be CLOB price 0.55, got {result['best_ask']}"
+
+
+@pytest.mark.asyncio
+async def test_process_market_returns_none_when_no_clob_liquidity():
+    """CLOB None döndürünce (likidite yok) market atlanır."""
+    from unittest.mock import AsyncMock, patch
+    from datetime import datetime, timezone, timedelta
+    from council.scout import _process_market
+
+    now = datetime.now(timezone.utc)
+    market = {
+        "question": "Will BTC go up?",
+        "slug": "btc-updown-5m-no-clob",
+        "bestAsk": "0.35",
+        "bestBid": "0.34",
+        "eventStartTime": (now - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "endDate": (now + timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "negRisk": False,
+        "clobTokenIds": '["yes-tok-333","no-tok-444"]',
+    }
+    with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=None), \
+         patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=100_000.0), \
+         patch("council.scout.current_price", new_callable=AsyncMock, return_value=104_000.0):
+        result = await _process_market(market)
+    assert result is None, "CLOB liquidity=None should return None (skip market)"
