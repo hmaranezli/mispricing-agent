@@ -535,3 +535,107 @@ def test_process_market_falls_back_to_rest_when_ws_miss(monkeypatch):
 
     asyncio.run(_process_market(market))
     assert "yes_tok_rest" in rest_called, "WS miss'te REST çağrılmalı"
+
+
+# ── YES_bid REST fallback testleri ───────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_yes_bid_uses_sell_endpoint_when_ws_bid_is_none():
+    """WS get_bid None → /price?side=SELL çağrılır; clob_ask kullanılmaz."""
+    from council.scout import _process_market
+    from unittest.mock import patch, AsyncMock
+    import data.ws_prices as ws_mod
+
+    fake_window = {
+        "neg_risk": False, "seconds_remaining": 300.0,
+        "best_ask": 0.50, "best_bid": 0.49, "start_ms": 0,
+    }
+    # fair=0.65, YES_ask=0.50 → YES edge=0.15 → YES action
+    # YES_bid: WS=None → REST SELL endpoint=0.48
+    with patch("council.scout.parse_market_window", return_value=fake_window), \
+         patch("council.scout._parse_token_ids", return_value=["tok-yes", "tok-no"]), \
+         patch.object(ws_mod, "get_ask", return_value=0.50), \
+         patch.object(ws_mod, "get_bid", return_value=None), \
+         patch("council.scout.get_clob_price", new_callable=AsyncMock,
+               side_effect=lambda tid, side="BUY": 0.48 if side == "SELL" else None) as mock_price, \
+         patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=50000.0), \
+         patch("council.scout.current_price", new_callable=AsyncMock, return_value=50000.0), \
+         patch("council.scout.fair_yes", return_value=0.65), \
+         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02):
+        result = await _process_market({"question": "Bitcoin Up or Down 5m", "slug": "btc-test"})
+
+    # SELL endpoint çağrılmış olmalı
+    mock_price.assert_any_call("tok-yes", "SELL")
+    # best_bid = 0.48 (SELL endpoint), NOT 0.50 (ask)
+    if result and result.get("action") == "YES":
+        assert result["best_bid"] == 0.48, (
+            f"YES_bid REST fallback hatalı: beklenen 0.48, gelen {result['best_bid']}"
+        )
+
+
+# ── NO_ask gerçek fiyat testleri ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_no_false_positive_filtered_by_real_no_ask():
+    """YES_ask tabanlı NO sinyali geçti ama gerçek NO_ask ile edge < MIN_EDGE_PCT → None."""
+    from council.scout import _process_market
+    from unittest.mock import patch, AsyncMock
+    import data.ws_prices as ws_mod
+
+    fake_window = {
+        "neg_risk": False, "seconds_remaining": 300.0,
+        "best_ask": 0.50, "best_bid": 0.49, "start_ms": 0,
+    }
+    # fair=0.45, YES_ask=0.51 → pre-filter no_edge=0.06 → NO signal fires
+    # Gerçek NO_ask=0.55 → real_no_edge=(1-0.45)-0.55=0.00 < MIN_EDGE_PCT → None döner
+    with patch("council.scout.parse_market_window", return_value=fake_window), \
+         patch("council.scout._parse_token_ids", return_value=["tok-yes", "tok-no"]), \
+         patch.object(ws_mod, "get_ask",
+               side_effect=lambda tid: 0.51 if tid == "tok-yes" else 0.55), \
+         patch.object(ws_mod, "get_bid", return_value=None), \
+         patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=None), \
+         patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=50000.0), \
+         patch("council.scout.current_price", new_callable=AsyncMock, return_value=50000.0), \
+         patch("council.scout.fair_yes", return_value=0.45), \
+         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02):
+        result = await _process_market({"question": "Bitcoin Up or Down 5m", "slug": "btc-test"})
+
+    assert result is None, (
+        f"False positive filtre çalışmadı! "
+        f"fair=0.45, YES_ask=0.51, NO_ask=0.55 → real_no_edge=0.00 < MIN_EDGE_PCT"
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_edge_uses_real_no_ask_and_correct_formula():
+    """NO sinyali: gerçek NO_ask ile (1-fair)-no_ask edge hesaplanır, finding'e yazılır."""
+    from council.scout import _process_market
+    from unittest.mock import patch, AsyncMock
+    import data.ws_prices as ws_mod
+
+    fake_window = {
+        "neg_risk": False, "seconds_remaining": 300.0,
+        "best_ask": 0.50, "best_bid": 0.49, "start_ms": 0,
+    }
+    # fair=0.30, YES_ask=0.65, NO_ask=0.38
+    # real_no_edge = (1-0.30) - 0.38 = 0.70 - 0.38 = 0.32 ≥ MIN_EDGE_PCT
+    with patch("council.scout.parse_market_window", return_value=fake_window), \
+         patch("council.scout._parse_token_ids", return_value=["tok-yes", "tok-no"]), \
+         patch.object(ws_mod, "get_ask",
+               side_effect=lambda tid: 0.65 if tid == "tok-yes" else 0.38), \
+         patch.object(ws_mod, "get_bid", return_value=None), \
+         patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=None), \
+         patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=50000.0), \
+         patch("council.scout.current_price", new_callable=AsyncMock, return_value=50000.0), \
+         patch("council.scout.fair_yes", return_value=0.30), \
+         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02):
+        result = await _process_market({"question": "Bitcoin Up or Down 5m", "slug": "btc-test"})
+
+    assert result is not None, "Gerçek NO edge 0.32 → bulgu dönmeli"
+    assert result["action"] == "NO"
+    assert abs(result["edge"] - 0.32) < 1e-4, (
+        f"NO edge yanlış: beklenen 0.32, gelen {result['edge']}"
+    )
+    assert result.get("no_ask") == 0.38, (
+        f"no_ask finding'de yok ya da yanlış: {result.get('no_ask')}"
+    )

@@ -7,9 +7,9 @@ Edge tanımı (matematiksel):
   YES ucuz → fair_yes - YES_ask > MIN_EDGE_PCT
              (HL bullish, market henüz fiyatlamamış)
 
-  NO ucuz  → YES_ask - fair_yes > MIN_EDGE_PCT
+  NO ucuz  → (1-fair_yes) - NO_ask > MIN_EDGE_PCT
              (HL bearish, market YES'i hâlâ yüksek fiyatlıyor)
-             no_edge = YES_ask - fair_YES  [ince spread: YES_ask ≈ YES_bid]
+             Pre-filter: YES_ask-fair; sonra gerçek NO_ask ile doğrula
 
 Referans fiyat: PM penceresinin eventStartTime'ındaki HL fiyatı.
 PM fiyatı: Gamma CLOB'dan bestAsk/bestBid (gerçek zamanlı).
@@ -98,10 +98,12 @@ async def _process_market(m: dict) -> dict | None:
     if clob_ask is None:
         return None  # Likidite yok → atla
 
-    # YES bid: WS'den gerçek değer; yoksa YES_ask ≈ YES_bid (ince spread)
-    _raw_yes_bid  = _ws_prices.get_bid(yes_token)
-    yes_bid       = _raw_yes_bid if _raw_yes_bid is not None else clob_ask
-    no_bid_approx = yes_bid   # redteam: 1-yes_bid = NO_ask ✓
+    # YES bid: WS'den gerçek değer; yoksa /price?side=SELL; son çare ask
+    _raw_yes_bid = _ws_prices.get_bid(yes_token)
+    if _raw_yes_bid is not None:
+        yes_bid = _raw_yes_bid
+    else:
+        yes_bid = await get_clob_price(yes_token, "SELL") or clob_ask
 
     try:
         ref_price = await price_at_timestamp(asset, window["start_ms"])
@@ -110,9 +112,21 @@ async def _process_market(m: dict) -> dict | None:
         return None
 
     fair = fair_yes(cur, ref_price, window["seconds_remaining"], asset)
-    signal = _edge_signal(fair, clob_ask, no_bid_approx)
+    signal = _edge_signal(fair, clob_ask, yes_bid)
     if signal is None:
         return None
+
+    # NO işlem: WS veya REST'ten gerçek NO_ask ile edge'i doğrula
+    no_ask = None
+    if signal["action"] == "NO" and no_token:
+        no_ask = _ws_prices.get_ask(no_token)
+        if no_ask is None:
+            no_ask = await get_clob_price(no_token, "BUY")
+        if no_ask is not None:
+            real_no_edge = round((1 - fair) - no_ask, 4)
+            if real_no_edge < config.MIN_EDGE_PCT:
+                return None  # YES_ask tabanlı sinyal yanlış pozitif çıktı
+            signal = {"action": "NO", "edge": real_no_edge}
 
     taker_fee = await fetch_fee_rate(yes_token) if yes_token else 0.02
 
@@ -133,6 +147,7 @@ async def _process_market(m: dict) -> dict | None:
         "_raw_market":       m,
         "yes_token_id":      yes_token,
         "no_token_id":       no_token,
+        "no_ask":            no_ask,          # NO token gerçek ask (action=NO ise dolu)
         "taker_fee":         taker_fee,
     }
 
