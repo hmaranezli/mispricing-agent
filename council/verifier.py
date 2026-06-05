@@ -22,10 +22,13 @@ async def verify(finding: dict) -> dict:
 
     Returns:
         {pass, reason, halt, fresh_cur_price, fresh_best_ask, fresh_best_bid,
-         fresh_fair, fresh_edge, fresh_seconds, hl_drift_pct, pm_drift}
+         fresh_fair, fresh_edge, fresh_seconds, hl_drift_pct}
     """
     asset     = finding["asset"]
     scout_cur = finding["cur_price"]
+
+    if scout_cur == 0:
+        return _result(False, "fetch_error", False, extra={"error": "scout_cur=0"})
 
     try:
         fresh_cur = await current_price(asset)

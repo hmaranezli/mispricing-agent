@@ -175,19 +175,6 @@ def _fake_finding_with_tokens(
     }
 
 
-def _fake_market_window(best_ask=0.35, best_bid=0.34, seconds=300.0):
-    """fetch_by_slug mock için sahte market dict."""
-    from unittest.mock import MagicMock
-    m = MagicMock()
-    m.get = lambda k, d=None: {
-        "bestAsk": str(best_ask), "bestBid": str(best_bid),
-        "negRisk": False,
-        "endDate": "2099-01-01T00:00:00Z",
-        "eventStartTime": "2099-01-01T00:00:00Z",
-    }.get(k, d)
-    return m
-
-
 # ── Yeni testler: pass-through ve no-CLOB davranışı ─────────────────────────
 
 @pytest.mark.asyncio
@@ -211,7 +198,6 @@ async def test_verify_passes_through_scout_clob_prices():
 @pytest.mark.asyncio
 async def test_verify_no_clob_api_call():
     """Verifier artık CLOB API çağrısı yapmaz (scout zaten yaptı)."""
-    from unittest.mock import MagicMock
     finding = _fake_finding_with_tokens(
         action="YES", best_ask=0.40, best_bid=0.38,
         fair_value=0.60, seconds_remaining=300.0,
