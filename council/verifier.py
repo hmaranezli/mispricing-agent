@@ -1,11 +1,11 @@
 """
 council/verifier.py — KATMAN 2: Bağımsız Doğrulayıcı.
 
-Scout bulgusunu taze API verisiyle teyit eder.
-  Soft fail : Edge geçti / süre doldu     → market atlanır, halt=False
-  Hard fail : API drift anomalisi         → halt=HALT_ON_API_MISMATCH
+Scout bulgusunu CLOB gerçek zamanlı fiyatıyla teyit eder.
+  - CLOB /price ile edge yeniden hesaplanır (market API değil)
+  - Soft fail: edge_gone, expired, fetch_error  → halt=False
+  - Hard fail: HL drift anomalisi               → halt=HALT_ON_API_MISMATCH
 """
-import asyncio
 import sys
 import os
 
@@ -14,19 +14,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.hl_candles import current_price
 from data.shortterm import fetch_by_slug, parse_market_window
 from data.fair_value import fair_yes
+from data.clob_price import get_clob_price
 import config
 
 PRICE_DRIFT_HALT_PCT = 2.0    # HL fiyatı Scout'tan bu yana >%2 farklıysa → HALT
-PM_DRIFT_HALT        = 0.10   # PM bestAsk >0.10 hareket ettiyse → HALT
+PM_DRIFT_HALT        = 0.10   # Bilgi amaçlı — artık blocking değil
 MIN_SECONDS          = 60     # Çözüme <60s kaldıysa → expired
 
 
 async def verify(finding: dict) -> dict:
     """
-    Scout bulgusunu bağımsız API çağrısıyla doğrular.
-
-    Args:
-        finding: scan_edges()'den gelen dict — slug dahil olmalı.
+    Scout bulgusunu bağımsız CLOB fiyatıyla doğrular.
 
     Returns:
         {pass, reason, halt, fresh_cur_price, fresh_best_ask, fresh_best_bid,
@@ -51,47 +49,53 @@ async def verify(finding: dict) -> dict:
         return _result(False, "api_mismatch", config.HALT_ON_API_MISMATCH,
                        fresh_cur=fresh_cur, hl_drift_pct=hl_drift)
 
-    # ── 3. PM taze fiyat ─────────────────────────────────────────────────────
-    window = None
+    # ── 3. CLOB gerçek zamanlı fiyat ─────────────────────────────────────────
+    # YES action → YES token fiyatı; NO action → NO token fiyatı
+    token_id = finding.get("yes_token_id") if action == "YES" else finding.get("no_token_id")
+    clob_price = await get_clob_price(token_id) if token_id else None
+
+    if not clob_price:
+        return _result(False, "edge_gone", False,
+                       fresh_cur=fresh_cur, hl_drift_pct=hl_drift,
+                       extra={"clob_reason": "no_clob_liquidity"})
+
+    # CLOB fiyatını YES frame'ine çevir (verifier formülüyle uyumlu)
+    if action == "YES":
+        fresh_ask = clob_price               # YES ask
+        fresh_bid = max(0.0, clob_price - 0.01)
+    else:
+        fresh_bid = max(0.0, 1.0 - clob_price)   # YES bid = 1 - NO ask
+        fresh_ask = min(1.0, fresh_bid + 0.01)
+
+    # pm_drift: bilgi amaçlı (artık blocking değil — market API vs CLOB farklı sistemler)
+    pm_drift = abs(clob_price - scout_ask)
+
+    # ── 4. Süre kontrolü ─────────────────────────────────────────────────────
+    fresh_seconds = None
     try:
         market = await fetch_by_slug(slug)
         if market is not None:
             window = parse_market_window(market)
+            if window is not None:
+                fresh_seconds = window["seconds_remaining"]
     except Exception:
         pass
 
-    # PM fetch başarısız → Scout'un cached _window'u fallback (saniyeler önce çekildi)
-    if window is None:
-        window = finding.get("_window")
+    if fresh_seconds is None:
+        w = finding.get("_window")
+        fresh_seconds = w["seconds_remaining"] if w else 0.0
 
-    if window is None:
-        return _result(False, "fetch_error", False,
-                       fresh_cur=fresh_cur, hl_drift_pct=hl_drift)
-
-    fresh_ask     = window["best_ask"]
-    fresh_bid     = window["best_bid"]
-    fresh_seconds = window["seconds_remaining"]
-
-    # ── 4. PM drift kontrolü ─────────────────────────────────────────────────
-    pm_drift = abs(fresh_ask - scout_ask)
-    if pm_drift > PM_DRIFT_HALT:
-        return _result(False, "api_mismatch", config.HALT_ON_API_MISMATCH,
-                       fresh_cur=fresh_cur, fresh_ask=fresh_ask,
-                       fresh_bid=fresh_bid, hl_drift_pct=hl_drift,
-                       pm_drift=pm_drift)
-
-    # ── 5. Süre kontrolü ─────────────────────────────────────────────────────
     if fresh_seconds < MIN_SECONDS:
         return _result(False, "expired", False,
                        fresh_cur=fresh_cur, fresh_ask=fresh_ask,
                        fresh_bid=fresh_bid, fresh_seconds=fresh_seconds,
                        hl_drift_pct=hl_drift, pm_drift=pm_drift)
 
-    # ── 6-7. Fair value + edge yeniden hesapla ────────────────────────────────
+    # ── 5. Fair value + edge (CLOB fiyatıyla) ────────────────────────────────
     fresh_fair = fair_yes(fresh_cur, ref_price, fresh_seconds, asset)
     fresh_edge = (fresh_fair - fresh_ask) if action == "YES" else (fresh_bid - fresh_fair)
 
-    # ── 8. Edge kontrolü ─────────────────────────────────────────────────────
+    # ── 6. Edge kontrolü ─────────────────────────────────────────────────────
     if fresh_edge < config.MIN_EDGE_PCT:
         return _result(False, "edge_gone", False,
                        fresh_cur=fresh_cur, fresh_ask=fresh_ask,
@@ -99,7 +103,7 @@ async def verify(finding: dict) -> dict:
                        fresh_fair=fresh_fair, fresh_edge=fresh_edge,
                        hl_drift_pct=hl_drift, pm_drift=pm_drift)
 
-    # ── 9. PASS ───────────────────────────────────────────────────────────────
+    # ── 7. PASS ───────────────────────────────────────────────────────────────
     return _result(True, "ok", False,
                    fresh_cur=fresh_cur, fresh_ask=fresh_ask,
                    fresh_bid=fresh_bid, fresh_seconds=fresh_seconds,
@@ -134,7 +138,7 @@ def _result(pass_: bool, reason: str, halt: bool, *,
 async def main():
     from council.scout import scan_edges
     print("=" * 70)
-    print("VERIFIER — Scout bulgularını bağımsız teyit ediyor")
+    print("VERIFIER — Scout bulgularını CLOB fiyatıyla teyit ediyor")
     print("=" * 70)
     findings = await scan_edges()
     if not findings:
@@ -146,10 +150,11 @@ async def main():
         halt = " *** HALT ***" if r["halt"] else ""
         print(f"\n{f['question'][:55]}")
         print(f"  Scout edge : {f['edge']:+.3f}  ask:{f['best_ask']:.3f}")
-        print(f"  Fresh edge : {r['fresh_edge']:+.3f}  ask:{r['fresh_best_ask']:.3f}")
+        print(f"  CLOB ask   : {r['fresh_best_ask']:.3f}  edge:{r['fresh_edge']:+.3f}")
         print(f"  HL drift   : {r['hl_drift_pct']:.4f}%  |  PM drift: {r['pm_drift']:.4f}")
-        print(f"  Sonuc      : {icon}{halt}")
+        print(f"  Sonuç      : {icon}{halt}")
 
 
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
