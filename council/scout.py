@@ -25,6 +25,7 @@ from data.hl_candles import price_at_timestamp, current_price
 from data.fair_value import fair_yes
 from data.fee_rate import fetch_fee_rate
 from data.clob_price import get_clob_price
+from data import ws_prices as _ws_prices
 import config
 
 MIN_SECONDS = 180  # Çözüme bu kadar saniyeden az kalmışsa atla (RedTeam 120s eşiği + 60s buffer)
@@ -90,13 +91,16 @@ async def _process_market(m: dict) -> dict | None:
     yes_token = _tids[0] if _tids else None
     no_token  = _tids[1] if len(_tids) > 1 else None
 
-    # CLOB gerçek zamanlı fiyat — market API bestAsk stale olduğundan kullanmıyoruz
-    clob_yes = await get_clob_price(yes_token) if yes_token else None
-    if clob_yes is None:
-        return None  # CLOB likidite yok → atla
+    # WS cache'den anlık fiyat al; miss veya stale ise REST fallback
+    clob_ask = _ws_prices.get_ask(yes_token) if yes_token else None
+    if clob_ask is None:
+        clob_ask = await get_clob_price(yes_token) if yes_token else None
+    if clob_ask is None:
+        return None  # Likidite yok → atla
 
-    clob_ask      = clob_yes                  # YES almak için ödeyeceğimiz fiyat (CLOB real-time)
-    no_bid_approx = clob_yes                  # YES_ask ≈ YES_bid (ince spread); redteam: 1-bid=NO_bid ✓
+    # YES bid: WS'den gerçek değer; yoksa YES_ask ≈ YES_bid (ince spread)
+    yes_bid       = _ws_prices.get_bid(yes_token) or clob_ask
+    no_bid_approx = yes_bid   # redteam: 1-yes_bid = NO_ask ✓
 
     try:
         ref_price = await price_at_timestamp(asset, window["start_ms"])
@@ -117,8 +121,8 @@ async def _process_market(m: dict) -> dict | None:
         "fair_value":        round(fair, 4),
         "ref_price":         ref_price,
         "cur_price":         cur,
-        "best_ask":          clob_ask,       # CLOB gerçek fiyat (market API değil)
-        "best_bid":          no_bid_approx,  # NO bid approximation
+        "best_ask":          clob_ask,    # YES entry fiyatı (CLOB ask, WS veya REST)
+        "best_bid":          yes_bid,     # YES exit fiyatı (CLOB bid, WS veya approx)
         "seconds_remaining": window["seconds_remaining"],
         "edge":              round(signal["edge"], 4),
         "action":            signal["action"],

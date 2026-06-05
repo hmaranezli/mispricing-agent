@@ -444,3 +444,94 @@ async def test_process_market_returns_none_when_no_clob_liquidity():
     with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=None):
         result = await _process_market(market)
     assert result is None, "CLOB liquidity=None should return None (skip market)"
+
+
+def test_process_market_uses_ws_cache_when_available(monkeypatch):
+    """WS cache'de fiyat varsa REST çağrısı yapılmaz."""
+    import data.ws_prices as _ws
+    import asyncio
+    from datetime import datetime, timezone, timedelta
+    _ws._cache.clear()
+    _ws._update_cache("yes_tok_ws", best_bid=0.46, best_ask=0.54)
+
+    from council.scout import _process_market
+
+    rest_called = []
+
+    async def fake_clob(token_id, side="BUY"):
+        rest_called.append(token_id)
+        return 0.54
+
+    async def fake_price_at(asset, ts):
+        return 95000.0
+
+    async def fake_current(asset):
+        return 95200.0
+
+    async def fake_fee(token_id):
+        return 0.02
+
+    monkeypatch.setattr("council.scout.get_clob_price", fake_clob)
+    monkeypatch.setattr("council.scout.price_at_timestamp", fake_price_at)
+    monkeypatch.setattr("council.scout.current_price", fake_current)
+    monkeypatch.setattr("council.scout.fetch_fee_rate", fake_fee)
+
+    now = datetime.now(timezone.utc)
+    market = {
+        "question": "Will BTC go up?",
+        "slug": "btc-up-ws-test",
+        "clobTokenIds": '["yes_tok_ws", "no_tok_ws"]',
+        "eventStartTime": (now - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "endDate": (now + timedelta(minutes=15)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "bestAsk": "0.54", "bestBid": "0.46",
+        "negRisk": False, "outcomePrices": "[0.54, 0.46]",
+        "closed": False, "active": True,
+    }
+
+    asyncio.run(_process_market(market))
+    assert "yes_tok_ws" not in rest_called, "WS cache varken REST çağrılmamalı"
+
+
+def test_process_market_falls_back_to_rest_when_ws_miss(monkeypatch):
+    """WS cache miss → REST get_clob_price çağrılır."""
+    import data.ws_prices as _ws
+    import asyncio
+    from datetime import datetime, timezone, timedelta
+    _ws._cache.clear()  # miss
+
+    from council.scout import _process_market
+
+    rest_called = []
+
+    async def fake_clob(token_id, side="BUY"):
+        rest_called.append(token_id)
+        return 0.54
+
+    async def fake_price_at(asset, ts):
+        return 95000.0
+
+    async def fake_current(asset):
+        return 95200.0
+
+    async def fake_fee(token_id):
+        return 0.02
+
+    monkeypatch.setattr("council.scout.get_clob_price", fake_clob)
+    monkeypatch.setattr("council.scout.price_at_timestamp", fake_price_at)
+    monkeypatch.setattr("council.scout.current_price", fake_current)
+    monkeypatch.setattr("council.scout.fetch_fee_rate", fake_fee)
+
+    now = datetime.now(timezone.utc)
+    market = {
+        "question": "Will BTC go up?",
+        "slug": "btc-up-rest-test",
+        "clobTokenIds": '["yes_tok_rest", "no_tok_rest"]',
+        "eventStartTime": (now - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "endDate": (now + timedelta(minutes=15)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "bestAsk": "0.54", "bestBid": "0.46",
+        "negRisk": False, "outcomePrices": "[0.54, 0.46]",
+        "closed": False, "active": True,
+    }
+
+    asyncio.run(_process_market(market))
+    assert "yes_tok_rest" in rest_called, "WS miss'te REST çağrılmalı"
