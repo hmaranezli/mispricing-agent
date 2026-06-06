@@ -18,7 +18,7 @@ LIQUIDITY_VETO_USD = 500    # CLOB likidite < $500 → veto
 VOLUME_WARN_USD    = 50     # 24s hacim < $50 → warning (bloklamaz)
 MIN_THESIS_SECS    = 120    # < 2dk → PM yeniden fiyatlanamaz → veto
 EDGE_SANITY_MAX    = 0.35   # edge > %35 → veri hatası şüphesi → veto
-MIN_BOOK_DEPTH_USD = 1.0    # En iyi ask level'ında min $1 USD derinlik (order $1.25)
+MIN_BOOK_DEPTH_USD = 5.0    # En iyi ask level'ında min $5 USD derinlik — ince kitapta exit slippage %40'a çıkıyor
 ENTRY_SLIPPAGE     = 0.015  # BEKLENEN giriş slippage (worst-case değil). clob_executor.PRICE_PREMIUM=0.03
                             # worst_price LİMİTİ; gerçek fill genelde daha iyi → edge'de beklenen ~0.015 kullan.
                             # Pilotta gerçek slippage ölçülünce bu değer ölçülene ayarlanacak.
