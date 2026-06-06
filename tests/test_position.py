@@ -6,7 +6,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
-from position.manager import check_exit, close_position, _log
+from position.manager import check_exit, close_position, _log, _dynamic_stop
 
 
 # ── Fixture'lar ──────────────────────────────────────────────────────────────
@@ -86,9 +86,8 @@ def test_check_exit_near_expiry_returns_none():
 def test_check_exit_near_expiry_still_fires_stop_loss():
     """Son 90s'de bile stop_loss çalışmalı — NEAR_EXPIRY tam kayıpları engellemez.
 
-    Mevcut kod near_expiry'de her şeyi None döndürüyor → -$1.25 tam kayıp.
-    Fix: near_expiry sadece profit_target'ı engellemeli, stop_loss geçmeli.
-    entry=0.35, eşik=0.35×0.80=0.28; pm=0.20 < 0.28 → stop_loss_hit bekleniyor.
+    8dk tutulmuş (480s), 50s kaldı → dinamik stop ~%13.7 → eşik=0.35×0.863=0.302.
+    pm=0.20 < 0.302 → stop_loss_hit bekleniyor (tighter near-expiry stop, daha erken koruma).
     """
     pos = _position(action="YES", held_minutes=8)
     result = check_exit(pos, hl_price=95000, pm_yes_price=0.20,
@@ -177,10 +176,11 @@ def test_check_exit_thesis_reversal_now_holds():
 
 
 def test_check_exit_stop_loss_after_min_hold():
-    """MIN_HOLD sonrası gerçek PM zararı -%20'yi geçince → stop_loss_hit (felaket koruması)."""
-    pos = _position(action="YES", held_minutes=5)  # 5dk > 60s
-    # entry=0.35, stop eşiği=0.28; pm=0.27 < 0.28
-    result = check_exit(pos, hl_price=95000, pm_yes_price=0.27, time_to_expiry_secs=900)
+    """MIN_HOLD sonrası gerçek PM zararı dinamik stop eşiğini geçince → stop_loss_hit.
+    5dk tutulmuş, 900s kaldı → dinamik stop ~%25.5 → eşik=0.35×0.745=0.2608, pm=0.25<0.2608.
+    """
+    pos = _position(action="YES", held_minutes=5)  # 5dk > 30s
+    result = check_exit(pos, hl_price=95000, pm_yes_price=0.25, time_to_expiry_secs=900)
     assert result == "stop_loss_hit"
 
 
@@ -194,17 +194,63 @@ def test_check_exit_no_stop_loss_before_min_hold():
 def test_check_exit_stop_loss_fires_at_45s():
     """45s sonra stop_loss çalışır — MIN_HOLD_SECS=30'dan büyük.
 
-    Eski MIN_HOLD=60'ta 45s hâlâ bloke ediliyordu; yeni MIN_HOLD=30'da geçmeli.
-    entry=0.35, stop eşiği=0.35×0.80=0.28; pm=0.27 < 0.28 → stop_loss_hit.
+    45s tutulmuş, 900s kaldı → dinamik stop ~%29.1 → eşik=0.35×0.709=0.248.
+    pm=0.20 < 0.248 → stop_loss_hit (42.9% kayıp, max stop'tan bile büyük).
     """
     from position.manager import MIN_HOLD_SECS
     assert MIN_HOLD_SECS == 30, f"MIN_HOLD_SECS 30 olmalı, şu an: {MIN_HOLD_SECS}"
     opened_at = (datetime.now(timezone.utc) - timedelta(seconds=45)).isoformat()
     pos = _position(action="YES", held_minutes=0)
     pos["opened_at"] = opened_at
-    result = check_exit(pos, hl_price=95000, pm_yes_price=0.27, time_to_expiry_secs=900)
+    result = check_exit(pos, hl_price=95000, pm_yes_price=0.20, time_to_expiry_secs=900)
     assert result == "stop_loss_hit", f"45s > 30s MIN_HOLD → stop_loss tetiklenmeli, got: {result}"
 
+
+
+# ── Task: Dinamik stop-loss ───────────────────────────────────────────────────
+
+def test_dynamic_stop_wider_early():
+    """Erken tutuşta stop geniş — STOP_LOSS_MAX'a yakın (%30)."""
+    sl = _dynamic_stop(held_secs=60, time_to_expiry_secs=900)
+    assert sl > 0.28, f"Erken stop geniş olmalı (>%28), gelen: {sl:.3f}"
+
+
+def test_dynamic_stop_tighter_near_expiry():
+    """Vadeye yakında stop dar — STOP_LOSS_MIN'e yakın (%12)."""
+    sl = _dynamic_stop(held_secs=900, time_to_expiry_secs=60)
+    assert sl < 0.18, f"Vadeye yakın stop dar olmalı (<18%), gelen: {sl:.3f}"
+
+
+def test_dynamic_stop_catches_gamma_trap():
+    """Kritik gamma trap testi: 13dk tutulmuş, 2dk kaldı.
+
+    Dinamik stop ~%14.4 → eşik=0.55×(1-0.144)=0.471.
+    pm=0.45 (18.2% kayıp) < 0.471 → ÇIKIŞ.
+    Static %20 stop: eşik=0.55×0.80=0.44, pm=0.45>0.44 → ÇIKMAZ (gamma trap!).
+    """
+    held_secs = 780  # 13 dakika
+    remaining = 120  # 2 dakika
+    opened_at = (datetime.now(timezone.utc) - timedelta(seconds=held_secs)).isoformat()
+    pos = _position(action="YES", held_minutes=0)
+    pos["opened_at"] = opened_at
+    pos["pm_entry_price"] = 0.55
+    pos["fair_value"] = 0.75
+    result = check_exit(pos, hl_price=95000, pm_yes_price=0.45,
+                        time_to_expiry_secs=remaining)
+    assert result == "stop_loss_hit", (
+        f"Gamma trap: vadeye yakın tighter stop 18.2% kayıpla çıkış yapmalı, got: {result}"
+    )
+
+
+def test_dynamic_stop_no_trigger_early_small_loss():
+    """Erken tutuşta küçük kayıp stop tetiklemez — geniş tolerans korunur.
+
+    5dk tutulmuş, 900s kaldı → dinamik stop ~%25.5 → eşik=0.35×0.745=0.2608.
+    pm=0.30 (14.3% kayıp) > 0.2608 → tut.
+    """
+    pos = _position(action="YES", held_minutes=5)
+    result = check_exit(pos, hl_price=95000, pm_yes_price=0.30, time_to_expiry_secs=900)
+    assert result is None, f"Erken küçük kayıpla çıkış yapılmamalı, got: {result}"
 
 
 def test_close_position_includes_exit_hl_price():

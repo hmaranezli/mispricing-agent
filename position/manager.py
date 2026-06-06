@@ -14,8 +14,26 @@ PROFIT_TARGET_FRACTION = 0.85
 PROFIT_LOCK_MIN        = 0.10  # mutlak yakalanan kazanç bu kadarı geçmeli (≈6¢ round-trip slippage + marj)
 PROFIT_CONFIRM_CYCLES  = 2     # kâr sinyali bu kadar ardışık döngü görülmeli (tek snapshot spike koruması)
 NEAR_EXPIRY_SECS       = 90
-STOP_LOSS_PCT          = 0.20  # entry'den %20 düşerse → stop_loss_hit (felaket koruması)
+STOP_LOSS_MAX          = 0.30  # Erken tutuşta max tolerans (%30) — pozisyonun toparlama vakti var
+STOP_LOSS_MIN          = 0.12  # Vadeye yakında min tolerans (%12) — gamma trap erken tespiti
 MIN_HOLD_SECS          = 30    # İlk 30s: stop_loss çalışmaz — anlık tersine dönüş filtresi
+
+
+def _dynamic_stop(held_secs: float, time_to_expiry_secs: int) -> float:
+    """Zaman bazlı dinamik stop eşiği.
+
+    Giriş anında geniş tolerans (toparlama vakti var), vadeye yakın dar tolerans
+    (gamma trap — kitap inceliyor, fill kötüleşiyor, erken çık).
+
+    SL(t) = STOP_LOSS_MAX - fraction_elapsed × (STOP_LOSS_MAX - STOP_LOSS_MIN)
+
+    #1270 anatomisi: 0.55→0.09 bir 7s scan cycle'da kitap çöktü.
+    Static %20 stop doğru tetikledi AMA fill zamanında kitap yoktu.
+    Tighter near-expiry stop daha erken tetikler → fill daha iyi.
+    """
+    total = held_secs + max(time_to_expiry_secs, 1)
+    fraction_elapsed = held_secs / total
+    return STOP_LOSS_MAX - fraction_elapsed * (STOP_LOSS_MAX - STOP_LOSS_MIN)
 
 
 def _log(event: str, data: dict, log_file: Path = LOG_FILE) -> None:
@@ -129,8 +147,9 @@ def check_exit(
     if held_seconds < MIN_HOLD_SECS:
         return None
 
-    # 5. Stop-loss: gerçek PM zararı entry'den STOP_LOSS_PCT kadar düştüyse (felaket koruması)
-    if current_val < entry_price * (1 - STOP_LOSS_PCT):
+    # 5. Dynamic stop-loss: erken geniş, vadeye yakın dar (gamma trap koruması)
+    sl_threshold = _dynamic_stop(held_seconds, time_to_expiry_secs)
+    if current_val < entry_price * (1 - sl_threshold):
         return "stop_loss_hit"
 
     # 6. Varsayılan: resolve'a kadar tut

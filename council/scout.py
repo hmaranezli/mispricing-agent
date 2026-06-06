@@ -30,10 +30,11 @@ from data.hyperliquid import fetch_market_state
 from data import ws_prices as _ws_prices
 import config
 
-MIN_SECONDS          = 180   # Çözüme bu kadar saniyeden az kalmışsa atla
+MIN_SECONDS          = 300   # Çözüme bu kadar saniyeden az kalmışsa atla (gamma trap önlemi)
 MAX_ENTRY_PRICE      = 0.75  # 0.65→0.75: reversal koruması korunur, daha fazla işlem
 CONVICTION_MIN       = 0.58  # Aldığımız tarafın fair'i ≥ bu olmalı. Win-rate ≈ ortalama fair.
                               # Düşük-fair/yüksek-edge (örn fair=0.40) işlemler +EV ama %40 win → atla.
+ENTRY_DRIFT_MAX      = 0.003 # HL ref'ten bu kadar yanlış yönde ise giriş engelle (%0.3)
 MARKET_CACHE_TTL_SECS = 60.0   # Market listesi REST API'den bu sıklıkla yenilenir
 VOL_CACHE_TTL_SECS    = 300.0  # Realized vol 5 dk cache — 4 varlık × 5 dk = az API çağrısı
 
@@ -106,6 +107,23 @@ def _asset_of(question) -> str | None:
     if "ripple" in q or "xrp" in q:
         return "XRP"
     return None
+
+
+def _drift_ok(action: str, cur: float, ref_price: float) -> bool:
+    """Entry filter: HL zaten yanlış yönde güçlü hareket etmişse giriş engelle.
+
+    ETH NO trajedisinin kökü: HL ref'in üzerindeyken NO açıldı — scout anında
+    sinyal vardı ama konsey ~5-10s sonra execute etti; o sürede HL daha da
+    yukarı gitti. Bu filtre yanlış-yön entryleri scout seviyesinde keser.
+
+    drift = (cur - ref_price) / ref_price
+    NO için: drift > ENTRY_DRIFT_MAX → HL bullish, NO yanlış yön → False
+    YES için: drift < -ENTRY_DRIFT_MAX → HL bearish, YES yanlış yön → False
+    """
+    drift = (cur - ref_price) / ref_price
+    if action == "NO"  and drift >  ENTRY_DRIFT_MAX: return False
+    if action == "YES" and drift < -ENTRY_DRIFT_MAX: return False
+    return True
 
 
 def _edge_signal(fair: float, best_ask: float, best_bid: float) -> dict | None:
@@ -210,6 +228,10 @@ async def _process_market(m: dict, asset_vols: dict[str, float],
             if real_no_edge < config.MIN_EDGE_PCT:
                 return None  # YES_ask tabanlı sinyal yanlış pozitif çıktı
             signal = {"action": "NO", "edge": real_no_edge}
+
+    # Entry filter: HL ref'ten yanlış yönde güçlü hareket → giriş engelle
+    if not _drift_ok(signal["action"], cur, ref_price):
+        return None
 
     taker_fee = await fetch_fee_rate(yes_token) if yes_token else 0.02
 

@@ -10,7 +10,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
-from council.scout import scan_edges, _asset_of, _edge_signal
+from council.scout import scan_edges, _asset_of, _edge_signal, _drift_ok, MIN_SECONDS
 
 # ── Unit testler ──────────────────────────────────────────────────────────────
 
@@ -44,6 +44,43 @@ def test_asset_of_empty_returns_none():
 
 def test_asset_of_none_returns_none():
     assert _asset_of(None) is None
+
+
+# ── Entry filter (_drift_ok) testleri ────────────────────────────────────────
+
+def test_min_seconds_is_300():
+    """MIN_SECONDS gamma trap önlemi için 300s olmalı (5dk window başına giriş eşiği)."""
+    assert MIN_SECONDS == 300, f"MIN_SECONDS 300 olmalı, şu an: {MIN_SECONDS}"
+
+
+def test_drift_ok_blocks_no_when_hl_bullish_beyond_threshold():
+    """NO işlem: HL ref'ten %0.5 üstte → giriş engellenmeli (HL bullish, NO yanlış yön)."""
+    assert _drift_ok("NO", cur=1.005, ref_price=1.0) is False
+
+
+def test_drift_ok_blocks_yes_when_hl_bearish_beyond_threshold():
+    """YES işlem: HL ref'ten %0.5 altta → giriş engellenmeli (HL bearish, YES yanlış yön)."""
+    assert _drift_ok("YES", cur=0.994, ref_price=1.0) is False
+
+
+def test_drift_ok_allows_no_within_threshold():
+    """NO işlem: HL ref'ten %0.2 üstte (<%0.3 eşik) → küçük gürültü, giriş geçmeli."""
+    assert _drift_ok("NO", cur=1.002, ref_price=1.0) is True
+
+
+def test_drift_ok_allows_yes_within_threshold():
+    """YES işlem: HL ref'ten %0.2 altta (<%0.3 eşik) → küçük gürültü, giriş geçmeli."""
+    assert _drift_ok("YES", cur=0.998, ref_price=1.0) is True
+
+
+def test_drift_ok_aligned_no_when_hl_bearish():
+    """NO işlem: HL ref altında → doğru yön, giriş geçmeli."""
+    assert _drift_ok("NO", cur=0.994, ref_price=1.0) is True
+
+
+def test_drift_ok_aligned_yes_when_hl_bullish():
+    """YES işlem: HL ref üstünde → doğru yön, giriş geçmeli."""
+    assert _drift_ok("YES", cur=1.005, ref_price=1.0) is True
 
 
 def test_edge_signal_yes_cheap():
@@ -311,11 +348,11 @@ async def test_scan_edges_findings_include_raw_market():
 
 @pytest.mark.asyncio
 async def test_scan_edges_min_seconds_above_thesis_threshold():
-    """seconds_remaining >= 180 — RedTeam'in 120s eşiğine 60s buffer."""
+    """seconds_remaining >= 300 — gamma trap ve near-expiry ince kitap önlemi."""
     findings = await scan_edges()
     for f in findings:
-        assert f["seconds_remaining"] >= 180, \
-            f"Eşik altı market geçmiş: {f['seconds_remaining']:.0f}s < 180s"
+        assert f["seconds_remaining"] >= 300, \
+            f"Eşik altı market geçmiş: {f['seconds_remaining']:.0f}s < 300s"
 
 
 @pytest.mark.asyncio
@@ -685,8 +722,10 @@ async def test_no_edge_uses_real_no_ask_and_correct_formula():
 import council.scout as _scout_mod
 
 
-def _make_market(seconds_remaining=300):
-    """Test market dict — parse_market_window'u geçecek minimum alan seti."""
+def _make_market(seconds_remaining=600):
+    """Test market dict — parse_market_window'u geçecek minimum alan seti.
+    Default 600s: MIN_SECONDS=300 eşiği için yeterli buffer (test latency'si aşımını engeller).
+    """
     from datetime import datetime, timezone, timedelta
     now = datetime.now(timezone.utc)
     start = now - timedelta(minutes=10)
