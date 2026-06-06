@@ -19,7 +19,7 @@ from execution.clob_client import get_client
 from py_clob_client_v2.clob_types import OrderArgs, OrderType
 from data.clob_price import get_clob_price
 
-_FLOOR_BUFFER = 0.03   # bid'den bu kadar aşağı floor → fill olasılığını artırır
+_FLOOR_BUFFER = 0.01   # bid'den bu kadar aşağı floor — PRICE_PREMIUM=0.01 ile simetrik
 
 
 async def sell_position(pos: dict) -> float | None:

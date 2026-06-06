@@ -19,9 +19,7 @@ VOLUME_WARN_USD    = 50     # 24s hacim < $50 → warning (bloklamaz)
 MIN_THESIS_SECS    = 120    # < 2dk → PM yeniden fiyatlanamaz → veto
 EDGE_SANITY_MAX    = 0.35   # edge > %35 → veri hatası şüphesi → veto
 MIN_BOOK_DEPTH_USD = 5.0    # En iyi ask level'ında min $5 USD derinlik — ince kitapta exit slippage %40'a çıkıyor
-ENTRY_SLIPPAGE     = 0.015  # BEKLENEN giriş slippage (worst-case değil). clob_executor.PRICE_PREMIUM=0.03
-                            # worst_price LİMİTİ; gerçek fill genelde daha iyi → edge'de beklenen ~0.015 kullan.
-                            # Pilotta gerçek slippage ölçülünce bu değer ölçülene ayarlanacak.
+ENTRY_SLIPPAGE     = 0.01   # clob_executor.PRICE_PREMIUM=0.01 ile eşleşiyor.
 BASIS_VETO_PCT     = 0.003  # |perp_mid − oracle| / oracle > 0.3% → perp spot'tan kopuk, PM oracle'da resolves
 FUNDING_RATE_VETO  = 0.0001 # |funding/saat| > 0.01%/saat → kalabalık kaldıraç, perp spot'u yanıltıyor
 
