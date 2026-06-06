@@ -120,3 +120,16 @@ def test_fair_yes_more_time_means_closer_to_half():
     short = fair_yes(101_000.0, 100_000.0, 60.0, "BTC")   # 1 dk
     long_ = fair_yes(101_000.0, 100_000.0, 3600.0, "BTC")  # 1 saat
     assert abs(long_ - 0.5) < abs(short - 0.5)
+
+
+def test_fair_yes_uses_current_volatility_when_provided():
+    """current_volatility verildiğinde ASSET_VOL kullanılmaz.
+
+    Senaryo: fiyat referansın 1 birim üstünde, 15 dk kaldı.
+      - vol=0.001 (neredeyse sıfır) → sigma_t ≈ 0 → sonuç 1.0'e yakın (>0.90)
+      - BTC normal vol=0.80 → sigma_t büyük → sonuç 0.5'e çok yakın
+    """
+    low_vol = fair_yes(100_001.0, 100_000.0, 900.0, "BTC", current_volatility=0.001)
+    normal  = fair_yes(100_001.0, 100_000.0, 900.0, "BTC")
+    assert low_vol > 0.90, f"Düşük vol → kesinlik yüksek, beklenen >0.90, got {low_vol:.4f}"
+    assert abs(normal - 0.50) < 0.01, f"Normal vol + az üstünde → 0.50'ye yakın, got {normal:.4f}"
