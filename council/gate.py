@@ -16,7 +16,7 @@ import config
 
 # ── Skor bileşeni sınırları ───────────────────────────────────────────────────
 EDGE_ZERO   = 0.04   # MIN_EDGE_PCT(0.05) altına başla — küçük edge de puan alsın
-EDGE_MAX    = 0.08   # %8 üstü tam puan — binary option için gerçekçi üst sınır
+EDGE_MAX    = 0.06   # %6 üstü tam puan — 0.08'den düşürüldü: %7 edge de tam 40 puan alır
 LIQ_ZERO    = 200    # RedTeam LIQUIDITY_VETO_USD eşiğinin altı
 LIQ_MAX     = 1000   # $1k üstü yeterli likidite
 TIME_ZERO   = 130    # Scout MIN_SECONDS eşiği

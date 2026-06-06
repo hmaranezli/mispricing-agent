@@ -38,6 +38,14 @@ def _risk(position_usd=42.0, requires_human_approval=False):
 
 # ── Task 1: _confidence_score ─────────────────────────────────────────────────
 
+def test_confidence_score_7pct_edge_full_points():
+    """EDGE_MAX=0.06 sonrası %7 edge → edge bileşeni tam 40 puan → toplam ≥95."""
+    from council.gate import EDGE_MAX
+    assert EDGE_MAX == 0.06, f"EDGE_MAX 0.06 olmalı, şu an: {EDGE_MAX}"
+    score = _confidence_score(_redteam(fee_adj_edge=0.07, liquidity_usd=5000.0, spread=0.005), _verification(600))
+    assert score >= 95, f"%7 edge + max diğerleri → ≥95, got {score}"
+
+
 def test_confidence_score_typical_good():
     # edge=0.12, liq=$3000, secs=400, spread=0.02 → ≥ 75
     score = _confidence_score(_redteam(0.12, 3000.0, 0.02), _verification(400))
