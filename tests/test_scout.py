@@ -65,6 +65,30 @@ def test_edge_signal_no_cheap():
     assert abs(result["edge"] - 0.32) < 1e-6
 
 
+def test_edge_signal_yes_rejected_low_conviction():
+    """YES edge var ama fair < CONVICTION_MIN (0.62) → None. Düşük win-rate işlem alınmaz.
+    fair=0.58, ask=0.50 → edge=0.08 (geçer) ama konviksiyon %58 < %62 → reddet.
+    """
+    result = _edge_signal(fair=0.58, best_ask=0.50, best_bid=0.49)
+    assert result is None, f"Düşük konviksiyonlu YES alınmamalı, result={result}"
+
+
+def test_edge_signal_no_rejected_low_conviction():
+    """NO edge var ama (1-fair) < CONVICTION_MIN → None.
+    fair=0.42, ask=0.50 → no_edge=0.08 (geçer) ama NO konviksiyonu 1-0.42=0.58 < 0.62 → reddet.
+    """
+    result = _edge_signal(fair=0.42, best_ask=0.50, best_bid=0.49)
+    assert result is None, f"Düşük konviksiyonlu NO alınmamalı, result={result}"
+
+
+def test_edge_signal_yes_accepted_at_conviction():
+    """fair ≥ CONVICTION_MIN ve edge yeterli → YES geçer.
+    fair=0.65, ask=0.55 → edge=0.10, konviksiyon %65 ≥ %62 → YES.
+    """
+    result = _edge_signal(fair=0.65, best_ask=0.55, best_bid=0.54)
+    assert result is not None and result["action"] == "YES"
+
+
 def test_edge_signal_no_edge_when_fair():
     """fair ≈ fiyat → edge yok → None."""
     result = _edge_signal(fair=0.50, best_ask=0.51, best_bid=0.49)
@@ -141,9 +165,9 @@ def test_edge_signal_no_only_when_ask_above_fair():
 
 
 def test_edge_signal_exact_min_threshold():
-    """MIN_EDGE_PCT (0.05) üstünde edge → geçer. Float kesinliğinden kaçınmak için 0.10 kullan."""
-    # 0.60 - 0.50 = 0.10 >= 0.05 → geçmeli
-    result = _edge_signal(fair=0.60, best_ask=0.50, best_bid=0.49)
+    """MIN_EDGE_PCT (0.05) üstünde edge → geçer. fair konviksiyon eşiği üstünde (0.65)."""
+    # 0.65 - 0.50 = 0.15 >= 0.05 ve konviksiyon 0.65 ≥ 0.62 → geçmeli
+    result = _edge_signal(fair=0.65, best_ask=0.50, best_bid=0.49)
     assert result is not None
     assert result["action"] == "YES"
 
@@ -314,7 +338,7 @@ async def test_finding_contains_token_ids():
     with patch("council.scout.find_shortterm", new_callable=AsyncMock) as mock_find, \
          patch("council.scout.price_at_timestamp", new_callable=AsyncMock) as mock_ref, \
          patch("council.scout.current_price", new_callable=AsyncMock) as mock_cur, \
-         patch("council.scout.fair_yes", return_value=0.60), \
+         patch("council.scout.fair_yes", return_value=0.65), \
          patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
          patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02):
         mock_find.return_value = [fake_market]

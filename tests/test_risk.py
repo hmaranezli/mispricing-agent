@@ -134,21 +134,23 @@ def test_kelly_capped_at_max_trade_pct():
     assert abs(r["position_usd"] - BANKROLL * config.MAX_TRADE_PCT) < 0.01
 
 
-def test_veto_position_too_small():
-    # bankroll=$10, edge=MIN_EDGE_PCT=0.08, fresh_ask=0.40
-    # kelly = 0.08/0.60 = 0.133 → × 0.25 = 0.033 → $0.33 < MIN_POSITION_USD($5)
+def test_small_kelly_floored_to_minimum():
+    """Kelly POZİTİF ama küçük → reddetme, MIN_POSITION_USD floor'a yükselt (bankroll'a göre)."""
+    # bankroll=$10, edge=0.05, fresh_ask=0.40 → kelly=0.05/0.60=0.083 (>0)
+    # capped=min(0.083*0.25, 0.05)=0.0208 → 0.0208*$10=$0.21 → floor $1.25
     r = risk(
         _finding(action="YES", best_ask=0.40),
         _verification(fresh_best_ask=0.40, fresh_edge=config.MIN_EDGE_PCT),
         _redteam(fee_adj_edge=config.MIN_EDGE_PCT),
         bankroll_usd=10.0, open_positions=0, daily_loss_usd=0.0,
     )
-    assert r["pass"] is False
-    assert r["reason"] == "position_too_small"
+    assert r["pass"] is True
+    assert abs(r["position_usd"] - 1.25) < 0.01
 
 
 def test_kelly_zero_denom_vetoes():
-    # fresh_ask=0.999 → denom=0.001 < 0.01 → kelly=0.0 → position=$0 < $5 → veto
+    """Kelly=0 (payda<0.01, token fiyatı berbat) → VETO. Floor uygulanmaz — 'girme' demek girme demek."""
+    # fresh_ask=0.999 → denom=0.001 < 0.01 → kelly=0.0 → floor BYPASS edilmemeli, veto
     r = risk(
         _finding(action="YES", best_ask=0.999),
         _verification(fresh_best_ask=0.999, fresh_edge=0.12),
@@ -156,7 +158,7 @@ def test_kelly_zero_denom_vetoes():
         bankroll_usd=BANKROLL, open_positions=0, daily_loss_usd=0.0,
     )
     assert r["pass"] is False
-    assert r["reason"] == "position_too_small"
+    assert r["reason"] == "kelly_zero_no_edge"
 
 
 # ── Task 7: insan onayı + normal geçiş ───────────────────────────────────────

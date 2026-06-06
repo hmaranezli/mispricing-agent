@@ -370,6 +370,44 @@ async def test_monitor_no_position_exit_uses_no_price():
 
 
 @pytest.mark.asyncio
+async def test_monitor_stop_loss_adds_to_failed_slugs():
+    """stop_loss_hit → slug failed_slugs'a eklenir (kaybeden tezi aynı pencerede tekrar açma)."""
+    pos = {**_open_position(), "action": "YES", "pm_entry_price": 0.35}
+    failed = set()
+    fake_window = {"best_ask": 0.20, "best_bid": 0.18, "seconds_remaining": 500, "neg_risk": False}
+    import config as _cfg
+    with patch("main_loop.current_price",       new_callable=AsyncMock) as mock_hl, \
+         patch("main_loop.fetch_by_slug",       new_callable=AsyncMock) as mock_pm, \
+         patch("main_loop.parse_market_window", return_value=fake_window), \
+         patch("main_loop.fetch_resolved",      new_callable=AsyncMock, return_value=None), \
+         patch("main_loop.check_exit",          return_value="stop_loss_hit"), \
+         patch.object(_cfg, "DRY_RUN", True):
+        mock_hl.return_value = 95000.0
+        mock_pm.return_value = {}
+        await _monitor_positions([pos], [], failed_slugs=failed)
+    assert "btc-up-test" in failed, "stop_loss sonrası slug kilitlenmeli"
+
+
+@pytest.mark.asyncio
+async def test_monitor_profit_target_does_not_lock_slug():
+    """profit_target_hit → slug failed_slugs'a EKLENMEZ (yüksek-edge re-entry serbest)."""
+    pos = {**_open_position(), "action": "YES", "pm_entry_price": 0.35}
+    failed = set()
+    fake_window = {"best_ask": 0.75, "best_bid": 0.72, "seconds_remaining": 500, "neg_risk": False}
+    import config as _cfg
+    with patch("main_loop.current_price",       new_callable=AsyncMock) as mock_hl, \
+         patch("main_loop.fetch_by_slug",       new_callable=AsyncMock) as mock_pm, \
+         patch("main_loop.parse_market_window", return_value=fake_window), \
+         patch("main_loop.fetch_resolved",      new_callable=AsyncMock, return_value=None), \
+         patch("main_loop.check_exit",          return_value="profit_target_hit"), \
+         patch.object(_cfg, "DRY_RUN", True):
+        mock_hl.return_value = 95000.0
+        mock_pm.return_value = {}
+        await _monitor_positions([pos], [], failed_slugs=failed)
+    assert "btc-up-test" not in failed, "kâr alımı pencereyi kilitlememeli — re-entry serbest"
+
+
+@pytest.mark.asyncio
 async def test_monitor_yes_position_exit_uses_best_bid_not_ask():
     """DRY_RUN YES çıkışta pm_exit_price = best_bid (satış fiyatı), best_ask değil."""
     pos = {**_open_position(), "action": "YES", "pm_entry_price": 0.35}

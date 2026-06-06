@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 
 KELLY_FRACTION   = 0.25  # Çeyrek Kelly — tam Kelly'nin 1/4'ü
-MIN_POSITION_USD = 1.0   # $50 bankroll × 5% = $2.50 — $1 alt sınır yeterli
+MIN_POSITION_USD = 1.25  # test sabit pozisyon — Kelly floor, geçici bypass
 
 
 def _kelly(action: str, fee_adj_edge: float,
@@ -83,11 +83,11 @@ def risk(
         fresh_ask=verification["fresh_best_ask"],
         fresh_bid=verification["fresh_best_bid"],
     )
+    # Kelly=0 → "girme" demek (payda<0.01, token fiyatı berbat). Floor BYPASS edilmemeli.
+    if kelly_f <= 0:
+        return _result(False, kelly_f=kelly_f, reason="kelly_zero_no_edge")
     capped_f     = min(kelly_f * KELLY_FRACTION, config.MAX_TRADE_PCT)
-    position_usd = capped_f * bankroll_usd
-
-    if position_usd < MIN_POSITION_USD:
-        return _result(False, kelly_f=kelly_f, reason="position_too_small")
+    position_usd = max(capped_f * bankroll_usd, MIN_POSITION_USD)  # Kelly floor: min $1.25 (yalnızca kelly>0)
 
     # 5. İnsan onayı bayrağı (veto değil — Gate handle eder)
     requires_human_approval = position_usd > config.HUMAN_APPROVAL_USD

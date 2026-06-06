@@ -26,7 +26,7 @@ BUST_PROTECTION_PCT  = 0.50   # Bankroll baslangicin %50'sine dusunce → HARD S
 STREAK_WARN_COUNT    = 6      # N arka arkaya kayip → SOFT STOP (karda da zararda da)
 MIN_EDGE_PCT         = 0.05   # Min %5 edge yoksa trade onerilmez
 CONFIDENCE_THRESHOLD = 75     # Konsey guven skoru esigi (0-100)
-MAX_HOLD_MINUTES     = 14     # Ortalama tutus suresi
+MAX_HOLD_MINUTES     = 20     # 15m marketlerin resolve'a kadar tutulabilmesi icin (14→20, hold-to-resolution)
 HUMAN_APPROVAL_USD   = 50     # Bu tutar uzeri pozisyon insan onayi ister
 
 # ── Anti-hallucination kurallari ──

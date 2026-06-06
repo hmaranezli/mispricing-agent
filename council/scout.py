@@ -28,7 +28,10 @@ from data.clob_price import get_clob_price
 from data import ws_prices as _ws_prices
 import config
 
-MIN_SECONDS = 180  # Çözüme bu kadar saniyeden az kalmışsa atla (RedTeam 120s eşiği + 60s buffer)
+MIN_SECONDS    = 180   # Çözüme bu kadar saniyeden az kalmışsa atla — 130→180: near-expiry yüksek-gamma girişleri dışla
+MAX_ENTRY_PRICE = 0.65  # Pahalı token filtresi: ask > 0.65 → reversal riski yüksek → atla
+CONVICTION_MIN  = 0.62  # Aldığımız tarafın fair'i ≥ bu olmalı. Win-rate ≈ ortalama fair (resolve'a kadar tut).
+                        # Düşük-fair/yüksek-edge (örn fair=0.40) işlemler +EV ama %40 win → kayıp serisi → atla.
 
 
 def _asset_of(question) -> str | None:
@@ -61,9 +64,15 @@ def _edge_signal(fair: float, best_ask: float, best_bid: float) -> dict | None:
     yes_edge = fair - best_ask
     no_edge  = best_ask - fair   # ← DÜZELTİLDİ: best_bid - fair değil (formül hatası)
 
+    # Konviksiyon filtresi: aldığımız tarafın kazanma olasılığı (fair) yeterince yüksek olmalı.
+    # Win-rate ≈ ortalama fair. Düşük-fair işlem +EV olsa da %40 win → kayıp serisi → almayız.
     if yes_edge >= config.MIN_EDGE_PCT:
+        if fair < CONVICTION_MIN:          # YES alıyoruz → kazanma olasılığı = fair
+            return None
         return {"action": "YES", "edge": yes_edge}
     if no_edge >= config.MIN_EDGE_PCT:
+        if (1 - fair) < CONVICTION_MIN:    # NO alıyoruz → kazanma olasılığı = 1 - fair
+            return None
         return {"action": "NO", "edge": no_edge}
     return None
 
@@ -116,6 +125,13 @@ async def _process_market(m: dict) -> dict | None:
     if signal is None:
         return None
 
+    # Max entry fiyatı filtresi: pahalı tokenlar reversal'da çok zararlı
+    entry_price = clob_ask if signal["action"] == "YES" else None
+    if signal["action"] == "NO" and no_token:
+        pass  # no_ask aşağıda hesaplanacak — filtre orada uygulanır
+    elif entry_price is not None and entry_price > MAX_ENTRY_PRICE:
+        return None
+
     # NO işlem: WS veya REST'ten gerçek NO_ask ile edge'i doğrula
     no_ask = None
     if signal["action"] == "NO" and no_token:
@@ -123,6 +139,8 @@ async def _process_market(m: dict) -> dict | None:
         if no_ask is None:
             no_ask = await get_clob_price(no_token, "BUY")
         if no_ask is not None:
+            if no_ask > MAX_ENTRY_PRICE:
+                return None  # pahalı NO token → reversal riski yüksek
             real_no_edge = round((1 - fair) - no_ask, 4)
             if real_no_edge < config.MIN_EDGE_PCT:
                 return None  # YES_ask tabanlı sinyal yanlış pozitif çıktı

@@ -71,22 +71,36 @@ def test_parse_taker_fee_unreasonable_defaults_to_2pct():
 # ── Unit: _fee_adjusted_edge ──────────────────────────────────────────────────
 
 def test_fee_adjusted_edge_yes_less_than_gross():
-    """Fee, YES edge'ini düşürür."""
-    net = _fee_adjusted_edge(fair=0.65, ask=0.47, bid=0.46, action="YES", fee=0.02)
+    """Fee, YES edge'ini düşürür (slippage izole: 0.0)."""
+    net = _fee_adjusted_edge(fair=0.65, ask=0.47, bid=0.46, action="YES", fee=0.02, slippage=0.0)
     assert abs(net - (0.65 * 0.98 - 0.47)) < 1e-6
     assert net < (0.65 - 0.47)
 
 
 def test_fee_adjusted_edge_no():
-    """NO edge fee sonrası doğru hesaplanır."""
-    net = _fee_adjusted_edge(fair=0.35, ask=0.65, bid=0.60, action="NO", fee=0.02)
+    """NO edge fee sonrası doğru hesaplanır (slippage izole: 0.0)."""
+    net = _fee_adjusted_edge(fair=0.35, ask=0.65, bid=0.60, action="NO", fee=0.02, slippage=0.0)
     assert abs(net - ((1 - 0.35) * 0.98 - (1 - 0.60))) < 1e-6
 
 
 def test_fee_adjusted_edge_zero_fee_equals_gross():
-    """Fee=0 → net == gross."""
-    net = _fee_adjusted_edge(fair=0.65, ask=0.47, bid=0.46, action="YES", fee=0.0)
+    """Fee=0 ve slippage=0 → net == gross."""
+    net = _fee_adjusted_edge(fair=0.65, ask=0.47, bid=0.46, action="YES", fee=0.0, slippage=0.0)
     assert abs(net - (0.65 - 0.47)) < 1e-6
+
+
+def test_fee_adjusted_edge_slippage_reduces_edge():
+    """Giriş slippage edge'i tam slippage kadar düşürür (ask+premium ödüyoruz)."""
+    no_slip   = _fee_adjusted_edge(fair=0.65, ask=0.47, bid=0.46, action="YES", fee=0.02, slippage=0.0)
+    with_slip = _fee_adjusted_edge(fair=0.65, ask=0.47, bid=0.46, action="YES", fee=0.02, slippage=0.03)
+    assert abs((no_slip - with_slip) - 0.03) < 1e-6
+
+
+def test_fee_adjusted_edge_default_includes_slippage():
+    """Varsayılan çağrı slippage'i uygular — executor ask+PRICE_PREMIUM ödüyor."""
+    default  = _fee_adjusted_edge(fair=0.65, ask=0.47, bid=0.46, action="YES", fee=0.02)
+    expected = 0.65 * 0.98 - (0.47 + 0.03)
+    assert abs(default - expected) < 1e-6
 
 
 # ── Unit: _result yapısı ──────────────────────────────────────────────────────
@@ -236,16 +250,16 @@ async def test_fee_adj_edge_lte_gross_edge():
 # ── NO fee adj: gerçek no_ask ─────────────────────────────────────────────────
 
 def test_fee_adjusted_edge_no_with_real_no_ask_uses_it_directly():
-    """no_ask verildiğinde NO formülü (1-fair)*(1-fee) - no_ask kullanır."""
-    net = _fee_adjusted_edge(fair=0.45, ask=0.55, bid=0.44, action="NO", fee=0.02, no_ask=0.38)
+    """no_ask verildiğinde NO formülü (1-fair)*(1-fee) - no_ask kullanır (slippage izole)."""
+    net = _fee_adjusted_edge(fair=0.45, ask=0.55, bid=0.44, action="NO", fee=0.02, no_ask=0.38, slippage=0.0)
     expected = (1 - 0.45) * (1 - 0.02) - 0.38
     assert abs(net - expected) < 1e-6, f"Beklenen {expected:.6f}, gelen {net:.6f}"
 
 
 def test_fee_adjusted_edge_no_without_no_ask_falls_back_to_1_minus_bid():
-    """no_ask=None iken (1-bid) eski davranışı korunur — geriye dönük uyum."""
-    net_old = _fee_adjusted_edge(fair=0.35, ask=0.65, bid=0.60, action="NO", fee=0.02)
-    net_new = _fee_adjusted_edge(fair=0.35, ask=0.65, bid=0.60, action="NO", fee=0.02, no_ask=None)
+    """no_ask=None iken (1-bid) eski davranışı korunur — geriye dönük uyum (slippage izole)."""
+    net_old = _fee_adjusted_edge(fair=0.35, ask=0.65, bid=0.60, action="NO", fee=0.02, slippage=0.0)
+    net_new = _fee_adjusted_edge(fair=0.35, ask=0.65, bid=0.60, action="NO", fee=0.02, no_ask=None, slippage=0.0)
     assert abs(net_old - net_new) < 1e-9
     assert abs(net_old - ((1 - 0.35) * 0.98 - (1 - 0.60))) < 1e-6
 

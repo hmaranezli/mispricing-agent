@@ -5,3 +5,6 @@ __pycache__/
 *.log
 \n# graphify\ngraphify-out/
 logs/
+
+# runtime veritabanları
+*.db

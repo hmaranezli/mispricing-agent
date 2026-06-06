@@ -7,12 +7,15 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
-from data.fair_value import fair_yes
 
 LOG_FILE = Path("logs/dry_run.jsonl")
 
 PROFIT_TARGET_FRACTION = 0.85
+PROFIT_LOCK_MIN        = 0.10  # mutlak yakalanan kazanç bu kadarı geçmeli (≈6¢ round-trip slippage + marj)
+PROFIT_CONFIRM_CYCLES  = 2     # kâr sinyali bu kadar ardışık döngü görülmeli (tek snapshot spike koruması)
 NEAR_EXPIRY_SECS       = 90
+STOP_LOSS_PCT          = 0.20  # entry'den %20 düşerse → stop_loss_hit (felaket koruması)
+MIN_HOLD_SECS          = 60    # İlk 60s: stop_loss çalışmaz — anlık tersine dönüş filtresi
 
 
 def _log(event: str, data: dict, log_file: Path = LOG_FILE) -> None:
@@ -69,10 +72,18 @@ def check_exit(
     Pozisyon için çıkış kararı verir.
 
     Returns:
-        "max_hold_time"      — MAX_HOLD_MINUTES doldu
-        "thesis_invalidated" — HL tersine döndü
-        "profit_target_hit"  — Edge'in %85'i yakalandı
-        None                 — tut
+        "max_hold_time"     — MAX_HOLD_MINUTES doldu
+        "profit_target_hit" — Büyük kâr 2 ardışık döngüde onaylandı (erken kilitle)
+        "stop_loss_hit"     — Gerçek PM zararı -%20'yi geçti (MIN_HOLD sonrası, felaket koruması)
+        None                — tut (varsayılan: resolve'a kadar bekle — para resolve'dan geliyor)
+
+    Felsefe (2026-06-05 veri analizi):
+      Erken çıkışlar net -$2.64 kaybettiriyor, resolve'a kadar tutuşlar +$10.10 kazandırıyor.
+      Bu yüzden VARSAYILAN resolve'a kadar tutmak. Erken çıkış yalnızca iki halde:
+        1. Büyük, onaylanmış kâr (slippage'i hak eden) → profit_target_hit
+        2. Felaket zararı (yanıldık, token çöküyor) → stop_loss_hit
+      thesis_invalidated KALDIRILDI: pencere-ortası HL dönüşleri çoğunlukla gürültü,
+      resolve'a kadar geri dönüyor; tek başına -$5.97 kaybettiriyordu.
     """
     # 1. Market kapanışa yakın → dokunma, bırak çözümlensin
     if time_to_expiry_secs < NEAR_EXPIRY_SECS:
@@ -80,14 +91,12 @@ def check_exit(
 
     # 2. Zaman limiti
     opened_at = datetime.fromisoformat(position["opened_at"])
-    held_minutes = (datetime.now(timezone.utc) - opened_at).total_seconds() / 60
+    now = datetime.now(timezone.utc)
+    held_minutes = (now - opened_at).total_seconds() / 60
     if held_minutes >= config.MAX_HOLD_MINUTES:
         return "max_hold_time"
 
     entry_price = position["pm_entry_price"]
-
-    # 3. Kâr hedefi — edge'in PROFIT_TARGET_FRACTION kadarı yakalandı mı?
-    # Önce kâr kontrolü: thesis_invalidated'dan önce gelmeli ki kazancı kaçırmasın
     if position["action"] == "YES":
         current_val = pm_yes_price
         target_val  = position["fair_value"]
@@ -95,24 +104,32 @@ def check_exit(
         current_val = 1 - pm_yes_price
         target_val  = 1 - position["fair_value"]
 
-    edge = target_val - entry_price
-    if edge > 0 and (current_val - entry_price) / edge >= PROFIT_TARGET_FRACTION:
-        return "profit_target_hit"
-
-    # 4. Thesis kontrolü — HL yön kaybetti mi?
-    # YES girişi: HL ref'in ÜSTÜNDEYDI (bullish). Thesis bozulur → HL ref'in altına düşünce.
-    # NO girişi: HL ref'in ALTINDAYDI (bearish). Thesis bozulur → HL ref'in üstüne çıkınca.
-    # Eşik: her zaman 0.50 ± buffer — entry fiyatına bağlı DEĞİL.
-    # (entry price bazlı eşik: NO_entry=0.64 → threshold=0.34, HL ref'e döner dönmez ateşliyordu)
-    new_fair = fair_yes(hl_price, position["ref_price"],
-                        time_to_expiry_secs, position["asset"])
-    thesis_buffer = 0.02
-    if position["action"] == "YES":
-        thesis_broken = new_fair < (0.50 - thesis_buffer)   # HL bearish'e döndü
+    # 3. Kâr hedefi — yalnızca BÜYÜK + ONAYLANMIŞ kazançta erken çıkış
+    #    a) edge'in PROFIT_TARGET_FRACTION'ı yakalandı (oransal)
+    #    b) mutlak kazanç PROFIT_LOCK_MIN'i geçti (round-trip slippage'i hak etsin)
+    #    c) PROFIT_CONFIRM_CYCLES ardışık döngüde görüldü (tek snapshot spike koruması)
+    edge     = target_val - entry_price
+    captured = current_val - entry_price
+    profit_ready = (
+        edge > 0
+        and captured / edge >= PROFIT_TARGET_FRACTION
+        and captured >= PROFIT_LOCK_MIN
+    )
+    if profit_ready:
+        position["_profit_confirm"] = position.get("_profit_confirm", 0) + 1
+        if position["_profit_confirm"] >= PROFIT_CONFIRM_CYCLES:
+            return "profit_target_hit"
     else:
-        thesis_broken = new_fair > (0.50 + thesis_buffer)   # HL bullish'e döndü
+        position["_profit_confirm"] = 0
 
-    if thesis_broken:
-        return "thesis_invalidated"
+    # 4. MIN_HOLD_SECS: ilk 60s içinde stop_loss çalışmaz (anlık ters dönüş gürültüsü)
+    held_seconds = (now - opened_at).total_seconds()
+    if held_seconds < MIN_HOLD_SECS:
+        return None
 
+    # 5. Stop-loss: gerçek PM zararı entry'den STOP_LOSS_PCT kadar düştüyse (felaket koruması)
+    if current_val < entry_price * (1 - STOP_LOSS_PCT):
+        return "stop_loss_hit"
+
+    # 6. Varsayılan: resolve'a kadar tut
     return None

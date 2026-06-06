@@ -18,6 +18,7 @@ from execution.clob_executor  import execute as _clob_execute
 from execution.position_store import sell_position
 from execution.balance        import get_effective_bankroll
 from execution.reconcile      import startup_reconcile
+from execution.ghost          import detect_ghosts
 from position.manager import check_exit, close_position
 from data.hl_candles import current_price
 from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window
@@ -142,6 +143,15 @@ async def _scan_and_execute(
     daily_loss = 0.0
     open_slugs  = {p["slug"] for p in open_positions}
     _failed     = failed_slugs if failed_slugs is not None else set()
+
+    from datetime import datetime, timezone as _tz
+    _ts = datetime.now(_tz.utc).strftime("%H:%M:%S")
+    if findings:
+        for _f in findings:
+            _skip = "failed" if _f["slug"] in _failed else ("open" if _f["slug"] in open_slugs else "")
+            print(f"[scan {_ts}] {_f['slug']}: {_f['action']} fair={_f['fair_value']:.3f} ask={_f['best_ask']:.3f} edge={_f['edge']:.3f} secs={_f['seconds_remaining']:.0f}" + (f" SKIP:{_skip}" if _skip else ""))
+    else:
+        print(f"[scan {_ts}] edge yok")
 
     for finding in findings:
         if len(open_positions) >= config.MAX_OPEN_POSITIONS:
@@ -292,13 +302,15 @@ async def _monitor_positions(
                 # Pozisyonu kapatma: bir sonraki scan döngüsünde tekrar dene
                 continue
 
-            # YES: gerçek SELL fiyatı WS bid'den; fallback Gamma window bid
+            # YES: WS bid; fallback Gamma bid
+            # NO: YES ask kullan (check_exit: current_val = 1 - pm_yes_price = NO değeri)
+            #     NO bid'i burada kullanmak current_val'ı ters çeviriyor → yanlış exit kararları
             if pos["action"] == "YES":
                 _ws_bid = ws_prices.get_bid(pos.get("yes_token_id", ""))
                 pm_yes_price = _ws_bid if _ws_bid is not None else window["best_bid"]
             else:
-                _ws_bid = ws_prices.get_bid(pos.get("no_token_id", ""))
-                pm_yes_price = _ws_bid if _ws_bid is not None else window["best_ask"]
+                _ws_ask_yes = ws_prices.get_ask(pos.get("yes_token_id", ""))
+                pm_yes_price = _ws_ask_yes if _ws_ask_yes is not None else window["best_ask"]
             exit_reason = check_exit(pos, hl_price,
                                      pm_yes_price,
                                      window["seconds_remaining"])
@@ -328,8 +340,9 @@ async def _monitor_positions(
                 await log_position_close(conn, closed)
                 open_positions.remove(pos)
                 closed_today.append(closed)
-                # Bu pencere tekrar açılmasın — aynı HL sinyali devam ederse scout yeniden tetikler
-                if failed_slugs is not None:
+                # Yalnızca stop_loss'ta kilitle: kaybeden tezi aynı pencerede tekrar açma.
+                # profit_target'ta kilitleme — sinyal güçlüyse yüksek-edge re-entry serbest kalsın.
+                if failed_slugs is not None and exit_reason == "stop_loss_hit":
                     failed_slugs.add(pos["slug"])
 
         except Exception as e:
@@ -352,6 +365,22 @@ async def main() -> None:
             print(f"[bot] Reconcile: {rec['closed']} pozisyon kapatıldı.")
     if closed_today:
         print(f"[bot] Bugün {len(closed_today)} kapanan pozisyon geri yüklendi.")
+
+    # Hayalet pozisyon kontrolü: portföyde olup DB'de izlenmeyen shareler (kill-mid-exec artığı)
+    if not config.DRY_RUN:
+        try:
+            ghosts = await detect_ghosts(open_positions)
+            if ghosts:
+                redeemable = sum(float(g.get("currentValue") or 0)
+                                 for g in ghosts if g.get("redeemable"))
+                print(f"[ghost] {len(ghosts)} hayalet pozisyon portföyde (DB'de yok). "
+                      f"Redeemable ≈ ${redeemable:.2f}")
+                for g in ghosts:
+                    print(f"[ghost]   {g.get('slug','?')} {g.get('outcome','?')} "
+                          f"size={g.get('size')} value=${float(g.get('currentValue') or 0):.2f} "
+                          f"redeemable={g.get('redeemable')}")
+        except Exception as e:
+            print(f"[ghost] kontrol hatası: {e}")
 
     initial_tids = [
         tid

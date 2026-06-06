@@ -18,7 +18,9 @@ LIQUIDITY_VETO_USD = 500    # CLOB likidite < $500 → veto
 VOLUME_WARN_USD    = 50     # 24s hacim < $50 → warning (bloklamaz)
 MIN_THESIS_SECS    = 120    # < 2dk → PM yeniden fiyatlanamaz → veto
 EDGE_SANITY_MAX    = 0.35   # edge > %35 → veri hatası şüphesi → veto
-MIN_BOOK_DEPTH_USD = 2.0    # En iyi ask level'ında min $2 USD derinlik (order ~$1.25)
+MIN_BOOK_DEPTH_USD = 1.0    # En iyi ask level'ında min $1 USD derinlik (order $1.25)
+ENTRY_SLIPPAGE     = 0.03   # Giriş slippage — clob_executor.PRICE_PREMIUM ile EŞLEŞMELİ.
+                            # FAK worst_price = ask + bu; gerçek fill ~ask+slippage. Edge bunu saymalı.
 
 
 def _parse_taker_fee(raw) -> float:
@@ -34,18 +36,19 @@ def _parse_taker_fee(raw) -> float:
 
 def _fee_adjusted_edge(fair: float, ask: float, bid: float,
                         action: str, fee: float,
-                        no_ask: float | None = None) -> float:
+                        no_ask: float | None = None,
+                        slippage: float = ENTRY_SLIPPAGE) -> float:
     """
-    Fee sonrası gerçek edge.
-    YES: fair × (1−fee) − ask
-    NO:  (1−fair) × (1−fee) − entry
-         entry = no_ask (Scout'tan gerçek NO ask, varsa)
-                 veya 1−bid (YES_bid tabanlı yaklaşım, fallback)
+    Fee VE giriş slippage sonrası gerçek edge.
+    Gerçek giriş maliyeti = ask + slippage (FAK worst_price = ask + PRICE_PREMIUM).
+    YES: fair × (1−fee) − (ask + slippage)
+    NO:  (1−fair) × (1−fee) − (entry + slippage)
+         entry = no_ask (Scout'tan gerçek NO ask, varsa) veya 1−bid (fallback)
     """
     if action == "YES":
-        return fair * (1 - fee) - ask
+        return fair * (1 - fee) - (ask + slippage)
     entry = no_ask if no_ask is not None else (1 - bid)
-    return (1 - fair) * (1 - fee) - entry
+    return (1 - fair) * (1 - fee) - (entry + slippage)
 
 
 def _result(pass_: bool, vetoes: list, warnings: list,

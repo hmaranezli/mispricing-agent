@@ -84,8 +84,8 @@ def test_check_exit_near_expiry_returns_none():
 
 
 def test_check_exit_max_hold_time():
-    """14+ dakika geçmişse → 'max_hold_time'."""
-    pos = _position(held_minutes=15)
+    """MAX_HOLD_MINUTES (20) geçmişse → 'max_hold_time'."""
+    pos = _position(held_minutes=21)
     result = check_exit(pos, hl_price=95000, pm_yes_price=0.40,
                         time_to_expiry_secs=900)
     assert result == "max_hold_time"
@@ -101,63 +101,79 @@ def test_check_exit_holds_when_no_condition_met():
     assert result is None
 
 
-# ── Task 3: check_exit — thesis + kâr hedefi ─────────────────────────────────
+# ── Task 3: check_exit — kâr hedefi (2-döngü onay + slippage eşiği) ───────────
 
-def test_check_exit_thesis_invalidated_yes():
-    """YES: HL ref'in altına düşünce fair_yes < 0.48 → 'thesis_invalidated'."""
-    # fair_yes(94800, 95000, 900, 'BTC') ≈ 0.31 < 0.48 → thesis broken
+def test_check_exit_profit_needs_two_cycles_yes():
+    """YES: büyük kâr tek döngüde değil, 2 ardışık döngüde onaylanınca çıkar.
+
+    entry=0.35, fair=0.55, edge=0.20; pm=0.53 → captured=0.18 (>=0.10), fraction=0.90 (>=0.85).
+    Tek snapshot spike'ı yanlış çıkış yaptırmasın diye 2 döngü gerek.
+    """
     pos = _position(action="YES", held_minutes=5)
-    result = check_exit(pos, hl_price=94800, pm_yes_price=0.35,
-                        time_to_expiry_secs=900)
-    assert result == "thesis_invalidated"
+    first = check_exit(pos, hl_price=95500, pm_yes_price=0.53, time_to_expiry_secs=900)
+    assert first is None, "İlk döngü tek başına çıkış yaptırmamalı"
+    second = check_exit(pos, hl_price=95500, pm_yes_price=0.53, time_to_expiry_secs=900)
+    assert second == "profit_target_hit"
 
 
-def test_check_exit_thesis_invalidated_no():
-    """NO: HL ref'in üstüne çıkınca fair_yes > 0.52 → 'thesis_invalidated'.
+def test_check_exit_profit_needs_two_cycles_no():
+    """NO: büyük kâr 2 ardışık döngüde onaylanınca çıkar.
 
-    fair_yes(95200, 95000, 900, 'BTC') ≈ 0.69 > 0.52 → thesis broken (HL bullish'e döndü)
-    pm_yes_price=0.60 → NO değer=0.40, kâr henüz hedefte değil (0.22 < 0.85)
+    entry=0.33, fair_NO=0.65, edge=0.32; pm_yes=0.38 → 1-pm=0.62, captured=0.29, fraction=0.906.
     """
     pos = _position(action="NO", held_minutes=5)
-    result = check_exit(pos, hl_price=95200, pm_yes_price=0.60,
-                        time_to_expiry_secs=900)
-    assert result == "thesis_invalidated"
+    first = check_exit(pos, hl_price=94800, pm_yes_price=0.38, time_to_expiry_secs=900)
+    assert first is None
+    second = check_exit(pos, hl_price=94800, pm_yes_price=0.38, time_to_expiry_secs=900)
+    assert second == "profit_target_hit"
 
 
-def test_check_exit_profit_target_hit_yes():
-    """YES: pm_yes_price >= entry + 0.85*edge → 'profit_target_hit'."""
-    # entry=0.35, fair=0.55, edge=0.20, target=0.52 → pm_yes=0.53
-    # fair_yes(95500, 95000, 900, 'BTC') = 0.8904 >= 0.53 → thesis tutulur
-    # captured: (0.53-0.35)/0.20 = 0.90 >= 0.85 ✓
+def test_check_exit_profit_resets_on_dip():
+    """Kâr sinyali ardışık değilse sayaç sıfırlanır → tek seferlik spike çıkış yapmaz."""
     pos = _position(action="YES", held_minutes=5)
-    result = check_exit(pos, hl_price=95500, pm_yes_price=0.53,
-                        time_to_expiry_secs=900)
-    assert result == "profit_target_hit"
+    check_exit(pos, hl_price=95500, pm_yes_price=0.53, time_to_expiry_secs=900)  # count=1
+    mid = check_exit(pos, hl_price=95000, pm_yes_price=0.38, time_to_expiry_secs=900)  # reset
+    assert mid is None
+    again = check_exit(pos, hl_price=95500, pm_yes_price=0.53, time_to_expiry_secs=900)  # count=1
+    assert again is None, "Sayaç sıfırlandı, tek döngü yetmez"
 
 
-def test_check_exit_profit_target_hit_no():
-    """NO: (1-pm_yes) >= entry + 0.85*(fair_NO-entry) → 'profit_target_hit'."""
-    # entry=0.33, fair_NO=0.65, edge=0.32, target=0.602
-    # pm_yes=0.38 → 1-pm=0.62 >= 0.602 ✓
-    # fair_yes(94800, 95000, 900, 'BTC') = 0.3109 <= pm_yes=0.38 → thesis tutulur
-    # captured: (0.62-0.33)/0.32 = 0.906 >= 0.85 ✓
-    pos = _position(action="NO", held_minutes=5)
-    result = check_exit(pos, hl_price=94800, pm_yes_price=0.38,
-                        time_to_expiry_secs=900)
-    assert result == "profit_target_hit"
+def test_check_exit_small_profit_holds_to_resolution():
+    """Küçük kazanç (captured < PROFIT_LOCK_MIN) → erken çıkma, resolve'a kadar tut.
 
-
-def test_check_exit_no_holds_when_hl_at_ref():
-    """NO: HL ref fiyatında (flat) → thesis BOZULMAZ, pozisyon tutulur.
-
-    Eski bug: NO_entry=0.64 → threshold=1-0.64-0.02=0.34, fair_yes(ref,ref)=0.50 > 0.34 → anında ateşleniyordu.
-    Yeni fix: threshold=0.52, fair_yes(ref,ref)=0.50 < 0.52 → holds ✓
+    entry=0.35, fair=0.42 (küçük edge=0.07), pm=0.41 → captured=0.06 < 0.10.
+    fraction=(0.41-0.35)/0.07=0.857>=0.85 olsa bile mutlak kazanç slippage'i hak etmiyor → tut.
     """
-    pos = _position(action="NO", held_minutes=1)
-    # HL ref fiyatında (p_now == p_ref → fair_yes = 0.50)
-    result = check_exit(pos, hl_price=95000, pm_yes_price=0.60,
-                        time_to_expiry_secs=900)
-    assert result is None, f"HL ref'te flat → thesis bozulmamalı, sonuç: {result}"
+    pos = _position(action="YES", held_minutes=5)
+    pos["fair_value"] = 0.42
+    r1 = check_exit(pos, hl_price=95300, pm_yes_price=0.41, time_to_expiry_secs=900)
+    r2 = check_exit(pos, hl_price=95300, pm_yes_price=0.41, time_to_expiry_secs=900)
+    assert r1 is None and r2 is None, "Küçük kazançta erken çıkış olmamalı (slippage yer)"
+
+
+def test_check_exit_thesis_reversal_now_holds():
+    """thesis_invalidated KALDIRILDI: HL ters dönse bile resolve'a kadar tut.
+
+    Eski davranış 'thesis_invalidated' döndürürdü (–$5.97 kanama). Artık None — para resolve'dan geliyor.
+    """
+    pos = _position(action="YES", held_minutes=5)
+    result = check_exit(pos, hl_price=94800, pm_yes_price=0.34, time_to_expiry_secs=900)
+    assert result is None, "thesis artık çıkış tetiklemez, resolve'a kadar tutulur"
+
+
+def test_check_exit_stop_loss_after_min_hold():
+    """MIN_HOLD sonrası gerçek PM zararı -%20'yi geçince → stop_loss_hit (felaket koruması)."""
+    pos = _position(action="YES", held_minutes=5)  # 5dk > 60s
+    # entry=0.35, stop eşiği=0.28; pm=0.27 < 0.28
+    result = check_exit(pos, hl_price=95000, pm_yes_price=0.27, time_to_expiry_secs=900)
+    assert result == "stop_loss_hit"
+
+
+def test_check_exit_no_stop_loss_before_min_hold():
+    """İlk 60s içinde stop_loss çalışmaz — anlık ters dönüş gürültüsü filtresi."""
+    pos = _position(action="YES", held_minutes=0)  # yeni açıldı, held_seconds ~0
+    result = check_exit(pos, hl_price=95000, pm_yes_price=0.27, time_to_expiry_secs=900)
+    assert result is None, "60s dolmadan stop tetiklenmemeli"
 
 
 

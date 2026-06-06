@@ -15,12 +15,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 
 # ── Skor bileşeni sınırları ───────────────────────────────────────────────────
-EDGE_ZERO   = 0.08   # config.MIN_EDGE_PCT eşiği
-EDGE_MAX    = 0.15
-LIQ_ZERO    = 500    # RedTeam LIQUIDITY_VETO_USD eşiği
-LIQ_MAX     = 3000
-TIME_ZERO   = 120    # RedTeam MIN_THESIS_SECS eşiği
-TIME_MAX    = 300
+EDGE_ZERO   = 0.04   # MIN_EDGE_PCT(0.05) altına başla — küçük edge de puan alsın
+EDGE_MAX    = 0.08   # %8 üstü tam puan — binary option için gerçekçi üst sınır
+LIQ_ZERO    = 200    # RedTeam LIQUIDITY_VETO_USD eşiğinin altı
+LIQ_MAX     = 1000   # $1k üstü yeterli likidite
+TIME_ZERO   = 130    # Scout MIN_SECONDS eşiği
+TIME_MAX    = 200    # 200s üstü iyi
 SPREAD_ZERO = 0.04   # RedTeam SPREAD_VETO eşiği
 SPREAD_MAX  = 0.01
 
