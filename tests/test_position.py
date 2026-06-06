@@ -185,10 +185,25 @@ def test_check_exit_stop_loss_after_min_hold():
 
 
 def test_check_exit_no_stop_loss_before_min_hold():
-    """İlk 60s içinde stop_loss çalışmaz — anlık ters dönüş gürültüsü filtresi."""
+    """İlk 30s içinde stop_loss çalışmaz — anlık ters dönüş gürültüsü filtresi."""
     pos = _position(action="YES", held_minutes=0)  # yeni açıldı, held_seconds ~0
     result = check_exit(pos, hl_price=95000, pm_yes_price=0.27, time_to_expiry_secs=900)
-    assert result is None, "60s dolmadan stop tetiklenmemeli"
+    assert result is None, "30s dolmadan stop tetiklenmemeli"
+
+
+def test_check_exit_stop_loss_fires_at_45s():
+    """45s sonra stop_loss çalışır — MIN_HOLD_SECS=30'dan büyük.
+
+    Eski MIN_HOLD=60'ta 45s hâlâ bloke ediliyordu; yeni MIN_HOLD=30'da geçmeli.
+    entry=0.35, stop eşiği=0.35×0.80=0.28; pm=0.27 < 0.28 → stop_loss_hit.
+    """
+    from position.manager import MIN_HOLD_SECS
+    assert MIN_HOLD_SECS == 30, f"MIN_HOLD_SECS 30 olmalı, şu an: {MIN_HOLD_SECS}"
+    opened_at = (datetime.now(timezone.utc) - timedelta(seconds=45)).isoformat()
+    pos = _position(action="YES", held_minutes=0)
+    pos["opened_at"] = opened_at
+    result = check_exit(pos, hl_price=95000, pm_yes_price=0.27, time_to_expiry_secs=900)
+    assert result == "stop_loss_hit", f"45s > 30s MIN_HOLD → stop_loss tetiklenmeli, got: {result}"
 
 
 

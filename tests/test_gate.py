@@ -81,10 +81,10 @@ def test_gate_decide_required_fields():
 
 
 def test_gate_decide_vetoes_below_threshold():
-    # Zayıf sinyal → skor < 75 → veto
+    # Çok zayıf sinyal: edge≈EDGE_ZERO, liq=LIQ_ZERO, time=TIME_ZERO, spread=SPREAD_ZERO → skor ~20 < 50 → veto
     r = _gate_decide(
-        _finding(), _verification(150),
-        _redteam(0.09, 800.0, 0.035), _risk()
+        _finding(), _verification(130),
+        _redteam(0.05, 200.0, 0.04), _risk()
     )
     assert r["pass"] is False
     assert r["action_taken"] == "vetoed"
@@ -134,8 +134,8 @@ async def test_gate_vetoed_action_taken(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DRY_RUN", True)
 
     r = await gate(
-        _finding(), _verification(150),
-        _redteam(0.09, 800.0, 0.035), _risk()
+        _finding(), _verification(130),
+        _redteam(0.05, 200.0, 0.04), _risk()
     )
 
     assert r["pass"] is False
