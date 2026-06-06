@@ -12,7 +12,7 @@ import config
 from council.redteam import (
     redteam, _parse_taker_fee, _fee_adjusted_edge, _result,
     SPREAD_VETO, LIQUIDITY_VETO_USD, MIN_THESIS_SECS, EDGE_SANITY_MAX,
-    MIN_BOOK_DEPTH_USD,
+    MIN_BOOK_DEPTH_USD, BASIS_VETO_PCT, FUNDING_RATE_VETO,
 )
 from council.scout import scan_edges
 from council.verifier import verify
@@ -97,9 +97,10 @@ def test_fee_adjusted_edge_slippage_reduces_edge():
 
 
 def test_fee_adjusted_edge_default_includes_slippage():
-    """Varsayılan çağrı slippage'i uygular — executor ask+PRICE_PREMIUM ödüyor."""
+    """Varsayılan çağrı BEKLENEN slippage'i (0.015) uygular."""
+    from council.redteam import ENTRY_SLIPPAGE
     default  = _fee_adjusted_edge(fair=0.65, ask=0.47, bid=0.46, action="YES", fee=0.02)
-    expected = 0.65 * 0.98 - (0.47 + 0.03)
+    expected = 0.65 * 0.98 - (0.47 + ENTRY_SLIPPAGE)
     assert abs(default - expected) < 1e-6
 
 
@@ -386,3 +387,65 @@ async def test_polymarket_descending_asks_uses_best_not_sentinel():
     assert "clob_spread_too_wide" not in result["vetoes"], (
         f"Sentinel orders yanlışlıkla spread veto tetikledi: {result['vetoes']}"
     )
+
+
+# ── Task: Basis Risk + Funding Rate Guard ─────────────────────────────────────
+
+def test_basis_veto_constant_value():
+    """BASIS_VETO_PCT sabit değeri kontrol — eşiği biliriz."""
+    assert BASIS_VETO_PCT == 0.003
+
+
+def test_funding_rate_veto_constant_value():
+    """FUNDING_RATE_VETO sabit değeri kontrol."""
+    assert FUNDING_RATE_VETO == 0.0001
+
+
+@pytest.mark.asyncio
+async def test_veto_high_basis_risk():
+    """basis_pct > 0.003 → high_basis_risk veto."""
+    f = _fake_finding()
+    f["basis_pct"]    = 0.004   # > 0.003 eşiği
+    f["funding_rate"] = 0.0     # normal
+    result = await redteam(f, _fake_verification())
+    assert "high_basis_risk" in result["vetoes"]
+
+
+@pytest.mark.asyncio
+async def test_veto_funding_rate_crowded():
+    """|funding_rate| > 0.0001 → funding_rate_crowded veto."""
+    f = _fake_finding()
+    f["basis_pct"]    = 0.0
+    f["funding_rate"] = 0.0002  # > 0.0001 eşiği
+    result = await redteam(f, _fake_verification())
+    assert "funding_rate_crowded" in result["vetoes"]
+
+
+@pytest.mark.asyncio
+async def test_veto_negative_funding_rate_crowded():
+    """Negatif funding da kalabalık → |−0.0002| > 0.0001 → veto."""
+    f = _fake_finding()
+    f["basis_pct"]    = 0.0
+    f["funding_rate"] = -0.0002
+    result = await redteam(f, _fake_verification())
+    assert "funding_rate_crowded" in result["vetoes"]
+
+
+@pytest.mark.asyncio
+async def test_no_veto_normal_basis_and_funding():
+    """Normal değerler → ne basis ne funding veto."""
+    f = _fake_finding()
+    f["basis_pct"]    = 0.001    # < 0.003 → OK
+    f["funding_rate"] = 4.8e-6   # << 0.0001 → OK
+    result = await redteam(f, _fake_verification())
+    assert "high_basis_risk"      not in result["vetoes"]
+    assert "funding_rate_crowded" not in result["vetoes"]
+
+
+@pytest.mark.asyncio
+async def test_no_veto_when_basis_funding_absent():
+    """Alanlar yoksa (None) → kontrol atlanır, çökmez."""
+    f = _fake_finding()   # basis_pct / funding_rate yok
+    result = await redteam(f, _fake_verification())
+    assert "high_basis_risk"      not in result["vetoes"]
+    assert "funding_rate_crowded" not in result["vetoes"]

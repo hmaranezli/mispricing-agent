@@ -19,8 +19,11 @@ VOLUME_WARN_USD    = 50     # 24s hacim < $50 → warning (bloklamaz)
 MIN_THESIS_SECS    = 120    # < 2dk → PM yeniden fiyatlanamaz → veto
 EDGE_SANITY_MAX    = 0.35   # edge > %35 → veri hatası şüphesi → veto
 MIN_BOOK_DEPTH_USD = 1.0    # En iyi ask level'ında min $1 USD derinlik (order $1.25)
-ENTRY_SLIPPAGE     = 0.03   # Giriş slippage — clob_executor.PRICE_PREMIUM ile EŞLEŞMELİ.
-                            # FAK worst_price = ask + bu; gerçek fill ~ask+slippage. Edge bunu saymalı.
+ENTRY_SLIPPAGE     = 0.015  # BEKLENEN giriş slippage (worst-case değil). clob_executor.PRICE_PREMIUM=0.03
+                            # worst_price LİMİTİ; gerçek fill genelde daha iyi → edge'de beklenen ~0.015 kullan.
+                            # Pilotta gerçek slippage ölçülünce bu değer ölçülene ayarlanacak.
+BASIS_VETO_PCT     = 0.003  # |perp_mid − oracle| / oracle > 0.3% → perp spot'tan kopuk, PM oracle'da resolves
+FUNDING_RATE_VETO  = 0.0001 # |funding/saat| > 0.01%/saat → kalabalık kaldıraç, perp spot'u yanıltıyor
 
 
 def _parse_taker_fee(raw) -> float:
@@ -85,6 +88,14 @@ async def redteam(finding: dict, verification: dict) -> dict:
 
     if verification["fresh_seconds"] < MIN_THESIS_SECS:
         vetoes.append("insufficient_time_for_thesis")
+
+    # ── 1c. Spot/Perp basis ve funding rate (Scout'tan, 0 ekstra API) ─────────
+    basis_pct    = finding.get("basis_pct")
+    funding_rate = finding.get("funding_rate")
+    if basis_pct is not None and abs(basis_pct) > BASIS_VETO_PCT:
+        vetoes.append("high_basis_risk")
+    if funding_rate is not None and abs(funding_rate) > FUNDING_RATE_VETO:
+        vetoes.append("funding_rate_crowded")
 
     # ── Gamma'dan taze market verisi ─────────────────────────────────────────
     try:
