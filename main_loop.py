@@ -92,10 +92,14 @@ async def _run_council(
     conn=None,
 ) -> tuple | None:
     """Finding'i 5 katmandan geçirir. Herhangi biri düşerse None."""
+    slug = finding.get("slug", "?")
+
     verification = await verify(finding)
     if not verification["pass"]:
+        reason = verification.get("reason", "?")
+        print(f"[council] {slug} VETO verifier: {reason}")
         await log_candidate(conn, finding, passed=False,
-                            veto_layer="verifier", veto_reason=verification.get("reason"))
+                            veto_layer="verifier", veto_reason=reason)
         return None
 
     # Taze fiyatları finding'e yaz — execute() stale scout fiyatı değil fresh_ask kullansın
@@ -106,8 +110,10 @@ async def _run_council(
 
     rt = await redteam_eval(finding, verification)
     if not rt["pass"]:
+        vetoes = rt.get("vetoes", [])
+        print(f"[council] {slug} VETO redteam: {vetoes} | fee_adj={rt.get('fee_adj_edge', '?'):.3f}")
         await log_candidate(conn, finding, passed=False,
-                            veto_layer="redteam", veto_reason=str(rt.get("vetoes", [])))
+                            veto_layer="redteam", veto_reason=str(vetoes))
         return None
 
     rk = risk_eval(finding, verification, rt,
@@ -115,16 +121,21 @@ async def _run_council(
                    open_positions=n_open,
                    daily_loss_usd=daily_loss_usd)
     if not rk["pass"]:
+        reason = rk.get("reason", "?")
+        print(f"[council] {slug} VETO risk: {reason}")
         await log_candidate(conn, finding, passed=False,
-                            veto_layer="risk", veto_reason=rk.get("reason"))
+                            veto_layer="risk", veto_reason=reason)
         return None
 
     gate_result = await gate(finding, verification, rt, rk)
     if not gate_result["pass"]:
+        reason = gate_result.get("reason", "?")
+        print(f"[council] {slug} VETO gate: {reason}")
         await log_candidate(conn, finding, passed=False,
-                            veto_layer="gate", veto_reason=gate_result.get("reason"))
+                            veto_layer="gate", veto_reason=reason)
         return None
 
+    print(f"[council] {slug} GEÇTİ → execute")
     await log_candidate(conn, finding, passed=True)
     return gate_result, rk
 
@@ -181,7 +192,7 @@ async def _scan_and_execute(
                 t for t in (position.get("yes_token_id"), position.get("no_token_id")) if t
             ])
         else:
-            _failed.add(slug)  # FOK kill — bu pencerede tekrar deneme
+            pass  # FAK kill — capital riske girmedi, bir sonraki taramada yeniden dene
 
 
 async def _handle_ws_resolved(

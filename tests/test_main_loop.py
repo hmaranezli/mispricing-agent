@@ -175,17 +175,18 @@ async def test_scan_does_not_open_same_slug_twice_in_one_scan():
 # ── Task 2b: failed_slugs thrashing fix ──────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_fok_failed_slug_added_to_failed_set():
-    """FOK kill (execute→None) olan slug failed_slugs'a eklenir."""
+async def test_fok_failed_slug_not_added_to_failed_set():
+    """FAK kill (execute→None) olan slug failed_slugs'a EKLENMEMELİ.
+    Capital riske girmedi — likidite yoktu, 7s sonra yeniden denenecek."""
     failed: set[str] = set()
     with patch("main_loop.scan_edges",   new_callable=AsyncMock) as mock_scan, \
          patch("main_loop._run_council", new_callable=AsyncMock) as mock_council, \
          patch("main_loop.execute",      new_callable=AsyncMock) as mock_exec:
         mock_scan.return_value    = [_finding()]
         mock_council.return_value = (_pass_gate(), _pass_risk())
-        mock_exec.return_value    = None          # FOK kill
+        mock_exec.return_value    = None          # FAK kill — no fill
         await _scan_and_execute([], [], bankroll_usd=1000.0, failed_slugs=failed)
-    assert _finding()["slug"] in failed, "FOK kill sonrası slug failed_slugs'a eklenmeli"
+    assert _finding()["slug"] not in failed, "FAK kill sonrası slug failed_slugs'a eklenmemeli — retry serbest"
 
 
 @pytest.mark.asyncio
