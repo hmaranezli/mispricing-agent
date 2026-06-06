@@ -31,7 +31,7 @@ from monitor import circuit_breaker
 from monitor import positions_cache
 from db.logger import log_candidate, log_position_open, log_position_close, load_closed_today, get_connection, patch_position_resolution
 
-SCAN_INTERVAL_SECS = 15
+SCAN_INTERVAL_SECS = 7
 BANKROLL_CONFIG = float(os.getenv("BANKROLL_USD", "1000.0"))
 
 

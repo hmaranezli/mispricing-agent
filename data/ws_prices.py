@@ -12,7 +12,7 @@ import websockets
 WS_URL        = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
 PING_INTERVAL = 10   # saniye
 RECONNECT_DELAY = 5  # bağlantı kopunca bekle
-STALE_SECS    = 60   # bu kadar eski cache girdisi stale sayılır
+STALE_SECS    = 15   # bu kadar eski cache girdisi stale sayılır (60→15: basi fiyat tazeler)
 
 # ── Modül düzeyi durum ────────────────────────────────────────────────────────
 _cache:    dict[str, dict]       = {}   # token_id → {best_bid, best_ask, spread, ts}
@@ -145,6 +145,10 @@ async def _connect_and_run() -> None:
     async with websockets.connect(WS_URL) as ws:
         _ws = ws
         print("[ws] Polymarket CLOB WebSocket bağlandı")
+        # Reconnect sonrası tüm subscribed tokenları yeniden abone et
+        if _subscribed:
+            _pending.update(_subscribed)
+            _subscribed.clear()
         await _flush_pending(ws)
         ping_task  = asyncio.create_task(_ping_loop(ws))
         flush_task = asyncio.create_task(_pending_flush_loop(ws))
@@ -159,7 +163,7 @@ async def _connect_and_run() -> None:
                     elif etype == "price_change":    _handle_price_change(event)
                     elif etype == "best_bid_ask":    _handle_best_bid_ask(event)
                     elif etype == "market_resolved": _handle_market_resolved(event)
-                except (json.JSONDecodeError, KeyError, ValueError):
+                except (json.JSONDecodeError, KeyError, ValueError, AttributeError, TypeError):
                     pass
         finally:
             ping_task.cancel()
