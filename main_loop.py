@@ -22,6 +22,7 @@ from execution.ghost          import detect_ghosts
 from position.manager import check_exit, close_position
 from data.hl_candles import current_price
 from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window
+from data.clob_price import get_clob_price
 from monitor.notifier import notify_open, notify_close, notify_halt, notify_restart, notify_soft_stop, notify_hard_stop, notify_resolved_late
 from monitor.kill_switch import check as kill_switch_check
 from monitor.telegram_commands import poll_commands
@@ -302,15 +303,20 @@ async def _monitor_positions(
                 # Pozisyonu kapatma: bir sonraki scan döngüsünde tekrar dene
                 continue
 
-            # YES: WS bid; fallback Gamma bid
-            # NO: YES ask kullan (check_exit: current_val = 1 - pm_yes_price = NO değeri)
-            #     NO bid'i burada kullanmak current_val'ı ters çeviriyor → yanlış exit kararları
+            # YES: WS bid → CLOB REST bid. NO: YES ask → CLOB REST ask.
+            # Gamma/window fallback KALDIRILDI: stale market-açılış fiyatı
+            # yanlış stop_loss tetikler. Fiyat yoksa bu döngüyü atla.
+            yes_tid = pos.get("yes_token_id", "")
             if pos["action"] == "YES":
-                _ws_bid = ws_prices.get_bid(pos.get("yes_token_id", ""))
-                pm_yes_price = _ws_bid if _ws_bid is not None else window["best_bid"]
+                pm_yes_price = ws_prices.get_bid(yes_tid)
+                if pm_yes_price is None:
+                    pm_yes_price = await get_clob_price(yes_tid, "SELL")
             else:
-                _ws_ask_yes = ws_prices.get_ask(pos.get("yes_token_id", ""))
-                pm_yes_price = _ws_ask_yes if _ws_ask_yes is not None else window["best_ask"]
+                pm_yes_price = ws_prices.get_ask(yes_tid)
+                if pm_yes_price is None:
+                    pm_yes_price = await get_clob_price(yes_tid, "BUY")
+            if pm_yes_price is None:
+                continue  # fiyat yok → bu döngüyü atla, bir sonrakinde tekrar dene
             exit_reason = check_exit(pos, hl_price,
                                      pm_yes_price,
                                      window["seconds_remaining"])

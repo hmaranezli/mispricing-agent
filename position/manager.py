@@ -85,15 +85,17 @@ def check_exit(
       thesis_invalidated KALDIRILDI: pencere-ortası HL dönüşleri çoğunlukla gürültü,
       resolve'a kadar geri dönüyor; tek başına -$5.97 kaybettiriyordu.
     """
-    # 1. Market kapanışa yakın → dokunma, bırak çözümlensin
-    if time_to_expiry_secs < NEAR_EXPIRY_SECS:
-        return None
+    # 1. Market kapanışa yakın → sadece profit_target ve max_hold'u engelle.
+    #    stop_loss geçer: son saniyede çöküş olursa tam kayıptan koru.
+    near_expiry = time_to_expiry_secs < NEAR_EXPIRY_SECS
 
-    # 2. Zaman limiti
+    # 2. Zaman limiti (near_expiry'de engelle — market zaten kapanıyor)
+    if near_expiry:
+        pass  # skip non-stop-loss exits below; stop_loss still checked at step 5
     opened_at = datetime.fromisoformat(position["opened_at"])
     now = datetime.now(timezone.utc)
     held_minutes = (now - opened_at).total_seconds() / 60
-    if held_minutes >= config.MAX_HOLD_MINUTES:
+    if not near_expiry and held_minutes >= config.MAX_HOLD_MINUTES:
         return "max_hold_time"
 
     entry_price = position["pm_entry_price"]
@@ -115,7 +117,7 @@ def check_exit(
         and captured / edge >= PROFIT_TARGET_FRACTION
         and captured >= PROFIT_LOCK_MIN
     )
-    if profit_ready:
+    if profit_ready and not near_expiry:
         position["_profit_confirm"] = position.get("_profit_confirm", 0) + 1
         if position["_profit_confirm"] >= PROFIT_CONFIRM_CYCLES:
             return "profit_target_hit"

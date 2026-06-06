@@ -14,6 +14,18 @@ from main_loop import _run_council, _scan_and_execute, _monitor_positions, _load
 
 # ── Fixture'lar ──────────────────────────────────────────────────────────────
 
+@pytest.fixture(autouse=True)
+def default_ws_prices():
+    """Monitor testlerinde ws_prices varsayılan olarak geçerli fiyat döndürür.
+    Stale-Gamma testleri ws_prices'ı None döndürecek şekilde override eder.
+    """
+    with patch("main_loop.ws_prices") as mock_ws:
+        mock_ws.get_bid.return_value = 0.50
+        mock_ws.get_ask.return_value = 0.50
+        mock_ws.subscribe.return_value = None
+        yield mock_ws
+
+
 def _finding():
     return {
         "question": "Will BTC go up?", "asset": "BTC", "action": "YES",
@@ -282,6 +294,45 @@ async def test_monitor_skips_on_missing_market_and_no_resolution():
 
 
 @pytest.mark.asyncio
+async def test_monitor_skips_when_ws_and_clob_price_both_fail():
+    """WS None + CLOB REST None → stale Gamma kullanma, döngüyü atla.
+
+    Stale Gamma best_ask=0.65 → current_val=1-0.65=0.35 < 0.59×0.80=0.472
+    → mevcut kod yanlışlıkla stop_loss_hit tetikler (kazanan NO pozisyonunda felaket).
+    Fix: fiyat verisi yoksa bu döngüyü atla, pozisyon açık kalsın.
+    """
+    opened_at = (datetime.now(timezone.utc) - timedelta(minutes=3)).isoformat()
+    pos = {
+        **_open_position(),
+        "action": "NO", "pm_entry_price": 0.59,
+        "yes_token_id": "tok-yes-123", "no_token_id": "tok-no-123",
+        "opened_at": opened_at,
+    }
+    open_pos = [pos]
+    closed = []
+    # Stale Gamma: best_ask=0.65 → 1-0.65=0.35 < stop_thresh=0.472 → false stop
+    fake_window = {"best_ask": 0.65, "best_bid": 0.63,
+                   "seconds_remaining": 400, "neg_risk": False}
+    import config as _cfg
+    with patch("main_loop.current_price",     new_callable=AsyncMock) as mock_hl, \
+         patch("main_loop.fetch_by_slug",     new_callable=AsyncMock) as mock_pm, \
+         patch("main_loop.parse_market_window", return_value=fake_window), \
+         patch("main_loop.ws_prices")         as mock_ws, \
+         patch("main_loop.get_clob_price",    new_callable=AsyncMock) as mock_clob, \
+         patch.object(_cfg, "DRY_RUN", True):
+        mock_hl.return_value     = 95000.0
+        mock_pm.return_value     = {}
+        mock_ws.get_ask.return_value = None   # WS stale
+        mock_ws.get_bid.return_value = None
+        mock_clob.return_value   = None       # CLOB REST başarısız
+        await _monitor_positions(open_pos, closed)
+    assert len(open_pos) == 1, (
+        "WS+CLOB fiyat verisi yoksa stale Gamma kullanılmamalı — pozisyon açık kalmalı"
+    )
+    assert len(closed) == 0, "Fiyatsız döngüde yanlış stop_loss tetiklenmemeli"
+
+
+@pytest.mark.asyncio
 async def test_monitor_closes_with_resolution_price_on_yes():
     """window=None iken fetch_resolved sonuç verirse pm_exit_price dolu kapanır (YES)."""
     pos = {**_open_position(), "action": "YES"}
@@ -343,16 +394,16 @@ async def test_load_open_positions_returns_open_ones(mem_db):
 
 
 @pytest.mark.asyncio
-async def test_monitor_no_position_exit_uses_no_price():
-    """NO pozisyon erken çıkışta pm_exit_price = 1 - YES_ask (NO bid fiyatı, YES ask değil)."""
-    pos = {**_open_position(), "action": "NO", "pm_entry_price": 0.46}
+async def test_monitor_no_position_exit_uses_no_price(default_ws_prices):
+    """NO pozisyon erken çıkışta pm_exit_price = WS no_token bid (Gamma fallback değil)."""
+    default_ws_prices.get_bid.return_value = 0.90  # NO token bid: WS'den gerçek değer
+    pos = {**_open_position(), "action": "NO", "pm_entry_price": 0.46,
+           "no_token_id": "tok-no", "yes_token_id": "tok-yes"}
     open_pos = [pos]
     closed = []
     fake_window = {
-        "best_ask": 0.10,  # YES ask=0.10 → NO bid = 1-0.10 = 0.90
-        "best_bid": 0.09,
-        "seconds_remaining": 500,
-        "neg_risk": False,
+        "best_ask": 0.10, "best_bid": 0.09,
+        "seconds_remaining": 500, "neg_risk": False,
     }
     import config as _cfg
     with patch("main_loop.current_price",       new_callable=AsyncMock) as mock_hl, \
@@ -366,7 +417,7 @@ async def test_monitor_no_position_exit_uses_no_price():
         await _monitor_positions(open_pos, closed)
     assert len(closed) == 1
     assert abs(closed[0]["pm_exit_price"] - 0.90) < 1e-4, \
-        f"NO çıkış fiyatı yanlış: {closed[0]['pm_exit_price']:.4f} — YES_ask=0.10 iken NO_bid=0.90 olmalı"
+        f"NO çıkış fiyatı WS bid=0.90 olmalı, got: {closed[0]['pm_exit_price']:.4f}"
 
 
 @pytest.mark.asyncio
@@ -408,16 +459,16 @@ async def test_monitor_profit_target_does_not_lock_slug():
 
 
 @pytest.mark.asyncio
-async def test_monitor_yes_position_exit_uses_best_bid_not_ask():
-    """DRY_RUN YES çıkışta pm_exit_price = best_bid (satış fiyatı), best_ask değil."""
-    pos = {**_open_position(), "action": "YES", "pm_entry_price": 0.35}
+async def test_monitor_yes_position_exit_uses_best_bid_not_ask(default_ws_prices):
+    """DRY_RUN YES çıkışta pm_exit_price = WS bid (satış fiyatı), ask değil."""
+    default_ws_prices.get_bid.return_value = 0.72  # YES token bid: WS'den
+    pos = {**_open_position(), "action": "YES", "pm_entry_price": 0.35,
+           "yes_token_id": "tok-yes", "no_token_id": "tok-no"}
     open_pos = [pos]
     closed = []
     fake_window = {
-        "best_ask": 0.75,   # alış fiyatı — çıkışta KULLANILMAMALI
-        "best_bid": 0.72,   # satış fiyatı — çıkışta bu kullanılmalı
-        "seconds_remaining": 500,
-        "neg_risk": False,
+        "best_ask": 0.75, "best_bid": 0.99,  # Gamma ask=0.75, bid=0.99 — ikisi de kullanılmamalı
+        "seconds_remaining": 500, "neg_risk": False,
     }
     import config as _cfg
     with patch("main_loop.current_price",       new_callable=AsyncMock) as mock_hl, \
@@ -431,7 +482,7 @@ async def test_monitor_yes_position_exit_uses_best_bid_not_ask():
         await _monitor_positions(open_pos, closed)
     assert len(closed) == 1
     assert abs(closed[0]["pm_exit_price"] - 0.72) < 1e-4, \
-        f"YES çıkış fiyatı yanlış: {closed[0]['pm_exit_price']:.4f} — best_bid=0.72 olmalı, best_ask=0.75 değil"
+        f"YES çıkış fiyatı WS bid=0.72 olmalı, got: {closed[0]['pm_exit_price']:.4f}"
 
 
 @pytest.mark.asyncio

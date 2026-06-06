@@ -76,11 +76,26 @@ def test_close_position_logs_jsonl(tmp_path):
 # ── Task 2: check_exit — zaman + expiry ──────────────────────────────────────
 
 def test_check_exit_near_expiry_returns_none():
-    """time_to_expiry_secs < 90 → None (market kapansın, dokunma)."""
-    pos = _position(held_minutes=15)  # Zaman dolsa bile
+    """time_to_expiry_secs < 90, fiyat OK → None (profit_target/max_hold engellenir)."""
+    pos = _position(held_minutes=15)
     result = check_exit(pos, hl_price=95000, pm_yes_price=0.40,
                         time_to_expiry_secs=80)
     assert result is None
+
+
+def test_check_exit_near_expiry_still_fires_stop_loss():
+    """Son 90s'de bile stop_loss çalışmalı — NEAR_EXPIRY tam kayıpları engellemez.
+
+    Mevcut kod near_expiry'de her şeyi None döndürüyor → -$1.25 tam kayıp.
+    Fix: near_expiry sadece profit_target'ı engellemeli, stop_loss geçmeli.
+    entry=0.35, eşik=0.35×0.80=0.28; pm=0.20 < 0.28 → stop_loss_hit bekleniyor.
+    """
+    pos = _position(action="YES", held_minutes=8)
+    result = check_exit(pos, hl_price=95000, pm_yes_price=0.20,
+                        time_to_expiry_secs=50)
+    assert result == "stop_loss_hit", (
+        f"Near-expiry'de felaket zararı durdurulmalı, got: {result}"
+    )
 
 
 def test_check_exit_max_hold_time():
