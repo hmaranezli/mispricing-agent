@@ -83,3 +83,46 @@ async def test_price_at_timestamp_too_old_raises():
     ts_ms = int(time.time() * 1000) - 8 * 24 * 60 * 60 * 1000
     with pytest.raises(ValueError, match="mum bulunamadı"):
         await price_at_timestamp("BTC", ts_ms)
+
+
+# ── calculate_realized_volatility (yeni) ─────────────────────────────────────
+
+def test_calculate_realized_vol_empty_returns_fallback():
+    """Boş liste → 0.80 fallback."""
+    from data.hl_candles import calculate_realized_volatility
+    assert calculate_realized_volatility([]) == 0.80
+
+
+def test_calculate_realized_vol_single_candle_returns_fallback():
+    """Tek mum → log_returns hesaplanamaz → 0.80 fallback."""
+    from data.hl_candles import calculate_realized_volatility
+    assert calculate_realized_volatility([{"c": "100"}]) == 0.80
+
+
+def test_calculate_realized_vol_flat_market_clamped_to_min():
+    """Hiç hareket yok → std_dev=0 → annualized=0 → clamp 0.30."""
+    from data.hl_candles import calculate_realized_volatility
+    candles = [{"c": "100.0"} for _ in range(10)]
+    assert calculate_realized_volatility(candles) == 0.30
+
+
+def test_calculate_realized_vol_extreme_moves_clamped_to_max():
+    """100→200→100→200: aşırı hareket → annualized >> 3.00 → clamp 3.00."""
+    from data.hl_candles import calculate_realized_volatility
+    candles = [{"c": "100"}, {"c": "200"}, {"c": "100"}, {"c": "200"}]
+    assert calculate_realized_volatility(candles) == 3.00
+
+
+def test_calculate_realized_vol_in_valid_range():
+    """Gerçekçi BTC hareketi (±%0.1/mum, 60 mum) → [0.30, 3.00] aralığında."""
+    from data.hl_candles import calculate_realized_volatility
+    import random
+    random.seed(42)
+    px = 100_000.0
+    candles = []
+    for _ in range(60):
+        px *= (1 + random.gauss(0, 0.001))
+        candles.append({"c": str(px)})
+    vol = calculate_realized_volatility(candles)
+    assert 0.30 <= vol <= 3.00
+    assert vol != 0.80  # gerçek hesap, fallback değil

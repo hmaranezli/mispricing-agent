@@ -3,6 +3,7 @@ data/hl_candles.py — Hyperliquid'den GERCEK gecmis fiyat (candle) ceker.
 Uydurma yok: belirli bir zaman penceresinde fiyat gercekte ne yapti, olcer.
 """
 import asyncio
+import math
 import time
 import aiohttp
 
@@ -22,6 +23,33 @@ async def fetch_candles(asset, interval="1m", minutes_back=20):
         async with s.post(INFO_URL, json=payload) as r:
             r.raise_for_status()
             return await r.json()
+
+
+def calculate_realized_volatility(candles: list[dict]) -> float:
+    """
+    Son N dakikanın 1m mumlarından yıllıklandırılmış realized volatilite.
+    Formül: stdev(log_returns) * sqrt(525_600)  [1 yılda 525 600 dakika]
+    Guardrail: [0.30, 3.00] — sıfır ve aşırı spike değerlerini engeller.
+    Veri yetersizse 0.80 döner (BTC ortalama vol fallback).
+    """
+    if not candles or len(candles) < 2:
+        return 0.80
+
+    returns = []
+    for i in range(1, len(candles)):
+        prev = float(candles[i - 1]["c"])
+        curr = float(candles[i]["c"])
+        if prev > 0 and curr > 0:
+            returns.append(math.log(curr / prev))
+
+    if len(returns) < 2:
+        return 0.80
+
+    mean = sum(returns) / len(returns)
+    variance = sum((r - mean) ** 2 for r in returns) / (len(returns) - 1)
+    std_dev = math.sqrt(variance)
+    annualized = std_dev * math.sqrt(525_600)
+    return max(0.30, min(annualized, 3.00))
 
 
 def realized_move(candles, window_minutes):
