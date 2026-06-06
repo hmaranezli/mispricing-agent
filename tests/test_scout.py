@@ -678,3 +678,135 @@ async def test_no_edge_uses_real_no_ask_and_correct_formula():
     assert result.get("no_ask") == 0.38, (
         f"no_ask finding'de yok ya da yanlış: {result.get('no_ask')}"
     )
+
+
+# ── Task: Basis+Funding wiring (market_state) ─────────────────────────────────
+
+import council.scout as _scout_mod
+
+
+def _make_market(seconds_remaining=300):
+    """Test market dict — parse_market_window'u geçecek minimum alan seti."""
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(minutes=10)
+    end   = now + timedelta(seconds=seconds_remaining)
+    return {
+        "question":       "Bitcoin Up or Down",
+        "slug":           "btc-updown-test",
+        "clobTokenIds":   '["yes-tok","no-tok"]',
+        "bestAsk":        "0.35",
+        "bestBid":        "0.33",
+        "eventStartTime": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "endDate":        end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "negRisk":        False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_process_market_includes_oracle_px():
+    """`_process_market` bulgu dict'ine oracle_px ekler."""
+    from council.scout import _process_market
+    from unittest.mock import AsyncMock, patch
+
+    market_state = {
+        "BTC": {"oracle_px": 60938.0, "funding_rate": 4.8e-6, "basis_pct": 0.00035}
+    }
+    with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+         patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=60_000.0), \
+         patch("council.scout.current_price", new_callable=AsyncMock, return_value=61_000.0), \
+         patch("council.scout.fair_yes", return_value=0.70), \
+         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02), \
+         patch("council.scout._ws_prices.get_ask", return_value=None), \
+         patch("council.scout._ws_prices.get_bid", return_value=None):
+        result = await _process_market(_make_market(), {}, market_state)
+
+    assert result is not None
+    assert result.get("oracle_px") == 60938.0
+
+
+@pytest.mark.asyncio
+async def test_process_market_includes_funding_rate():
+    """`_process_market` bulgu dict'ine funding_rate ekler."""
+    from council.scout import _process_market
+    from unittest.mock import AsyncMock, patch
+
+    market_state = {
+        "BTC": {"oracle_px": 60938.0, "funding_rate": 4.8e-6, "basis_pct": 0.00035}
+    }
+    with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+         patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=60_000.0), \
+         patch("council.scout.current_price", new_callable=AsyncMock, return_value=61_000.0), \
+         patch("council.scout.fair_yes", return_value=0.70), \
+         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02), \
+         patch("council.scout._ws_prices.get_ask", return_value=None), \
+         patch("council.scout._ws_prices.get_bid", return_value=None):
+        result = await _process_market(_make_market(), {}, market_state)
+
+    assert result is not None
+    assert result.get("funding_rate") == 4.8e-6
+
+
+@pytest.mark.asyncio
+async def test_process_market_includes_basis_pct():
+    """`_process_market` bulgu dict'ine basis_pct ekler."""
+    from council.scout import _process_market
+    from unittest.mock import AsyncMock, patch
+
+    market_state = {
+        "BTC": {"oracle_px": 60938.0, "funding_rate": 4.8e-6, "basis_pct": 0.00035}
+    }
+    with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+         patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=60_000.0), \
+         patch("council.scout.current_price", new_callable=AsyncMock, return_value=61_000.0), \
+         patch("council.scout.fair_yes", return_value=0.70), \
+         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02), \
+         patch("council.scout._ws_prices.get_ask", return_value=None), \
+         patch("council.scout._ws_prices.get_bid", return_value=None):
+        result = await _process_market(_make_market(), {}, market_state)
+
+    assert result is not None
+    assert result.get("basis_pct") == 0.00035
+
+
+@pytest.mark.asyncio
+async def test_process_market_no_market_state_oracle_fields_none():
+    """`market_state` verilmezse oracle_px, funding_rate, basis_pct = None, çökmez."""
+    from council.scout import _process_market
+    from unittest.mock import AsyncMock, patch
+
+    with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+         patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=60_000.0), \
+         patch("council.scout.current_price", new_callable=AsyncMock, return_value=61_000.0), \
+         patch("council.scout.fair_yes", return_value=0.70), \
+         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02), \
+         patch("council.scout._ws_prices.get_ask", return_value=None), \
+         patch("council.scout._ws_prices.get_bid", return_value=None):
+        result = await _process_market(_make_market(), {})   # 3. argüman yok
+
+    assert result is not None
+    assert result.get("oracle_px") is None
+    assert result.get("funding_rate") is None
+    assert result.get("basis_pct") is None
+
+
+@pytest.mark.asyncio
+async def test_get_market_state_returns_oracle_funding_basis():
+    """`_get_market_state()` oracle_px, funding_rate, basis_pct içeren dict döner."""
+    from council.scout import _get_market_state
+    from unittest.mock import AsyncMock, patch
+
+    fake_raw = {
+        "BTC": {"mid": 61_000.0, "oracle": 60_938.0, "funding": 4.8e-6,
+                "mark": 61_100.0, "prev_day": 60_500.0},
+    }
+    with patch("council.scout.fetch_market_state", new_callable=AsyncMock, return_value=fake_raw), \
+         patch.object(_scout_mod, "_market_state_cache", {}), \
+         patch.object(_scout_mod, "_market_state_cache_ts", 0.0):
+        state = await _get_market_state()
+
+    assert "BTC" in state
+    btc = state["BTC"]
+    assert btc["oracle_px"] == 60_938.0
+    assert btc["funding_rate"] == 4.8e-6
+    assert abs(btc["basis_pct"] - abs(61_000.0 - 60_938.0) / 60_938.0) < 1e-9

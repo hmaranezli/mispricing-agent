@@ -26,6 +26,7 @@ from data.hl_candles import price_at_timestamp, current_price, fetch_candles, ca
 from data.fair_value import fair_yes, ASSET_VOL
 from data.fee_rate import fetch_fee_rate
 from data.clob_price import get_clob_price
+from data.hyperliquid import fetch_market_state
 from data import ws_prices as _ws_prices
 import config
 
@@ -41,6 +42,8 @@ _markets_cache:    list[dict]       = []
 _markets_cache_ts: float            = 0.0
 _vol_cache:        dict[str, float] = {}
 _vol_cache_ts:     float            = 0.0
+_market_state_cache:    dict[str, dict] = {}
+_market_state_cache_ts: float           = 0.0
 
 
 async def _get_all_vols() -> dict[str, float]:
@@ -64,6 +67,32 @@ async def _get_all_vols() -> dict[str, float]:
     _vol_cache = dict(pairs)
     _vol_cache_ts = now
     return _vol_cache
+
+
+async def _get_market_state() -> dict[str, dict]:
+    """Her asset için oracle_px, funding_rate, basis_pct — VOL_CACHE_TTL_SECS cache.
+    fetch_market_state() tek API çağrısıyla tüm varlıkları döner → 0 ekstra maliyet.
+    API hatasında boş dict — RedTeam None kontrolüyle güvenle atlatır.
+    """
+    global _market_state_cache, _market_state_cache_ts
+    now = time.time()
+    if (now - _market_state_cache_ts) < VOL_CACHE_TTL_SECS and _market_state_cache:
+        return _market_state_cache
+    try:
+        raw = await fetch_market_state(tuple(config.TRACKED_ASSETS))
+        _market_state_cache = {
+            asset: {
+                "oracle_px":    d["oracle"],
+                "funding_rate": d["funding"],
+                "basis_pct":    abs(d["mid"] - d["oracle"]) / d["oracle"]
+                                if d["oracle"] > 0 else 0.0,
+            }
+            for asset, d in raw.items()
+        }
+        _market_state_cache_ts = now
+    except Exception:
+        pass
+    return _market_state_cache
 
 
 def _asset_of(question) -> str | None:
@@ -109,7 +138,8 @@ def _edge_signal(fair: float, best_ask: float, best_bid: float) -> dict | None:
     return None
 
 
-async def _process_market(m: dict, asset_vols: dict[str, float]) -> dict | None:
+async def _process_market(m: dict, asset_vols: dict[str, float],
+                           market_state: dict[str, dict] | None = None) -> dict | None:
     """Tek marketi değerlendirir. Edge yoksa veya veri eksikse None."""
     asset = _asset_of(m.get("question", ""))
     if asset is None:
@@ -117,6 +147,8 @@ async def _process_market(m: dict, asset_vols: dict[str, float]) -> dict | None:
 
     if asset not in config.TRACKED_ASSETS:
         return None
+
+    ms = (market_state or {}).get(asset, {})
 
     window = parse_market_window(m)
     if window is None:
@@ -200,6 +232,9 @@ async def _process_market(m: dict, asset_vols: dict[str, float]) -> dict | None:
         "no_token_id":       no_token,
         "no_ask":            no_ask,          # NO token gerçek ask (action=NO ise dolu)
         "taker_fee":         taker_fee,
+        "oracle_px":         ms.get("oracle_px"),
+        "funding_rate":      ms.get("funding_rate"),
+        "basis_pct":         ms.get("basis_pct"),
     }
 
 
@@ -218,8 +253,9 @@ async def scan_edges() -> list[dict]:
     if not _markets_cache:
         return []
 
-    asset_vols = await _get_all_vols()
-    tasks = [_process_market(m, asset_vols) for m in _markets_cache]
+    asset_vols   = await _get_all_vols()
+    market_state = await _get_market_state()
+    tasks = [_process_market(m, asset_vols, market_state) for m in _markets_cache]
     results = await asyncio.gather(*tasks)
 
     findings = [r for r in results if r is not None]
