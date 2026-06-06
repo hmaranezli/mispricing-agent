@@ -15,23 +15,55 @@ Referans fiyat: PM penceresinin eventStartTime'ındaki HL fiyatı.
 PM fiyatı: Gamma CLOB'dan bestAsk/bestBid (gerçek zamanlı).
 """
 import asyncio
+import time
 import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.shortterm import find_shortterm, parse_market_window, _parse_token_ids
-from data.hl_candles import price_at_timestamp, current_price
-from data.fair_value import fair_yes
+from data.hl_candles import price_at_timestamp, current_price, fetch_candles, calculate_realized_volatility
+from data.fair_value import fair_yes, ASSET_VOL
 from data.fee_rate import fetch_fee_rate
 from data.clob_price import get_clob_price
 from data import ws_prices as _ws_prices
 import config
 
-MIN_SECONDS    = 180   # Çözüme bu kadar saniyeden az kalmışsa atla — 130→180: near-expiry yüksek-gamma girişleri dışla
-MAX_ENTRY_PRICE = 0.65  # Pahalı token filtresi: ask > 0.65 → reversal riski yüksek → atla
-CONVICTION_MIN  = 0.62  # Aldığımız tarafın fair'i ≥ bu olmalı. Win-rate ≈ ortalama fair (resolve'a kadar tut).
-                        # Düşük-fair/yüksek-edge (örn fair=0.40) işlemler +EV ama %40 win → kayıp serisi → atla.
+MIN_SECONDS          = 180   # Çözüme bu kadar saniyeden az kalmışsa atla
+MAX_ENTRY_PRICE      = 0.75  # 0.65→0.75: reversal koruması korunur, daha fazla işlem
+CONVICTION_MIN       = 0.58  # Aldığımız tarafın fair'i ≥ bu olmalı. Win-rate ≈ ortalama fair.
+                              # Düşük-fair/yüksek-edge (örn fair=0.40) işlemler +EV ama %40 win → atla.
+MARKET_CACHE_TTL_SECS = 60.0   # Market listesi REST API'den bu sıklıkla yenilenir
+VOL_CACHE_TTL_SECS    = 300.0  # Realized vol 5 dk cache — 4 varlık × 5 dk = az API çağrısı
+
+# ── Modül düzey cache'ler ─────────────────────────────────────────────────────
+_markets_cache:    list[dict]       = []
+_markets_cache_ts: float            = 0.0
+_vol_cache:        dict[str, float] = {}
+_vol_cache_ts:     float            = 0.0
+
+
+async def _get_all_vols() -> dict[str, float]:
+    """Her tracked asset için realized vol çeker — VOL_CACHE_TTL_SECS cache ile.
+    Paralel çekme: 4 varlık eşzamanlı → yaklaşık tek çağrı süresi kadar bekler.
+    API hatasında asset'in ASSET_VOL sabit değerine düşer.
+    """
+    global _vol_cache, _vol_cache_ts
+    now = time.time()
+    if (now - _vol_cache_ts) < VOL_CACHE_TTL_SECS and _vol_cache:
+        return _vol_cache
+
+    async def _fetch_one(asset: str) -> tuple[str, float]:
+        try:
+            candles = await fetch_candles(asset, "1m", 60)
+            return asset, calculate_realized_volatility(candles)
+        except Exception:
+            return asset, ASSET_VOL.get(asset, 0.80)
+
+    pairs = await asyncio.gather(*[_fetch_one(a) for a in config.TRACKED_ASSETS])
+    _vol_cache = dict(pairs)
+    _vol_cache_ts = now
+    return _vol_cache
 
 
 def _asset_of(question) -> str | None:
@@ -77,7 +109,7 @@ def _edge_signal(fair: float, best_ask: float, best_bid: float) -> dict | None:
     return None
 
 
-async def _process_market(m: dict) -> dict | None:
+async def _process_market(m: dict, asset_vols: dict[str, float]) -> dict | None:
     """Tek marketi değerlendirir. Edge yoksa veya veri eksikse None."""
     asset = _asset_of(m.get("question", ""))
     if asset is None:
@@ -120,7 +152,8 @@ async def _process_market(m: dict) -> dict | None:
     except (ValueError, Exception):
         return None
 
-    fair = fair_yes(cur, ref_price, window["seconds_remaining"], asset)
+    live_vol = asset_vols.get(asset, 0.80)
+    fair = fair_yes(cur, ref_price, window["seconds_remaining"], asset, live_vol)
     signal = _edge_signal(fair, clob_ask, yes_bid)
     if signal is None:
         return None
@@ -171,12 +204,22 @@ async def _process_market(m: dict) -> dict | None:
 
 
 async def scan_edges() -> list[dict]:
-    """Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner."""
-    markets = await find_shortterm()
-    if not markets:
+    """Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner.
+    Market listesi MARKET_CACHE_TTL_SECS (60s), vol hesabı VOL_CACHE_TTL_SECS (5dk)
+    cache'li — REST API yükü minimize, fiyat taraması WS cache ile anlık.
+    """
+    global _markets_cache, _markets_cache_ts
+    now = time.time()
+    if (now - _markets_cache_ts) > MARKET_CACHE_TTL_SECS or not _markets_cache:
+        fresh = await find_shortterm()
+        _markets_cache = fresh or []
+        _markets_cache_ts = now
+
+    if not _markets_cache:
         return []
 
-    tasks = [_process_market(m) for m in markets]
+    asset_vols = await _get_all_vols()
+    tasks = [_process_market(m, asset_vols) for m in _markets_cache]
     results = await asyncio.gather(*tasks)
 
     findings = [r for r in results if r is not None]

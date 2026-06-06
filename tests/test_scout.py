@@ -66,24 +66,24 @@ def test_edge_signal_no_cheap():
 
 
 def test_edge_signal_yes_rejected_low_conviction():
-    """YES edge var ama fair < CONVICTION_MIN (0.62) → None. Düşük win-rate işlem alınmaz.
-    fair=0.58, ask=0.50 → edge=0.08 (geçer) ama konviksiyon %58 < %62 → reddet.
+    """YES edge var ama fair < CONVICTION_MIN (0.58) → None. Düşük win-rate işlem alınmaz.
+    fair=0.55, ask=0.47 → edge=0.08 (geçer) ama konviksiyon %55 < %58 → reddet.
     """
-    result = _edge_signal(fair=0.58, best_ask=0.50, best_bid=0.49)
+    result = _edge_signal(fair=0.55, best_ask=0.47, best_bid=0.46)
     assert result is None, f"Düşük konviksiyonlu YES alınmamalı, result={result}"
 
 
 def test_edge_signal_no_rejected_low_conviction():
     """NO edge var ama (1-fair) < CONVICTION_MIN → None.
-    fair=0.42, ask=0.50 → no_edge=0.08 (geçer) ama NO konviksiyonu 1-0.42=0.58 < 0.62 → reddet.
+    fair=0.45, ask=0.53 → no_edge=0.08 (geçer) ama NO konviksiyonu 1-0.45=0.55 < 0.58 → reddet.
     """
-    result = _edge_signal(fair=0.42, best_ask=0.50, best_bid=0.49)
+    result = _edge_signal(fair=0.45, best_ask=0.53, best_bid=0.52)
     assert result is None, f"Düşük konviksiyonlu NO alınmamalı, result={result}"
 
 
 def test_edge_signal_yes_accepted_at_conviction():
     """fair ≥ CONVICTION_MIN ve edge yeterli → YES geçer.
-    fair=0.65, ask=0.55 → edge=0.10, konviksiyon %65 ≥ %62 → YES.
+    fair=0.65, ask=0.55 → edge=0.10, konviksiyon %65 ≥ %58 → YES.
     """
     result = _edge_signal(fair=0.65, best_ask=0.55, best_bid=0.54)
     assert result is not None and result["action"] == "YES"
@@ -218,7 +218,7 @@ async def test_process_market_skips_asset_not_in_tracked():
     original = list(config.TRACKED_ASSETS)
     config.TRACKED_ASSETS = ["BTC", "ETH"]  # SOL geçici olarak çıkarıldı
     try:
-        result = await _process_market({"question": "Solana Up or Down 5m"})
+        result = await _process_market({"question": "Solana Up or Down 5m"}, {})
         assert result is None, "SOL TRACKED_ASSETS dışındayken None dönmeli"
     finally:
         config.TRACKED_ASSETS = original
@@ -323,6 +323,7 @@ async def test_finding_contains_token_ids():
     """scan_edges() döndürdüğü finding'de yes_token_id ve no_token_id bulunur."""
     from unittest.mock import AsyncMock, patch
     from datetime import datetime, timezone, timedelta
+    import council.scout as _scout_mod
 
     now = datetime.now(timezone.utc)
     fake_market = {
@@ -340,7 +341,11 @@ async def test_finding_contains_token_ids():
          patch("council.scout.current_price", new_callable=AsyncMock) as mock_cur, \
          patch("council.scout.fair_yes", return_value=0.65), \
          patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
-         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02):
+         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02), \
+         patch("council.scout.fetch_candles", new_callable=AsyncMock,
+               return_value=[{"c": "95000"}, {"c": "95100"}]), \
+         patch.object(_scout_mod, "_markets_cache_ts", 0.0), \
+         patch.object(_scout_mod, "_markets_cache", []):
         mock_find.return_value = [fake_market]
         mock_ref.return_value = 95000.0
         mock_cur.return_value = 96000.0
@@ -357,6 +362,7 @@ async def test_finding_token_ids_none_when_absent():
     """clobTokenIds yoksa yes_token_id ve no_token_id None döner, exception yok."""
     from unittest.mock import AsyncMock, patch
     from datetime import datetime, timezone, timedelta
+    import council.scout as _scout_mod
 
     now = datetime.now(timezone.utc)
     fake_market = {
@@ -372,7 +378,11 @@ async def test_finding_token_ids_none_when_absent():
     with patch("council.scout.find_shortterm", new_callable=AsyncMock) as mock_find, \
          patch("council.scout.price_at_timestamp", new_callable=AsyncMock) as mock_ref, \
          patch("council.scout.current_price", new_callable=AsyncMock) as mock_cur, \
-         patch("council.scout.fair_yes", return_value=0.60):
+         patch("council.scout.fair_yes", return_value=0.60), \
+         patch("council.scout.fetch_candles", new_callable=AsyncMock,
+               return_value=[{"c": "95000"}, {"c": "95100"}]), \
+         patch.object(_scout_mod, "_markets_cache_ts", 0.0), \
+         patch.object(_scout_mod, "_markets_cache", []):
         mock_find.return_value = [fake_market]
         mock_ref.return_value = 95000.0
         mock_cur.return_value = 96000.0
@@ -388,6 +398,7 @@ async def test_finding_token_ids_single_element_no_crash():
     """clobTokenIds sadece 1 eleman içeriyorsa yes_token_id set, no_token_id None — crash yok."""
     from unittest.mock import AsyncMock, patch
     from datetime import datetime, timezone, timedelta
+    import council.scout as _scout_mod
 
     now = datetime.now(timezone.utc)
     fake_market = {
@@ -405,7 +416,11 @@ async def test_finding_token_ids_single_element_no_crash():
          patch("council.scout.current_price", new_callable=AsyncMock) as mock_cur, \
          patch("council.scout.fair_yes", return_value=0.60), \
          patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
-         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02):
+         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02), \
+         patch("council.scout.fetch_candles", new_callable=AsyncMock,
+               return_value=[{"c": "95000"}, {"c": "95100"}]), \
+         patch.object(_scout_mod, "_markets_cache_ts", 0.0), \
+         patch.object(_scout_mod, "_markets_cache", []):
         mock_find.return_value = [fake_market]
         mock_ref.return_value = 95000.0
         mock_cur.return_value = 96000.0
@@ -442,7 +457,7 @@ async def test_process_market_uses_clob_price_not_market_api():
          patch("council.scout.current_price", new_callable=AsyncMock, return_value=104_000.0), \
          patch("council.scout.fair_yes", return_value=0.65), \
          patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02):
-        result = await _process_market(market)
+        result = await _process_market(market, {})
     assert result is not None, "Should find edge with CLOB price"
     assert abs(result["best_ask"] - 0.55) < 1e-6, f"best_ask should be CLOB price 0.55, got {result['best_ask']}"
 
@@ -466,7 +481,7 @@ async def test_process_market_returns_none_when_no_clob_liquidity():
         "clobTokenIds": '["yes-tok-333","no-tok-444"]',
     }
     with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=None):
-        result = await _process_market(market)
+        result = await _process_market(market, {})
     assert result is None, "CLOB liquidity=None should return None (skip market)"
 
 
@@ -512,7 +527,7 @@ def test_process_market_uses_ws_cache_when_available(monkeypatch):
         "closed": False, "active": True,
     }
 
-    asyncio.run(_process_market(market))
+    asyncio.run(_process_market(market, {}))
     assert "yes_tok_ws" not in rest_called, "WS cache varken REST çağrılmamalı"
 
 
@@ -557,7 +572,7 @@ def test_process_market_falls_back_to_rest_when_ws_miss(monkeypatch):
         "closed": False, "active": True,
     }
 
-    asyncio.run(_process_market(market))
+    asyncio.run(_process_market(market, {}))
     assert "yes_tok_rest" in rest_called, "WS miss'te REST çağrılmalı"
 
 
@@ -586,7 +601,7 @@ async def test_yes_bid_uses_sell_endpoint_when_ws_bid_is_none():
          patch("council.scout.current_price", new_callable=AsyncMock, return_value=50000.0), \
          patch("council.scout.fair_yes", return_value=0.65), \
          patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02):
-        result = await _process_market({"question": "Bitcoin Up or Down 5m", "slug": "btc-test"})
+        result = await _process_market({"question": "Bitcoin Up or Down 5m", "slug": "btc-test"}, {})
 
     # SELL endpoint çağrılmış olmalı
     mock_price.assert_any_call("tok-yes", "SELL")
@@ -622,7 +637,7 @@ async def test_no_false_positive_filtered_by_real_no_ask():
          patch("council.scout.current_price", new_callable=AsyncMock, return_value=50000.0), \
          patch("council.scout.fair_yes", return_value=0.45), \
          patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02):
-        result = await _process_market({"question": "Bitcoin Up or Down 5m", "slug": "btc-test"})
+        result = await _process_market({"question": "Bitcoin Up or Down 5m", "slug": "btc-test"}, {})
 
     assert result is None, (
         f"False positive filtre çalışmadı! "
@@ -653,7 +668,7 @@ async def test_no_edge_uses_real_no_ask_and_correct_formula():
          patch("council.scout.current_price", new_callable=AsyncMock, return_value=50000.0), \
          patch("council.scout.fair_yes", return_value=0.30), \
          patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02):
-        result = await _process_market({"question": "Bitcoin Up or Down 5m", "slug": "btc-test"})
+        result = await _process_market({"question": "Bitcoin Up or Down 5m", "slug": "btc-test"}, {})
 
     assert result is not None, "Gerçek NO edge 0.32 → bulgu dönmeli"
     assert result["action"] == "NO"
