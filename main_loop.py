@@ -319,7 +319,7 @@ async def _monitor_positions(
         ws_triggered = False
 
     if not ws_triggered:
-        _last_rest_ts = now
+        _last_rest_ts = time.time()  # wait sonrası gerçek zaman — timeout 7s beklerse now stale olurdu
 
     for pos in list(open_positions):
         if pos.get("_closing"):
