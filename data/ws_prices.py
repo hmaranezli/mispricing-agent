@@ -20,6 +20,7 @@ _subscribed: set[str]            = set()
 _pending:    set[str]            = set()
 _ws                              = None
 _resolved_queue: asyncio.Queue | None = None
+_price_event: asyncio.Event | None = None
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -50,6 +51,14 @@ def get_spread(token_id: str) -> float | None:
 def subscribe(token_ids: list[str]) -> None:
     """Token ID'leri subscribe listesine ekle. WS aktifse 2s içinde gönderilir."""
     _pending.update(t for t in token_ids if t and t not in _subscribed)
+
+
+def get_price_event() -> asyncio.Event:
+    """WS fiyat güncellemelerini dinleyen global asyncio.Event (lazy init)."""
+    global _price_event
+    if _price_event is None:
+        _price_event = asyncio.Event()
+    return _price_event
 
 
 async def run(initial_token_ids: list[str] | None = None) -> None:
@@ -85,6 +94,8 @@ def _update_cache(token_id: str, best_bid: float | None, best_ask: float | None,
     if spread is not None:
         entry["spread"] = spread
     entry["ts"] = time.time()
+    if _price_event is not None:
+        _price_event.set()
 
 
 def _handle_book(event: dict) -> None:

@@ -164,3 +164,29 @@ def test_stale_cache_returns_none():
     ws._cache["tok_stale"]["ts"] = time.time() - (ws.STALE_SECS + 5)
     assert ws.get_ask("tok_stale") is None
     assert ws.get_bid("tok_stale") is None
+
+
+# ── Task 1: price_event ──────────────────────────────────────────────────────
+
+def test_get_price_event_returns_asyncio_event():
+    """get_price_event() bir asyncio.Event döndürür."""
+    ws._price_event = None  # modül state sıfırla
+    event = ws.get_price_event()
+    assert isinstance(event, asyncio.Event)
+
+
+def test_get_price_event_is_singleton():
+    """get_price_event() her çağrıda aynı instance'ı döndürür."""
+    ws._price_event = None
+    e1 = ws.get_price_event()
+    e2 = ws.get_price_event()
+    assert e1 is e2
+
+
+def test_update_cache_sets_price_event():
+    """_update_cache() çağrıldığında price_event set edilir."""
+    ws._price_event = None
+    event = ws.get_price_event()
+    event.clear()
+    ws._update_cache("tok-test", best_bid=0.50, best_ask=0.52)
+    assert event.is_set(), "_update_cache() sonrası price_event set olmalı"
