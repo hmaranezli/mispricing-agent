@@ -19,6 +19,44 @@ async def get_connection(db_path: Path | None = None):
     return conn
 
 
+async def log_shadow_candidate(
+    conn,
+    finding:          dict,
+    passed:           bool,
+    veto_layer:       str | None = None,
+    veto_reason:      str | None = None,
+    confidence_score: float | None = None,
+    kelly_f:          float | None = None,
+) -> None:
+    """Konsey kararı noktasında shadow_candidates tablosuna yazar (ayrı tablo, live P&L'e karışmaz)."""
+    if conn is None:
+        return
+    await conn.execute(
+        """INSERT INTO shadow_candidates
+               (ts, slug, asset, action, fair_value, best_ask, edge,
+                passed, veto_layer, veto_reason, dry_run,
+                confidence_score, kelly_f, seconds_remaining)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            datetime.now(timezone.utc).isoformat(),
+            finding.get("slug", ""),
+            finding.get("asset", ""),
+            finding.get("action", ""),
+            finding.get("fair_value"),
+            finding.get("best_ask"),
+            finding.get("edge"),
+            1 if passed else 0,
+            veto_layer,
+            veto_reason,
+            1 if config.DRY_RUN else 0,
+            confidence_score,
+            kelly_f,
+            finding.get("seconds_remaining"),
+        ),
+    )
+    await conn.commit()
+
+
 async def log_candidate(
     conn,
     finding:     dict,
@@ -63,8 +101,8 @@ async def log_position_open(conn, position: dict) -> None:
                 fair_value, ref_price, edge, position_usd, kelly_f,
                 confidence_score, status, dry_run,
                 shares, order_id, yes_token_id, no_token_id, seq_no,
-                entry_hl_price)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?)""",
+                entry_hl_price, ask_at_decision, slippage_pct)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             position["position_id"],
             position.get("opened_at", datetime.now(timezone.utc).isoformat()),
@@ -85,6 +123,8 @@ async def log_position_open(conn, position: dict) -> None:
             position.get("no_token_id"),
             seq_no,
             position.get("entry_hl_price"),
+            position.get("ask_at_decision"),
+            position.get("slippage_pct"),
         ),
     )
     await conn.commit()

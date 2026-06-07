@@ -1,6 +1,24 @@
 """db/schema.py — SQLite şeması ve başlatma."""
 
 _SCHEMA = """
+CREATE TABLE IF NOT EXISTS shadow_candidates (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts                TEXT NOT NULL,
+    slug              TEXT NOT NULL,
+    asset             TEXT NOT NULL,
+    action            TEXT NOT NULL,
+    fair_value        REAL,
+    best_ask          REAL,
+    edge              REAL,
+    passed            INTEGER NOT NULL,
+    veto_layer        TEXT,
+    veto_reason       TEXT,
+    dry_run           INTEGER NOT NULL DEFAULT 1,
+    confidence_score  REAL,
+    kelly_f           REAL,
+    seconds_remaining REAL
+);
+
 CREATE TABLE IF NOT EXISTS candidates (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     ts          TEXT NOT NULL,
@@ -79,6 +97,9 @@ _MIGRATIONS = [
     "ALTER TABLE positions ADD COLUMN partial_fill_count INTEGER DEFAULT 0",
     "ALTER TABLE positions ADD COLUMN partial_fill_shares REAL",
     "ALTER TABLE positions ADD COLUMN partial_realized_usdc REAL",
+    # Faz 3: Entry execution telemetri
+    "ALTER TABLE positions ADD COLUMN ask_at_decision REAL",
+    "ALTER TABLE positions ADD COLUMN slippage_pct REAL",
 ]
 
 

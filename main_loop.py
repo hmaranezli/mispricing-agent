@@ -30,7 +30,7 @@ from monitor.telegram_commands import poll_commands
 from monitor.state import is_paused
 from monitor import circuit_breaker
 from monitor import positions_cache
-from db.logger import log_candidate, log_position_open, log_position_close, load_closed_today, get_connection, patch_position_resolution, log_partial_fill_update
+from db.logger import log_candidate, log_shadow_candidate, log_position_open, log_position_close, load_closed_today, get_connection, patch_position_resolution, log_partial_fill_update
 
 SCAN_INTERVAL_SECS = 7
 BANKROLL_CONFIG = float(os.getenv("BANKROLL_USD", "1000.0"))
@@ -105,6 +105,9 @@ async def _run_council(
         print(f"[council] {slug} VETO verifier: {reason}")
         await log_candidate(conn, finding, passed=False,
                             veto_layer="verifier", veto_reason=reason)
+        asyncio.create_task(log_shadow_candidate(
+            conn, finding, passed=False, veto_layer="verifier", veto_reason=reason,
+        ))
         return None
 
     # Taze fiyatları finding'e yaz — execute() stale scout fiyatı değil fresh_ask kullansın
@@ -119,6 +122,9 @@ async def _run_council(
         print(f"[council] {slug} VETO redteam: {vetoes} | fee_adj={rt.get('fee_adj_edge', '?'):.3f}")
         await log_candidate(conn, finding, passed=False,
                             veto_layer="redteam", veto_reason=str(vetoes))
+        asyncio.create_task(log_shadow_candidate(
+            conn, finding, passed=False, veto_layer="redteam", veto_reason=str(vetoes),
+        ))
         return None
 
     rk = risk_eval(finding, verification, rt,
@@ -130,6 +136,10 @@ async def _run_council(
         print(f"[council] {slug} VETO risk: {reason}")
         await log_candidate(conn, finding, passed=False,
                             veto_layer="risk", veto_reason=reason)
+        asyncio.create_task(log_shadow_candidate(
+            conn, finding, passed=False, veto_layer="risk", veto_reason=reason,
+            kelly_f=rk.get("kelly_f"),
+        ))
         return None
 
     gate_result = await gate(finding, verification, rt, rk)
@@ -138,10 +148,20 @@ async def _run_council(
         print(f"[council] {slug} VETO gate: {reason}")
         await log_candidate(conn, finding, passed=False,
                             veto_layer="gate", veto_reason=reason)
+        asyncio.create_task(log_shadow_candidate(
+            conn, finding, passed=False, veto_layer="gate", veto_reason=reason,
+            confidence_score=gate_result.get("confidence_score"),
+            kelly_f=rk.get("kelly_f"),
+        ))
         return None
 
     print(f"[council] {slug} GEÇTİ → execute")
     await log_candidate(conn, finding, passed=True)
+    asyncio.create_task(log_shadow_candidate(
+        conn, finding, passed=True,
+        confidence_score=gate_result.get("confidence_score"),
+        kelly_f=rk.get("kelly_f"),
+    ))
     return gate_result, rk
 
 
