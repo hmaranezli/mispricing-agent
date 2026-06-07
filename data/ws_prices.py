@@ -9,10 +9,12 @@ import json
 import time
 import websockets
 
-WS_URL        = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
-PING_INTERVAL = 10   # saniye
-RECONNECT_DELAY = 5  # bağlantı kopunca bekle
-STALE_SECS    = 15   # bu kadar eski cache girdisi stale sayılır (60→15: basi fiyat tazeler)
+WS_URL             = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
+PING_INTERVAL      = 10   # saniye — uygulama seviyesi "PING" text mesajı
+RECONNECT_DELAY    = 5    # bağlantı kopunca bekle
+STALE_SECS         = 15   # bu kadar eski cache girdisi stale sayılır
+_SHORT_LIVED_SECS  = 15   # bu kadar kısa bağlantı = "short-lived" sayılır
+_CIRCUIT_BREAKER_N = 8    # kaç ard arda kısa bağlantıda Telegram uyarısı
 
 # ── Modül düzeyi durum ────────────────────────────────────────────────────────
 _cache:    dict[str, dict]       = {}   # token_id → {best_bid, best_ask, spread, ts}
@@ -22,6 +24,7 @@ _ws                              = None
 _resolved_queue: asyncio.Queue | None = None
 _price_event: asyncio.Event | None = None
 _reconnect_count: int            = 0
+_short_lived_count: int          = 0   # ard arda kısa bağlantı sayısı
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -64,17 +67,39 @@ def get_price_event() -> asyncio.Event:
 
 async def run(initial_token_ids: list[str] | None = None) -> None:
     """Ana WS döngüsü. asyncio.create_task ile çalıştırılır."""
-    global _resolved_queue
+    global _resolved_queue, _short_lived_count
     if _resolved_queue is None:
         _resolved_queue = asyncio.Queue()
     if initial_token_ids:
         subscribe(initial_token_ids)
     while True:
+        t_start = time.time()
         try:
             await _connect_and_run()
+            _short_lived_count = 0  # temiz çıkış → sayacı sıfırla
         except Exception as e:
-            print(f"[ws] Bağlantı hatası: {e} — {RECONNECT_DELAY}s sonra yeniden deneniyor")
+            lifetime = time.time() - t_start
+            etype    = type(e).__name__
+            print(f"[ws] Bağlantı koptu ({lifetime:.1f}s): {etype}: {e} — {RECONNECT_DELAY}s sonra yeniden deneniyor")
+            if lifetime < _SHORT_LIVED_SECS:
+                _short_lived_count += 1
+                if _short_lived_count >= _CIRCUIT_BREAKER_N:
+                    _warn_ws_circuit_breaker(_short_lived_count)
+                    _short_lived_count = 0
+            else:
+                _short_lived_count = 0
         await asyncio.sleep(RECONNECT_DELAY)
+
+
+def _warn_ws_circuit_breaker(count: int) -> None:
+    """Ard arda kısa bağlantılar → Telegram uyarısı."""
+    msg = f"[ws] UYARI: WS {count} kez ard arda kısa bağlantı (<{_SHORT_LIVED_SECS}s) — bot REST fallback ile çalışıyor"
+    print(msg)
+    try:
+        from monitor.notifier import send_telegram
+        send_telegram(msg)
+    except Exception:
+        pass
 
 
 # ── İç fonksiyonlar ───────────────────────────────────────────────────────────
@@ -148,6 +173,7 @@ async def _flush_pending(ws) -> None:
         "type":                  "market",
         "custom_feature_enabled": True,
     })
+    print(f"[ws] Subscribe: {len(batch)} token, ilk: {batch[:3]}")
     await ws.send(msg)
     _subscribed.update(batch)
 
@@ -157,7 +183,11 @@ async def _connect_and_run() -> None:
     _reconnect_count += 1
     if _reconnect_count > 1:
         print(f"[ws] Yeniden bağlanıyor (#{_reconnect_count})...")
-    async with websockets.connect(WS_URL, ping_interval=20, ping_timeout=20) as ws:
+    if not _pending and not _subscribed:
+        print(f"[ws] WARNING: token listesi boş — sunucu idle bağlantıyı kesebilir")
+    # NOT: Lib-level keepalive yok — Polymarket WS lib frame ping desteklemiyor.
+    # Uygulama seviyesi _ping_loop ("PING"/"PONG" text) kullanılır.
+    async with websockets.connect(WS_URL) as ws:
         _ws = ws
         print(f"[ws] Polymarket CLOB WebSocket bağlandı (#{_reconnect_count})")
         # Reconnect sonrası tüm subscribed tokenları yeniden abone et
@@ -167,17 +197,30 @@ async def _connect_and_run() -> None:
         await _flush_pending(ws)
         ping_task  = asyncio.create_task(_ping_loop(ws))
         flush_task = asyncio.create_task(_pending_flush_loop(ws))
+        msg_count = 0
+        pc_count  = 0
+        bk_count  = 0
         try:
             async for raw in ws:
                 if raw == "PONG":
                     continue
+                msg_count += 1
                 try:
                     event = json.loads(raw)
                     etype = event.get("event_type")
-                    if   etype == "book":            _handle_book(event)
-                    elif etype == "price_change":    _handle_price_change(event)
+                    if msg_count <= 3:
+                        print(f"[ws] İlk mesaj #{msg_count}: event_type={etype!r}")
+                    if   etype == "book":
+                        bk_count += 1
+                        _handle_book(event)
+                    elif etype == "price_change":
+                        pc_count += 1
+                        _handle_price_change(event)
                     elif etype == "best_bid_ask":    _handle_best_bid_ask(event)
                     elif etype == "market_resolved": _handle_market_resolved(event)
+                    if msg_count % 20 == 0:
+                        print(f"[ws] Sayaç #{_reconnect_count}: {msg_count} mesaj "
+                              f"({pc_count} price_change, {bk_count} book)")
                 except (json.JSONDecodeError, KeyError, ValueError, AttributeError, TypeError):
                     pass
         finally:

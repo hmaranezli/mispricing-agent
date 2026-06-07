@@ -293,6 +293,28 @@ async def _heal_pending_resolutions(
 _last_rest_ts: float = 0.0  # modül-seviye heartbeat zamanlayıcı
 
 
+def _apply_partial_fill(pos: dict, pm_exit: float, making_shares: float) -> bool:
+    """Kısmi fill kontrolü + pos güncelleme.
+
+    Returns:
+        True  → kısmi fill oldu, pos güncellendi (_closing=False, shares azaltıldı)
+        False → tam fill (>=%98), pos değişmedi
+    """
+    old_shares = pos.get("shares") or 0.0
+    if old_shares <= 0 or making_shares >= old_shares * 0.98:
+        return False
+    pos["shares"] = round(old_shares - making_shares, 6)
+    pos["_closing"] = False
+    pos["partial_fill_count"] = pos.get("partial_fill_count", 0) + 1
+    pos["partial_fill_shares"] = round(
+        pos.get("partial_fill_shares", 0.0) + making_shares, 6
+    )
+    pos["partial_realized_usdc"] = round(
+        pos.get("partial_realized_usdc", 0.0) + pm_exit * making_shares, 6
+    )
+    return True
+
+
 async def _do_flatten(open_positions: list, closed_today: list, conn=None) -> None:
     """Panic flatten: tüm açık pozisyonları FAK SELL ile kapatmaya çalışır."""
     import monitor.state as _st
@@ -305,17 +327,7 @@ async def _do_flatten(open_positions: list, closed_today: list, conn=None) -> No
         if sell_result is not None:
             pm_exit, making_shares = sell_result
             old_shares = pos.get("shares") or 0.0
-            if old_shares > 0 and making_shares < old_shares * 0.98:
-                # Kısmi fill — pozisyonu açık tut, bir sonraki iterasyonda tekrar dene
-                pos["shares"] = round(old_shares - making_shares, 6)
-                pos["_closing"] = False
-                pos["partial_fill_count"] = pos.get("partial_fill_count", 0) + 1
-                pos["partial_fill_shares"] = round(
-                    pos.get("partial_fill_shares", 0.0) + making_shares, 6
-                )
-                pos["partial_realized_usdc"] = round(
-                    pos.get("partial_realized_usdc", 0.0) + pm_exit * making_shares, 6
-                )
+            if _apply_partial_fill(pos, pm_exit, making_shares):
                 print(f"[flatten] {pos['slug']} kısmi fill {making_shares:.4f}/{old_shares:.4f} → {pos['shares']:.4f} kalan")
             else:
                 closed_dict = close_position(
@@ -474,17 +486,7 @@ async def _monitor_positions(
                         continue
                     pm_exit, making_shares = sell_result
                     old_shares = pos.get("shares") or 0.0
-                    if old_shares > 0 and making_shares < old_shares * 0.98:
-                        # Kısmi fill: kalan share'leri tut, sonraki döngüde tekrar dene
-                        pos["shares"] = round(old_shares - making_shares, 6)
-                        pos["_closing"] = False
-                        pos["partial_fill_count"] = pos.get("partial_fill_count", 0) + 1
-                        pos["partial_fill_shares"] = round(
-                            pos.get("partial_fill_shares", 0.0) + making_shares, 6
-                        )
-                        pos["partial_realized_usdc"] = round(
-                            pos.get("partial_realized_usdc", 0.0) + pm_exit * making_shares, 6
-                        )
+                    if _apply_partial_fill(pos, pm_exit, making_shares):
                         print(f"[monitor] {pos['slug']} kısmi fill {making_shares:.4f}/{old_shares:.4f} → {pos['shares']:.4f} kalan")
                         try:
                             await log_partial_fill_update(conn, pos)

@@ -192,9 +192,50 @@ def test_update_cache_sets_price_event():
     assert event.is_set(), "_update_cache() sonrası price_event set olmalı"
 
 
-def test_ws_connect_uses_keepalive_params():
-    """_connect_and_run: websockets.connect ping_interval=20, ping_timeout=20 ile çağrılmalı."""
+def test_ws_connect_does_not_use_lib_keepalive():
+    """_connect_and_run: websockets lib ping_interval/ping_timeout KULLANMAMALI.
+    Uygulama seviyesi _ping_loop mekanizması kullanılır; lib ping Polymarket ile uyumsuz.
+    """
     import inspect
     source = inspect.getsource(ws._connect_and_run)
-    assert "ping_interval=20" in source, "ping_interval=20 ws.connect çağrısında olmalı"
-    assert "ping_timeout=20"  in source, "ping_timeout=20 ws.connect çağrısında olmalı"
+    assert "ping_interval" not in source, "ping_interval ws.connect'te olmamalı — _ping_loop kullanılıyor"
+    assert "ping_timeout"  not in source, "ping_timeout ws.connect'te olmamalı — _ping_loop kullanılıyor"
+
+
+def test_ws_circuit_breaker_calls_send_telegram():
+    """_warn_ws_circuit_breaker: Telegram uyarısı gönderir."""
+    from unittest.mock import patch, MagicMock
+    import data.ws_prices as _ws
+    mock_send = MagicMock()
+    with patch.dict("sys.modules", {"monitor.notifier": MagicMock(send_telegram=mock_send)}):
+        # sys.modules patch ile lazy import'u yakala
+        import importlib, sys
+        mock_mod = MagicMock()
+        mock_mod.send_telegram = mock_send
+        sys.modules["monitor.notifier"] = mock_mod
+        _ws._warn_ws_circuit_breaker(8)
+    mock_send.assert_called_once()
+    args = mock_send.call_args[0][0]
+    assert "8" in args or "WS" in args, "uyarı mesajı reconnect sayısı veya WS içermeli"
+
+
+def test_apply_partial_fill_modifies_pos_and_returns_true():
+    """_apply_partial_fill: kısmi fill → pos güncellenir, True döner."""
+    from main_loop import _apply_partial_fill
+    pos = {"shares": 2.0, "position_usd": 1.25}
+    result = _apply_partial_fill(pos, pm_exit=0.80, making_shares=0.5)
+    assert result is True,                        "kısmi fill → True"
+    assert pos["shares"] == pytest.approx(1.5),   "kalan shares"
+    assert pos.get("_closing") is False,          "_closing sıfırlanmalı"
+    assert pos.get("partial_fill_count") == 1
+    assert pos.get("partial_fill_shares") == pytest.approx(0.5)
+    assert pos.get("partial_realized_usdc") == pytest.approx(0.40)
+
+
+def test_apply_partial_fill_returns_false_for_full_fill():
+    """_apply_partial_fill: tam fill (>=%98) → pos değişmez, False döner."""
+    from main_loop import _apply_partial_fill
+    pos = {"shares": 2.0, "position_usd": 1.25}
+    result = _apply_partial_fill(pos, pm_exit=0.80, making_shares=2.0)
+    assert result is False,       "tam fill → False"
+    assert pos["shares"] == 2.0,  "tam fill → shares değişmemeli"
