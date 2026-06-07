@@ -235,9 +235,10 @@ async def _connect_and_run() -> None:
         await _flush_pending(ws, initial_connect=True)
         ping_task  = asyncio.create_task(_ping_loop(ws))
         flush_task = asyncio.create_task(_pending_flush_loop(ws))
-        msg_count = 0
-        pc_count  = 0
-        bk_count  = 0
+        msg_count     = 0
+        pc_count      = 0
+        bk_count      = 0
+        _last_stats_ts = time.time()
         try:
             async for raw in ws:
                 if raw == "PONG":
@@ -256,9 +257,12 @@ async def _connect_and_run() -> None:
                         _handle_price_change(event)
                     elif etype == "best_bid_ask":    _handle_best_bid_ask(event)
                     elif etype == "market_resolved": _handle_market_resolved(event)
-                    if msg_count % 20 == 0:
+                    _now = time.time()
+                    if msg_count % 1000 == 0 or (_now - _last_stats_ts) >= 60:
                         print(f"[ws] Sayaç #{_reconnect_count}: {msg_count} mesaj "
-                              f"({pc_count} price_change, {bk_count} book)")
+                              f"({pc_count} price_change, {bk_count} book) "
+                              f"subscribed={len(_subscribed)} pending={len(_pending)}")
+                        _last_stats_ts = _now
                 except (json.JSONDecodeError, KeyError, ValueError, AttributeError, TypeError):
                     pass
         finally:
