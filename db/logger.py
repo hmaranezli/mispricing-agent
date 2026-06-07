@@ -159,7 +159,8 @@ async def log_position_close(conn, position: dict) -> None:
                sell_attempt_count=?, sell_unmatched_count=?,
                fill_ts=?, sl_fill_px=?, sl_fill_pct=?,
                trigger_fill_gap_pct=?, trigger_to_fill_secs=?,
-               partial_fill_count=?, partial_fill_shares=?, partial_realized_usdc=?
+               partial_fill_count=?, partial_fill_shares=?, partial_realized_usdc=?,
+               sell_limit_price=?, first_exit_decision_ts=?
            WHERE position_id=?""",
         (
             position.get("closed_at", datetime.now(timezone.utc).isoformat()),
@@ -192,6 +193,8 @@ async def log_position_close(conn, position: dict) -> None:
             position.get("partial_fill_count", 0),
             position.get("partial_fill_shares"),
             position.get("partial_realized_usdc"),
+            position.get("sell_limit_price"),
+            position.get("first_exit_decision_ts"),
             position["position_id"],
         ),
     )

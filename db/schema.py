@@ -100,6 +100,9 @@ _MIGRATIONS = [
     # Faz 3: Entry execution telemetri
     "ALTER TABLE positions ADD COLUMN ask_at_decision REAL",
     "ALTER TABLE positions ADD COLUMN slippage_pct REAL",
+    # Faz 3: Exit execution telemetri
+    "ALTER TABLE positions ADD COLUMN sell_limit_price REAL",
+    "ALTER TABLE positions ADD COLUMN first_exit_decision_ts TEXT",
 ]
 
 

@@ -81,11 +81,17 @@ async def sell_position(pos: dict) -> tuple[float, float] | None:
         side="SELL",
     )
 
+    pos["sell_limit_price"] = floor_price
+
     try:
         client = get_client()
         resp   = client.create_and_post_order(order_args, order_type=OrderType.FAK)
     except Exception as e:
-        print(f"[sell] {pos.get('slug')}: SELL hatası — {e} → pozisyon açık kalıyor")
+        err_str = str(e).lower()
+        if "no orders found" in err_str:
+            print(f"[sell] {pos.get('slug')}: fak_no_match (attempt={pos['sell_attempt_count']}, bid={best_bid:.3f}) → pozisyon açık kalıyor")
+        else:
+            print(f"[sell] {pos.get('slug')}: SELL hatası — {e} → pozisyon açık kalıyor")
         pos["sell_unmatched_count"] = pos.get("sell_unmatched_count", 0) + 1
         return None
 
@@ -118,9 +124,9 @@ async def sell_position(pos: dict) -> tuple[float, float] | None:
         print(f"[sell] {pos.get('slug')}: SELL matched ama amounts eksik, floor={floor_price:.4f}")
         return (floor_price, assumed_making)
 
-    # status != matched → FAK kill veya başka hata → pozisyonu açık bırak
+    # status != matched → FAK kill → pozisyonu açık bırak
     pos["sell_unmatched_count"] = pos.get("sell_unmatched_count", 0) + 1
-    print(f"[sell] {pos.get('slug')}: SELL {status} (fill yok) → pozisyon açık kalıyor")
+    print(f"[sell] {pos.get('slug')}: fak_no_match status={status!r} (attempt={pos['sell_attempt_count']}, bid={best_bid:.3f}) → pozisyon açık kalıyor")
     return None
 
 

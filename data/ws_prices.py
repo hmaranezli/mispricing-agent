@@ -258,7 +258,7 @@ async def _connect_and_run() -> None:
                     elif etype == "best_bid_ask":    _handle_best_bid_ask(event)
                     elif etype == "market_resolved": _handle_market_resolved(event)
                     _now = time.time()
-                    if msg_count % 1000 == 0 or (_now - _last_stats_ts) >= 60:
+                    if msg_count % 10000 == 0 or (_now - _last_stats_ts) >= 60:
                         print(f"[ws] Sayaç #{_reconnect_count}: {msg_count} mesaj "
                               f"({pc_count} price_change, {bk_count} book) "
                               f"subscribed={len(_subscribed)} pending={len(_pending)}")

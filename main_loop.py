@@ -501,6 +501,7 @@ async def _monitor_positions(
             pos["mae_data_quality"] = _data_quality
 
             if exit_reason:
+                pos.setdefault("first_exit_decision_ts", datetime.now(timezone.utc).isoformat())
                 if config.DRY_RUN:
                     if pos["action"] == "NO":
                         _no_bid = ws_prices.get_bid(pos.get("no_token_id", ""))

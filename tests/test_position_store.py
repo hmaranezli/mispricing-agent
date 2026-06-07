@@ -283,3 +283,56 @@ async def test_sell_captures_fill_timing_and_sl_metrics():
     assert pos.get("fill_ts") is not None
     assert pos.get("trigger_to_fill_secs") is not None
     assert pos.get("trigger_to_fill_secs") >= 0
+
+
+# ── Faz 3: fak_no_match label + sell_limit_price ────────────────────────────
+
+@pytest.mark.asyncio
+async def test_sell_position_fak_no_match_label_on_exception(capsys):
+    """'no orders found' exception → çıktıda fak_no_match etiketi görünmeli."""
+    fake_client = MagicMock()
+    fake_client.create_and_post_order.side_effect = Exception(
+        "no orders found to match with FAK order"
+    )
+    with patch("execution.position_store.get_client", return_value=fake_client), \
+         _clob_patch(0.87):
+        from execution.position_store import sell_position
+        result = await sell_position(_open_pos("YES", bid=0.87))
+    assert result is None
+    captured = capsys.readouterr().out
+    assert "fak_no_match" in captured, f"fak_no_match etiketi beklendi, çıktı: {captured!r}"
+
+
+@pytest.mark.asyncio
+async def test_sell_position_fak_no_match_label_on_unmatched(capsys):
+    """status=unmatched (FAK kill) → çıktıda fak_no_match etiketi görünmeli."""
+    fake_client = MagicMock()
+    fake_client.create_and_post_order.return_value = {"status": "unmatched", "orderID": "x"}
+    with patch("execution.position_store.get_client", return_value=fake_client), \
+         _clob_patch(0.87), \
+         patch("execution.position_store.ws_prices") as mock_ws:
+        mock_ws.get_ask.return_value = None
+        from execution.position_store import sell_position
+        result = await sell_position(_open_pos("YES", bid=0.87))
+    assert result is None
+    captured = capsys.readouterr().out
+    assert "fak_no_match" in captured, f"fak_no_match etiketi beklendi, çıktı: {captured!r}"
+
+
+@pytest.mark.asyncio
+async def test_sell_position_stores_sell_limit_price():
+    """FAK order'da kullanılan floor_price pos['sell_limit_price']'a kaydedilmeli."""
+    from execution.position_store import _FLOOR_BUFFER
+    fake_client = MagicMock()
+    fake_client.create_and_post_order.return_value = _matched_resp()
+    clob_bid = 0.87
+    pos = _open_pos("YES", bid=clob_bid)
+    with patch("execution.position_store.get_client", return_value=fake_client), \
+         _clob_patch(clob_bid), \
+         patch("execution.position_store.ws_prices") as mock_ws:
+        mock_ws.get_ask.return_value = None
+        from execution.position_store import sell_position
+        await sell_position(pos)
+    expected_floor = round(max(0.01, clob_bid - _FLOOR_BUFFER), 2)
+    assert pos.get("sell_limit_price") == pytest.approx(expected_floor), \
+        f"sell_limit_price={pos.get('sell_limit_price')}, beklenen={expected_floor}"

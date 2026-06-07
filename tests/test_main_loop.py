@@ -1713,3 +1713,23 @@ async def test_scan_and_execute_slippage_none_when_ask_missing(capsys):
     pos = open_positions[0]
     assert pos.get("ask_at_decision") == 0  # 0 olarak yazıldı — None değil
     assert pos.get("slippage_pct") is None  # 0 ask → slippage hesaplanamaz
+
+
+@pytest.mark.asyncio
+async def test_monitor_sets_first_exit_decision_ts_on_exit():
+    """check_exit sinyal verince pos['first_exit_decision_ts'] set edilmeli."""
+    import config as _cfg
+    pos = _open_position()
+    open_pos = [pos]
+    closed = []
+    fake_window = {"best_ask": 0.52, "best_bid": 0.50,
+                   "seconds_remaining": 900, "neg_risk": False}
+    with patch("main_loop.current_price",       new_callable=AsyncMock, return_value=95000.0), \
+         patch("main_loop.fetch_by_slug",       new_callable=AsyncMock, return_value={}), \
+         patch("main_loop.parse_market_window", return_value=fake_window), \
+         patch("main_loop.check_exit",          return_value="max_hold_time"), \
+         patch.object(_cfg, "DRY_RUN", True):
+        await _monitor_positions(open_pos, closed)
+    assert len(closed) == 1
+    assert closed[0].get("first_exit_decision_ts") is not None, \
+        "first_exit_decision_ts çıkış kararında set edilmeli"
