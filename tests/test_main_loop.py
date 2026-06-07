@@ -32,6 +32,7 @@ def default_ws_prices():
         mock_ws.get_bid.return_value = 0.50
         mock_ws.get_ask.return_value = 0.50
         mock_ws.subscribe.return_value = None
+        mock_ws.unsubscribe.return_value = None
         mock_event = MagicMock()
         mock_event.wait = AsyncMock(return_value=None)
         mock_event.clear = MagicMock()
@@ -1560,3 +1561,55 @@ async def test_ws_triggered_flag_skips_scan_execute():
             await fake_scan()
 
     assert scan_called == [], "WS event → _scan_and_execute çağrılmamalı"
+
+
+# ── Faz 2.5: unsubscribe-on-close ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_monitor_calls_ws_unsubscribe_on_position_close(default_ws_prices):
+    """Pozisyon kapanınca ws_prices.unsubscribe() yes/no token'larıyla çağrılır."""
+    import main_loop as _ml
+    _ml._last_rest_ts = 0  # REST heartbeat tetiklensin
+
+    pos = {
+        "position_id":     "unsub-test-pos",
+        "slug":            "btc-unsub-test",
+        "asset":           "BTC",
+        "action":          "YES",
+        "pm_entry_price":  0.60,
+        "fair_value":      0.75,
+        "ref_price":       60000,
+        "edge":            0.15,
+        "position_usd":    1.25,
+        "kelly_f":         0.1,
+        "confidence_score": 80,
+        "shares":          2.0,
+        "yes_token_id":    "yes_tok_unsub",
+        "no_token_id":     "no_tok_unsub",
+        "order_id":        "ord_unsub",
+        "seq_no":          99,
+        "entry_hl_price":  60000,
+        "opened_at":       "2026-06-07T00:00:00+00:00",
+        "dry_run":         False,
+    }
+    open_positions = [pos]
+    closed_today   = []
+
+    _window = {"seconds_remaining": 120, "best_bid": 0.40, "best_ask": 0.42,
+               "condition_id": "0xabc", "slug": "btc-unsub-test"}
+    with patch("main_loop.check_exit", return_value="stop_loss_hit"), \
+         patch("main_loop.fetch_by_slug", new_callable=AsyncMock,
+               return_value={"slug": "btc-unsub-test"}), \
+         patch("main_loop.parse_market_window", return_value=_window), \
+         patch("main_loop.current_price", new_callable=AsyncMock,
+               return_value=60000), \
+         patch("main_loop.sell_position", new_callable=AsyncMock,
+               return_value=(0.40, 2.0)), \
+         patch("main_loop.log_position_close", new_callable=AsyncMock), \
+         patch("main_loop.notify_close"):
+        await _monitor_positions(open_positions, closed_today, conn=None)
+
+    default_ws_prices.unsubscribe.assert_called_once()
+    unsubbed = default_ws_prices.unsubscribe.call_args[0][0]
+    assert "yes_tok_unsub" in unsubbed, "yes_token_id unsubscribe edilmeli"
+    assert "no_tok_unsub"  in unsubbed, "no_token_id unsubscribe edilmeli"

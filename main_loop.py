@@ -229,6 +229,7 @@ async def _handle_ws_resolved(
                                 exit_hl_price=hl_price)
         await log_position_close(conn, closed)
         open_positions.remove(pos)
+        ws_prices.unsubscribe([t for t in (pos.get("yes_token_id"), pos.get("no_token_id")) if t])
         closed_today.append(closed)
         if failed_slugs is not None:
             failed_slugs.add(pos["slug"])
@@ -336,6 +337,7 @@ async def _do_flatten(open_positions: list, closed_today: list, conn=None) -> No
                     exit_hl_price=pos.get("_cached_hl_price"),
                 )
                 open_positions.remove(pos)
+                ws_prices.unsubscribe([t for t in (pos.get("yes_token_id"), pos.get("no_token_id")) if t])
                 closed_today.append(closed_dict)
                 notify_close(closed_dict)
                 try:
@@ -421,6 +423,7 @@ async def _monitor_positions(
                                                 pm_exit_price=pm_exit, exit_hl_price=hl_price)
                         await log_position_close(conn, closed)
                         open_positions.remove(pos)
+                        ws_prices.unsubscribe([t for t in (pos.get("yes_token_id"), pos.get("no_token_id")) if t])
                         closed_today.append(closed)
                     # fetch_resolved da None → geçici API hatası, bu döngüde atla
                     continue
@@ -498,6 +501,7 @@ async def _monitor_positions(
                 # SELL borsa tarafında başarılı → pozisyonu HEMEN kaldır.
                 # Log hatası double-sell'e yol açmamalı; reconcile kurtarır.
                 open_positions.remove(pos)
+                ws_prices.unsubscribe([t for t in (pos.get("yes_token_id"), pos.get("no_token_id")) if t])
                 closed_today.append(closed)
                 if failed_slugs is not None and exit_reason == "stop_loss_hit":
                     failed_slugs.add(pos["slug"])
