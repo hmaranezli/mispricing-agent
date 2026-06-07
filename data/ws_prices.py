@@ -10,7 +10,7 @@ import time
 import websockets
 
 WS_URL             = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
-PING_INTERVAL      = 10   # saniye — uygulama seviyesi "PING" text mesajı
+PING_INTERVAL      = 8    # saniye — sunucunun 10s limitinin 2s öncesi
 RECONNECT_DELAY    = 5    # bağlantı kopunca bekle
 STALE_SECS         = 15   # bu kadar eski cache girdisi stale sayılır
 _SHORT_LIVED_SECS  = 15   # bu kadar kısa bağlantı = "short-lived" sayılır
@@ -73,6 +73,10 @@ async def run(initial_token_ids: list[str] | None = None) -> None:
     if initial_token_ids:
         subscribe(initial_token_ids)
     while True:
+        # Token yoksa bekleme — no-sub kill önlemi
+        while not _pending and not _subscribed:
+            await asyncio.sleep(1)
+        had_subs = bool(_subscribed or _pending)
         t_start = time.time()
         try:
             await _connect_and_run()
@@ -81,7 +85,7 @@ async def run(initial_token_ids: list[str] | None = None) -> None:
             lifetime = time.time() - t_start
             etype    = type(e).__name__
             print(f"[ws] Bağlantı koptu ({lifetime:.1f}s): {etype}: {e} — {RECONNECT_DELAY}s sonra yeniden deneniyor")
-            if lifetime < _SHORT_LIVED_SECS:
+            if lifetime < _SHORT_LIVED_SECS and had_subs:
                 _short_lived_count += 1
                 if _short_lived_count >= _CIRCUIT_BREAKER_N:
                     _warn_ws_circuit_breaker(_short_lived_count)
@@ -230,6 +234,13 @@ async def _connect_and_run() -> None:
 
 
 async def _ping_loop(ws) -> None:
+    # İlk PING: subscribe sonrası hemen (1s) — sunucu 10s içinde PING bekliyor
+    await asyncio.sleep(1)
+    try:
+        await ws.send("PING")
+    except Exception:
+        return
+    # Sonra her 8s'de bir (10s limitin 2s öncesi)
     while True:
         await asyncio.sleep(PING_INTERVAL)
         try:

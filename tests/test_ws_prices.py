@@ -239,3 +239,34 @@ def test_apply_partial_fill_returns_false_for_full_fill():
     result = _apply_partial_fill(pos, pm_exit=0.80, making_shares=2.0)
     assert result is False,       "tam fill → False"
     assert pos["shares"] == 2.0,  "tam fill → shares değişmemeli"
+
+
+# ── Faz 2.5: Guard + PING ──────────────────────────────────────────────────────
+
+def test_ping_interval_is_8():
+    """PING_INTERVAL 8s olmalı — sunucunun 10s limitinin 2s öncesi."""
+    assert ws.PING_INTERVAL == 8, "PING_INTERVAL 8 olmalı"
+
+
+def test_ping_loop_first_ping_at_1s():
+    """_ping_loop: ilk PING 1s sonra (PING_INTERVAL değil) gönderilmeli."""
+    import inspect
+    source = inspect.getsource(ws._ping_loop)
+    assert "asyncio.sleep(1)" in source, \
+        "_ping_loop içinde 1s ilk ping bekleme olmalı"
+
+
+def test_run_has_no_token_guard():
+    """run(): token yokken bağlanma — guard olmalı."""
+    import inspect
+    source = inspect.getsource(ws.run)
+    assert "not _pending and not _subscribed" in source, \
+        "run() içinde 'while not _pending and not _subscribed' guard olmalı"
+
+
+def test_run_circuit_breaker_uses_had_subs():
+    """run(): circuit breaker yalnızca gerçekten subscribed bağlantıları saymalı."""
+    import inspect
+    source = inspect.getsource(ws.run)
+    assert "had_subs" in source, \
+        "run() içinde had_subs flag'i ile circuit breaker koruması olmalı"
