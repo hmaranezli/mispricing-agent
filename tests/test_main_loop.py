@@ -27,7 +27,11 @@ def default_ws_prices():
         mock_ws.get_bid.return_value = 0.50
         mock_ws.get_ask.return_value = 0.50
         mock_ws.subscribe.return_value = None
-        mock_ws.get_price_event.return_value = asyncio.Event()
+        mock_event = MagicMock()
+        mock_event.wait = AsyncMock(return_value=None)
+        mock_event.clear = MagicMock()
+        mock_event.is_set = MagicMock(return_value=True)
+        mock_ws.get_price_event.return_value = mock_event
         yield mock_ws
 
 

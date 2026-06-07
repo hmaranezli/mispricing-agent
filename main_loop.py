@@ -405,7 +405,12 @@ async def _monitor_positions(
                         continue
                 closed = close_position(pos, exit_reason, pm_exit_price=pm_exit,
                                         exit_hl_price=hl_price)
-                await log_position_close(conn, closed)
+                try:
+                    await log_position_close(conn, closed)
+                except Exception as log_err:
+                    pos["_closing"] = False
+                    print(f"[monitor] {pos['slug']} log hatası: {log_err} — _closing reset, sonraki döngüde tekrar")
+                    raise
                 open_positions.remove(pos)
                 closed_today.append(closed)
                 # Yalnızca stop_loss'ta kilitle: kaybeden tezi aynı pencerede tekrar açma.
