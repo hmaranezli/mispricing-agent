@@ -1251,6 +1251,27 @@ async def test_monitor_live_resets_closing_on_fak_fail():
     assert len(open_pos) == 1,           "FAK fail → pozisyon listede kalmalı"
 
 
+@pytest.mark.asyncio
+async def test_monitor_ws_path_skips_position_when_hl_cache_empty():
+    """WS event geldiğinde _cached_hl_price yoksa pozisyon skip edilmeli — crash yok, check_exit yok.
+
+    İlk WS event heartbeat'ten önce gelebilir. Cache None iken check_exit çağrılırsa
+    hl_price=0 ile yanlış stop kararı üretilir. skip → 7s heartbeat REST'i doldursun.
+    """
+    import config as _cfg
+    pos = _pos_with_token("YES")
+    # _cached_hl_price intentionally absent — ilk WS tick, heartbeat henüz gelmedi
+
+    mock_check = MagicMock(return_value="stop_loss_hit")
+    with patch("main_loop.check_exit",       mock_check), \
+         patch("main_loop.asyncio.wait_for", new_callable=AsyncMock, return_value=None), \
+         patch.object(_cfg, "DRY_RUN", True):
+        result = await _monitor_positions([pos], [])
+
+    assert result is True,             "WS path tetiklendi → True dönmeli"
+    mock_check.assert_not_called()     # cache yok → check_exit çağrılmamalı
+
+
 # ── Task 4: main() scan koşullu ──────────────────────────────────────────────
 
 @pytest.mark.asyncio

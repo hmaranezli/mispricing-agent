@@ -313,7 +313,9 @@ async def _monitor_positions(
         try:
             if ws_triggered:
                 # ── WS hızlı path: REST yok, cached context ───────────────
-                hl_price          = pos.get("_cached_hl_price") or pos.get("ref_price", 0)
+                hl_price = pos.get("_cached_hl_price")
+                if hl_price is None:
+                    continue  # heartbeat doldurana kadar skip — yanlış hl_price=0 ile karar verme
                 seconds_remaining = pos.get("_cached_seconds_remaining", 900)
                 yes_tid           = pos.get("yes_token_id", "")
                 if pos["action"] == "YES":
