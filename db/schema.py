@@ -52,6 +52,29 @@ _MIGRATIONS = [
     # HL fiyat kolonlari:
     "ALTER TABLE positions ADD COLUMN entry_hl_price REAL",
     "ALTER TABLE positions ADD COLUMN exit_hl_price REAL",
+    # Faz 1: MAE/MFE + stop slippage + sell timing telemetrisi
+    "ALTER TABLE positions ADD COLUMN mae_pct REAL",
+    "ALTER TABLE positions ADD COLUMN mfe_pct REAL",
+    "ALTER TABLE positions ADD COLUMN mae_px REAL",
+    "ALTER TABLE positions ADD COLUMN mfe_px REAL",
+    "ALTER TABLE positions ADD COLUMN mae_ts TEXT",
+    "ALTER TABLE positions ADD COLUMN mfe_ts TEXT",
+    "ALTER TABLE positions ADD COLUMN mae_data_quality TEXT",
+    "ALTER TABLE positions ADD COLUMN price_source TEXT",
+    "ALTER TABLE positions ADD COLUMN sl_trigger_px REAL",
+    "ALTER TABLE positions ADD COLUMN sl_trigger_pct REAL",
+    "ALTER TABLE positions ADD COLUMN first_trigger_ts TEXT",
+    "ALTER TABLE positions ADD COLUMN exit_bid_at_trigger REAL",
+    "ALTER TABLE positions ADD COLUMN exit_ask_at_trigger REAL",
+    "ALTER TABLE positions ADD COLUMN spread_at_trigger REAL",
+    "ALTER TABLE positions ADD COLUMN book_depth_at_trigger REAL",
+    "ALTER TABLE positions ADD COLUMN sell_attempt_count INTEGER",
+    "ALTER TABLE positions ADD COLUMN sell_unmatched_count INTEGER",
+    "ALTER TABLE positions ADD COLUMN fill_ts TEXT",
+    "ALTER TABLE positions ADD COLUMN sl_fill_px REAL",
+    "ALTER TABLE positions ADD COLUMN sl_fill_pct REAL",
+    "ALTER TABLE positions ADD COLUMN trigger_fill_gap_pct REAL",
+    "ALTER TABLE positions ADD COLUMN trigger_to_fill_secs REAL",
 ]
 
 

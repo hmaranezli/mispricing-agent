@@ -122,6 +122,83 @@ async def test_positions_schema_has_ref_price_and_edge(conn):
 
 
 @pytest.mark.asyncio
+async def test_schema_has_faz1_telemetry_columns(conn):
+    """init_schema sonrası 22 Faz 1 telemetri kolonu positions tablosunda var."""
+    async with conn.execute("PRAGMA table_info(positions)") as cur:
+        cols = {row[1] for row in await cur.fetchall()}
+    expected = [
+        "mae_pct", "mfe_pct", "mae_px", "mfe_px", "mae_ts", "mfe_ts",
+        "mae_data_quality", "price_source",
+        "sl_trigger_px", "sl_trigger_pct", "first_trigger_ts",
+        "exit_bid_at_trigger", "exit_ask_at_trigger", "spread_at_trigger",
+        "book_depth_at_trigger", "sell_attempt_count", "sell_unmatched_count",
+        "fill_ts", "sl_fill_px", "sl_fill_pct", "trigger_fill_gap_pct",
+        "trigger_to_fill_secs",
+    ]
+    missing = [c for c in expected if c not in cols]
+    assert not missing, f"Eksik kolonlar: {missing}"
+
+
+@pytest.mark.asyncio
+async def test_log_position_close_writes_telemetry(conn):
+    """log_position_close MAE/MFE + stop slippage + timing alanlarını DB'ye yazar."""
+    pos = {
+        "position_id": "pos-tel-001", "slug": "btc-up-15min", "asset": "BTC",
+        "action": "YES", "pm_entry_price": 0.35, "fair_value": 0.55,
+        "position_usd": 25.0, "kelly_f": 0.15, "confidence_score": 82.5,
+        "opened_at": "2026-06-07T10:00:00+00:00",
+    }
+    await logger.log_position_open(conn, pos)
+    closed = {
+        **pos,
+        "status": "closed",
+        "pm_exit_price": 0.22,
+        "exit_reason": "stop_loss_hit",
+        "closed_at": "2026-06-07T10:14:00+00:00",
+        "exit_hl_price": 95100.0,
+        "mae_pct": -0.37,
+        "mfe_pct": 0.05,
+        "mae_px": 0.22,
+        "mfe_px": 0.37,
+        "mae_ts": "2026-06-07T10:13:30+00:00",
+        "mfe_ts": "2026-06-07T10:02:00+00:00",
+        "mae_data_quality": "rest",
+        "price_source": "rest",
+        "sl_trigger_px": 0.245,
+        "sl_trigger_pct": -0.30,
+        "first_trigger_ts": "2026-06-07T10:13:25+00:00",
+        "exit_bid_at_trigger": 0.24,
+        "exit_ask_at_trigger": 0.26,
+        "spread_at_trigger": 0.02,
+        "book_depth_at_trigger": None,
+        "sell_attempt_count": 2,
+        "sell_unmatched_count": 1,
+        "fill_ts": "2026-06-07T10:13:32+00:00",
+        "sl_fill_px": 0.22,
+        "sl_fill_pct": -0.371,
+        "trigger_fill_gap_pct": -0.071,
+        "trigger_to_fill_secs": 7.0,
+    }
+    await logger.log_position_close(conn, closed)
+    async with conn.execute(
+        """SELECT mae_pct, mfe_pct, sl_trigger_pct, sl_fill_px,
+                  trigger_fill_gap_pct, sell_attempt_count, trigger_to_fill_secs,
+                  mae_data_quality, price_source
+           FROM positions WHERE position_id='pos-tel-001'"""
+    ) as cur:
+        row = await cur.fetchone()
+    assert abs(row[0] - (-0.37)) < 1e-6,  f"mae_pct yanlış: {row[0]}"
+    assert abs(row[1] - 0.05) < 1e-6,     f"mfe_pct yanlış: {row[1]}"
+    assert abs(row[2] - (-0.30)) < 1e-6,  f"sl_trigger_pct yanlış: {row[2]}"
+    assert abs(row[3] - 0.22) < 1e-6,     f"sl_fill_px yanlış: {row[3]}"
+    assert abs(row[4] - (-0.071)) < 1e-6, f"trigger_fill_gap_pct yanlış: {row[4]}"
+    assert row[5] == 2,                    f"sell_attempt_count yanlış: {row[5]}"
+    assert abs(row[6] - 7.0) < 1e-6,      f"trigger_to_fill_secs yanlış: {row[6]}"
+    assert row[7] == "rest",               f"mae_data_quality yanlış: {row[7]}"
+    assert row[8] == "rest",               f"price_source yanlış: {row[8]}"
+
+
+@pytest.mark.asyncio
 async def test_log_position_open_stores_ref_price_and_edge(conn):
     """log_position_open ref_price ve edge değerlerini DB'ye yazar."""
     pos = {"position_id": "pos-003", "slug": "sol-up-5min", "asset": "SOL",
