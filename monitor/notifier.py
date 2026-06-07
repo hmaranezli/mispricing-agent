@@ -49,7 +49,13 @@ def notify_close(pos: dict) -> None:
     exit_p  = pos.get("pm_exit_price")
     pos_usd = pos.get("position_usd", 0)
     if entry and exit_p is not None:
-        pnl    = (exit_p - entry) / entry * pos_usd
+        partial_usdc     = pos.get("partial_realized_usdc") or 0.0
+        remaining_shares = pos.get("shares") or 0.0
+        if partial_usdc > 0:
+            total_exit = partial_usdc + remaining_shares * exit_p
+            pnl        = total_exit - pos_usd
+        else:
+            pnl = (exit_p - entry) / entry * pos_usd
         cikis  = pos_usd + pnl
         pct    = pnl / pos_usd * 100 if pos_usd else 0
         sign   = "+" if pnl >= 0 else ""

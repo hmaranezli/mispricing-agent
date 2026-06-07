@@ -433,6 +433,65 @@ async def test_log_position_close_saves_exit_hl_price(conn):
 
 
 @pytest.mark.asyncio
+async def test_log_position_close_pnl_with_partial_fills(conn):
+    """10 share @ 0.50, 5 partial @ 0.80, 5 final @ 0.40 → P&L = +1.00 (Codex test).
+
+    Yanlış formül: (0.40 - 0.50) / 0.50 * 5.00 = -1.00  ← Faz 3 verisini kirletir
+    Doğru formül:  4.00 + 5*0.40 - 5.00 = +1.00
+    """
+    pos = {
+        "position_id": "pnl-p-001", "slug": "btc-up-5m", "asset": "BTC",
+        "action": "YES", "pm_entry_price": 0.50, "fair_value": 0.60,
+        "ref_price": 95000.0, "edge": 0.10, "position_usd": 5.00,
+        "kelly_f": 0.10, "confidence_score": 80.0,
+        "opened_at": "2026-06-07T10:00:00+00:00",
+    }
+    closed = {
+        **pos,
+        "status": "closed", "exit_reason": "stop_loss_hit",
+        "closed_at": "2026-06-07T10:14:00+00:00",
+        "pm_exit_price": 0.40, "exit_hl_price": 94000.0,
+        "shares": 5.0,                # kalan hisse (partial sonrası)
+        "partial_fill_count": 1,
+        "partial_fill_shares": 5.0,
+        "partial_realized_usdc": 4.0,  # 5 hisse × 0.80
+    }
+    await logger.log_position_open(conn, pos)
+    await logger.log_position_close(conn, closed)
+    async with conn.execute(
+        "SELECT realized_pnl FROM positions WHERE position_id='pnl-p-001'"
+    ) as cur:
+        row = await cur.fetchone()
+    assert row is not None
+    assert abs(row[0] - 1.00) < 0.001, \
+        f"realized_pnl={row[0]:.4f}, beklenen +1.00 (partial formülü uygulanmalı)"
+
+
+@pytest.mark.asyncio
+async def test_log_position_close_pnl_no_partial_unchanged(conn):
+    """Partial fill yoksa eski formül aynen çalışmalı — geriye dönük uyumlu."""
+    pos = {
+        "position_id": "pnl-np-001", "slug": "eth-up-15m", "asset": "ETH",
+        "action": "YES", "pm_entry_price": 0.50, "fair_value": 0.60,
+        "ref_price": 3000.0, "edge": 0.10, "position_usd": 5.00,
+        "kelly_f": 0.10, "confidence_score": 80.0,
+        "opened_at": "2026-06-07T10:00:00+00:00",
+    }
+    closed = {**pos, "status": "closed", "exit_reason": "profit_target_hit",
+              "closed_at": "2026-06-07T10:14:00+00:00",
+              "pm_exit_price": 0.70, "exit_hl_price": 3010.0}
+    await logger.log_position_open(conn, pos)
+    await logger.log_position_close(conn, closed)
+    async with conn.execute(
+        "SELECT realized_pnl FROM positions WHERE position_id='pnl-np-001'"
+    ) as cur:
+        row = await cur.fetchone()
+    assert row is not None
+    expected = (0.70 - 0.50) / 0.50 * 5.00  # = +2.00
+    assert abs(row[0] - expected) < 0.001, f"realized_pnl={row[0]:.4f}, beklenen {expected:.4f}"
+
+
+@pytest.mark.asyncio
 async def test_positions_has_partial_fill_columns():
     """positions tablosunda partial_fill_count, partial_fill_shares, partial_realized_usdc kolonları olmalı."""
     async with aiosqlite.connect(":memory:") as db:

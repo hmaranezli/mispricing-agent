@@ -96,8 +96,15 @@ async def log_position_close(conn, position: dict) -> None:
     entry   = position.get("pm_entry_price")
     exit_p  = position.get("pm_exit_price")
     pos_usd = position.get("position_usd", 0)
+    partial_usdc     = position.get("partial_realized_usdc") or 0.0
+    remaining_shares = position.get("shares") or 0.0
     if entry and exit_p is not None:
-        realized_pnl = (exit_p - entry) / entry * pos_usd
+        if partial_usdc > 0:
+            # Kısmi fill: kümülatif muhasebe — partial USDC + kalan hisse × son fiyat
+            total_exit   = partial_usdc + remaining_shares * exit_p
+            realized_pnl = round(total_exit - pos_usd, 6)
+        else:
+            realized_pnl = (exit_p - entry) / entry * pos_usd
     else:
         realized_pnl = None
     await conn.execute(
