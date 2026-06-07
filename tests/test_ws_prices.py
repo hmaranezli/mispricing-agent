@@ -1,7 +1,9 @@
 """tests/test_ws_prices.py — ws_prices birim testleri. Gerçek WS bağlantısı yok."""
 import asyncio
+import json
 import time
 import pytest
+from unittest.mock import AsyncMock
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -12,6 +14,8 @@ def _reset():
     ws._cache.clear()
     ws._subscribed.clear()
     ws._pending.clear()
+    if hasattr(ws, "_pending_unsub"):
+        ws._pending_unsub.clear()
     ws._resolved_queue = None
 
 
@@ -270,3 +274,82 @@ def test_run_circuit_breaker_uses_had_subs():
     source = inspect.getsource(ws.run)
     assert "had_subs" in source, \
         "run() içinde had_subs flag'i ile circuit breaker koruması olmalı"
+
+
+# ── Faz 2.5: Subscription Format + Unsubscribe ───────────────────────────────
+
+def test_unsubscribe_removes_from_subscribed():
+    """unsubscribe(): _subscribed'den tokenı çıkarır."""
+    _reset()
+    ws._subscribed.add("tok_open")
+    ws.unsubscribe(["tok_open"])
+    assert "tok_open" not in ws._subscribed, "_subscribed'den silinmeli"
+
+
+def test_unsubscribe_removes_from_pending():
+    """unsubscribe(): _pending'den de kaldırır."""
+    _reset()
+    ws._pending.add("tok_pend")
+    ws.unsubscribe(["tok_pend"])
+    assert "tok_pend" not in ws._pending, "_pending'den silinmeli"
+
+
+def test_unsubscribe_adds_to_pending_unsub():
+    """unsubscribe(): _pending_unsub kuyruğuna ekler (WS'e mesaj gönderilecek)."""
+    _reset()
+    ws._subscribed.add("tok_open")
+    ws.unsubscribe(["tok_open"])
+    assert "tok_open" in ws._pending_unsub, "_pending_unsub'a eklenmeli"
+
+
+def test_unsubscribe_skips_empty_strings():
+    """unsubscribe(): boş/None değerleri yoksayar."""
+    _reset()
+    ws.unsubscribe(["", "tok_valid"])
+    assert "" not in ws._pending_unsub
+    assert "tok_valid" in ws._pending_unsub
+
+
+@pytest.mark.asyncio
+async def test_flush_pending_uses_initial_format_on_connect():
+    """_flush_pending(initial_connect=True): type=market formatı kullanır."""
+    import json
+    _reset()
+    ws.subscribe(["tok_init"])
+    ws_mock = AsyncMock()
+    await ws._flush_pending(ws_mock, initial_connect=True)
+    assert ws_mock.send.called
+    payload = json.loads(ws_mock.send.call_args[0][0])
+    assert payload.get("type") == "market", "initial connect → type=market"
+    assert "assets_ids" in payload
+    assert "operation" not in payload, "initial connect → operation olmamalı"
+
+
+@pytest.mark.asyncio
+async def test_flush_pending_uses_update_format_on_existing_connection():
+    """_flush_pending(initial_connect=False): operation=subscribe formatı kullanır."""
+    import json
+    _reset()
+    ws.subscribe(["tok_update"])
+    ws_mock = AsyncMock()
+    await ws._flush_pending(ws_mock, initial_connect=False)
+    assert ws_mock.send.called
+    payload = json.loads(ws_mock.send.call_args[0][0])
+    assert payload.get("operation") == "subscribe", "update → operation=subscribe"
+    assert "assets_ids" in payload
+    assert "type" not in payload, "update → type olmamalı"
+
+
+@pytest.mark.asyncio
+async def test_flush_pending_sends_unsubscribe_message():
+    """_flush_pending: _pending_unsub varsa operation=unsubscribe mesajı gönderir."""
+    import json
+    _reset()
+    ws._pending_unsub.add("tok_unsub")
+    ws_mock = AsyncMock()
+    await ws._flush_pending(ws_mock, initial_connect=False)
+    assert ws_mock.send.called
+    first_call = ws_mock.send.call_args_list[0][0][0]
+    payload = json.loads(first_call)
+    assert payload.get("operation") == "unsubscribe"
+    assert "tok_unsub" in payload.get("assets_ids", [])

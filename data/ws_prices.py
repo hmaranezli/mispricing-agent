@@ -20,6 +20,7 @@ _CIRCUIT_BREAKER_N = 8    # kaç ard arda kısa bağlantıda Telegram uyarısı
 _cache:    dict[str, dict]       = {}   # token_id → {best_bid, best_ask, spread, ts}
 _subscribed: set[str]            = set()
 _pending:    set[str]            = set()
+_pending_unsub: set[str]         = set()   # unsubscribe kuyruğu
 _ws                              = None
 _resolved_queue: asyncio.Queue | None = None
 _price_event: asyncio.Event | None = None
@@ -55,6 +56,15 @@ def get_spread(token_id: str) -> float | None:
 def subscribe(token_ids: list[str]) -> None:
     """Token ID'leri subscribe listesine ekle. WS aktifse 2s içinde gönderilir."""
     _pending.update(t for t in token_ids if t and t not in _subscribed)
+
+
+def unsubscribe(token_ids: list[str]) -> None:
+    """Token ID'lerini abonelikten çıkar. WS aktifse 2s içinde unsubscribe gönderilir."""
+    for tid in token_ids:
+        if tid:
+            _subscribed.discard(tid)
+            _pending.discard(tid)
+            _pending_unsub.add(tid)
 
 
 def get_price_event() -> asyncio.Event:
@@ -167,17 +177,34 @@ def _handle_market_resolved(event: dict) -> None:
         _resolved_queue.put_nowait(event)
 
 
-async def _flush_pending(ws) -> None:
+async def _flush_pending(ws, *, initial_connect: bool = True) -> None:
+    """_pending tokenlarını subscribe et + _pending_unsub tokenlarını unsubscribe et.
+
+    initial_connect=True  → ilk bağlantı formatı: {"assets_ids": [...], "type": "market"}
+    initial_connect=False → update formatı: {"operation": "subscribe", "assets_ids": [...]}
+    """
+    # Önce unsubscribe mesajlarını gönder
+    if _pending_unsub:
+        unsub_batch = list(_pending_unsub)
+        _pending_unsub.clear()
+        msg = json.dumps({"operation": "unsubscribe", "assets_ids": unsub_batch})
+        print(f"[ws] Unsubscribe: {len(unsub_batch)} token")
+        await ws.send(msg)
+
     if not _pending:
         return
     batch = list(_pending)
     _pending.clear()          # atomic clear before await — no TOCTOU
-    msg = json.dumps({
-        "assets_ids":            batch,
-        "type":                  "market",
-        "custom_feature_enabled": True,
-    })
-    print(f"[ws] Subscribe: {len(batch)} token, ilk: {batch[:3]}")
+    if initial_connect:
+        msg = json.dumps({
+            "assets_ids":             batch,
+            "type":                   "market",
+            "custom_feature_enabled": True,
+        })
+        print(f"[ws] Subscribe (initial): {len(batch)} token, ilk: {batch[:3]}")
+    else:
+        msg = json.dumps({"operation": "subscribe", "assets_ids": batch})
+        print(f"[ws] Subscribe (update): {len(batch)} token, ilk: {batch[:3]}")
     await ws.send(msg)
     _subscribed.update(batch)
 
@@ -198,7 +225,7 @@ async def _connect_and_run() -> None:
         if _subscribed:
             _pending.update(_subscribed)
             _subscribed.clear()
-        await _flush_pending(ws)
+        await _flush_pending(ws, initial_connect=True)
         ping_task  = asyncio.create_task(_ping_loop(ws))
         flush_task = asyncio.create_task(_pending_flush_loop(ws))
         msg_count = 0
@@ -253,6 +280,6 @@ async def _pending_flush_loop(ws) -> None:
     while True:
         await asyncio.sleep(2)
         try:
-            await _flush_pending(ws)
+            await _flush_pending(ws, initial_connect=False)
         except Exception:
             break
