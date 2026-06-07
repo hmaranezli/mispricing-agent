@@ -1,7 +1,8 @@
 """monitor/state.py — Paylasilan bot durumu: main_loop ve telegram_commands arasin da ortak flag'ler."""
 
-SOFT_PAUSED: bool = False
-HARD_PAUSED: bool = False
+SOFT_PAUSED:       bool = False
+HARD_PAUSED:       bool = False
+FLATTEN_REQUESTED: bool = False
 
 
 def soft_pause() -> None:
@@ -26,3 +27,14 @@ def hard_resume() -> None:
 
 def is_paused() -> bool:
     return SOFT_PAUSED or HARD_PAUSED
+
+
+def request_flatten() -> None:
+    global FLATTEN_REQUESTED, SOFT_PAUSED
+    FLATTEN_REQUESTED = True
+    SOFT_PAUSED = True  # önceden pause → yeni entry engellenir
+
+
+def clear_flatten() -> None:
+    global FLATTEN_REQUESTED
+    FLATTEN_REQUESTED = False

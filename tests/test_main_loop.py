@@ -1411,6 +1411,64 @@ async def test_monitor_forces_rest_heartbeat_when_overdue():
     assert pos.get("_cached_hl_price") == 96000.0, "HL cache güncellenmeli"
 
 
+# ── 3-Tier Emergency: _do_flatten ────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_do_flatten_sells_all_and_clears_list():
+    """_do_flatten tüm açık pozisyonları FAK SELL ile kapatır, listeden siler."""
+    from main_loop import _do_flatten
+    pos = _pos_with_token("YES")
+    pos["shares"] = 1.5
+    pos["_cached_hl_price"] = 95000.0
+    open_pos = [pos]
+    closed = []
+
+    with patch("main_loop.sell_position",     new_callable=AsyncMock, return_value=(0.40, 1.5)), \
+         patch("main_loop.close_position",    return_value={"slug": pos["slug"], "realized_pnl": -0.10}), \
+         patch("main_loop.log_position_close", new_callable=AsyncMock), \
+         patch("main_loop.notify_close"), \
+         patch("main_loop.send_telegram"):
+        await _do_flatten(open_pos, closed, conn=None)
+
+    assert len(open_pos) == 0, "flatten sonrası liste boş olmalı"
+    assert len(closed) == 1,   "kapanan pozisyon closed listesine eklenmeli"
+
+
+@pytest.mark.asyncio
+async def test_do_flatten_keeps_position_on_sell_failure():
+    """sell_position None → pozisyon açık kalır, _closing sıfırlanır."""
+    from main_loop import _do_flatten
+    pos = _pos_with_token("YES")
+    pos["shares"] = 1.5
+    open_pos = [pos]
+    closed = []
+
+    with patch("main_loop.sell_position", new_callable=AsyncMock, return_value=None), \
+         patch("main_loop.send_telegram"):
+        await _do_flatten(open_pos, closed, conn=None)
+
+    assert len(open_pos) == 1, "sell başarısız → pozisyon listede kalmalı"
+    assert pos.get("_closing") is False, "_closing sıfırlanmalı"
+
+
+@pytest.mark.asyncio
+async def test_do_flatten_skips_already_closing():
+    """_closing=True olan pozisyon flatten'da atlanır."""
+    from main_loop import _do_flatten
+    pos = _pos_with_token("YES")
+    pos["shares"] = 1.5
+    pos["_closing"] = True
+    open_pos = [pos]
+    closed = []
+
+    sell_mock = AsyncMock(return_value=(0.40, 1.5))
+    with patch("main_loop.sell_position", sell_mock), \
+         patch("main_loop.send_telegram"):
+        await _do_flatten(open_pos, closed, conn=None)
+
+    sell_mock.assert_not_called(), "zaten kapanmakta olan pozisyon tekrar satılmamalı"
+
+
 # ── Task 4: main() scan koşullu ──────────────────────────────────────────────
 
 @pytest.mark.asyncio

@@ -162,3 +162,61 @@ def test_build_stats_win_rate_unchanged_when_no_breakeven():
     msg = build_stats_message(total=100, wins=75, losses=25, pnl=150.0,
                               hours=None, breakeven=0)
     assert "75.0%" in msg
+
+
+# ── 3-Tier Emergency Komutları ────────────────────────────────────────────────
+
+def test_pause_sets_soft_paused():
+    """/pause → SOFT_PAUSED=True, monitor devam ettiği mesajda belirtilmeli."""
+    import monitor.state as s
+    s.SOFT_PAUSED = False
+    from monitor.telegram_commands import handle_command
+    result = handle_command("/pause")
+    assert s.SOFT_PAUSED is True, "SOFT_PAUSED True olmalı"
+    assert "pause" in result.lower() or "durduruldu" in result.lower()
+    s.SOFT_PAUSED = False  # cleanup
+
+
+def test_devam_clears_soft_paused():
+    """/devam → SOFT_PAUSED=False."""
+    import monitor.state as s
+    s.SOFT_PAUSED = True
+    from monitor.telegram_commands import handle_command
+    from unittest.mock import patch
+    with patch("monitor.kill_switch.disarm"):
+        result = handle_command("/devam")
+    assert s.SOFT_PAUSED is False, "SOFT_PAUSED False olmalı"
+
+
+def test_flatten_sets_flatten_requested_and_soft_paused():
+    """/flatten → FLATTEN_REQUESTED=True, SOFT_PAUSED=True."""
+    import monitor.state as s
+    s.FLATTEN_REQUESTED = False
+    s.SOFT_PAUSED = False
+    from monitor.telegram_commands import handle_command
+    result = handle_command("/flatten")
+    assert s.FLATTEN_REQUESTED is True, "FLATTEN_REQUESTED True olmalı"
+    assert s.SOFT_PAUSED is True,       "SOFT_PAUSED True olmalı (flatten önceden pause)"
+    assert "flatten" in result.lower() or "kapatil" in result.lower()
+    s.FLATTEN_REQUESTED = False
+    s.SOFT_PAUSED = False  # cleanup
+
+
+def test_hardkill_arms_kill_switch_and_warns():
+    """/hardkill → kill switch devreye girer, uyarı mesajı içermeli."""
+    from monitor.telegram_commands import handle_command
+    from unittest.mock import patch
+    with patch("monitor.telegram_commands.ks_arm") as mock_arm:
+        result = handle_command("/hardkill")
+    mock_arm.assert_called_once()
+    assert "uyari" in result.lower() or "kaderine" in result.lower() or "izlenmez" in result.lower()
+
+
+def test_durdur_is_hardkill_alias_with_warning():
+    """/durdur → /hardkill gibi davranır, uyarı mesajı içermeli."""
+    from monitor.telegram_commands import handle_command
+    from unittest.mock import patch
+    with patch("monitor.telegram_commands.ks_arm") as mock_arm:
+        result = handle_command("/durdur")
+    mock_arm.assert_called_once()
+    assert "uyari" in result.lower() or "kaderine" in result.lower() or "izlenmez" in result.lower()

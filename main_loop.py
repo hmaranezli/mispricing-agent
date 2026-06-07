@@ -24,7 +24,7 @@ from position.manager import check_exit, close_position
 from data.hl_candles import current_price
 from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window
 from data.clob_price import get_clob_price
-from monitor.notifier import notify_open, notify_close, notify_halt, notify_restart, notify_soft_stop, notify_hard_stop, notify_resolved_late
+from monitor.notifier import notify_open, notify_close, notify_halt, notify_restart, notify_soft_stop, notify_hard_stop, notify_resolved_late, send_telegram
 from monitor.kill_switch import check as kill_switch_check
 from monitor.telegram_commands import poll_commands
 from monitor.state import is_paused
@@ -289,6 +289,41 @@ async def _heal_pending_resolutions(
 _last_rest_ts: float = 0.0  # modül-seviye heartbeat zamanlayıcı
 
 
+async def _do_flatten(open_positions: list, closed_today: list, conn=None) -> None:
+    """Panic flatten: tüm açık pozisyonları FAK SELL ile kapatmaya çalışır."""
+    import monitor.state as _st
+    send_telegram(f"[FLATTEN] {len(open_positions)} pozisyon kapatılıyor...")
+    for pos in list(open_positions):
+        if pos.get("_closing"):
+            continue
+        pos["_closing"] = True
+        sell_result = await sell_position(pos)
+        if sell_result is not None:
+            pm_exit, making_shares = sell_result
+            closed_dict = close_position(
+                pos, "panic_flatten",
+                pm_exit_price=pm_exit,
+                exit_hl_price=pos.get("_cached_hl_price"),
+            )
+            open_positions.remove(pos)
+            closed_today.append(closed_dict)
+            notify_close(closed_dict)
+            try:
+                await log_position_close(conn, closed_dict)
+            except Exception as e:
+                print(f"[flatten] {pos['slug']} log hatası: {e}")
+        else:
+            pos["_closing"] = False
+            print(f"[flatten] {pos['slug']} SELL başarısız — açık kalıyor, monitor devam")
+    remaining = len(open_positions)
+    msg = (
+        f"[FLATTEN] {remaining} pozisyon hâlâ açık — izlemeye devam"
+        if remaining else
+        "[FLATTEN] Tüm pozisyonlar kapatıldı. Bot PAUSE modunda."
+    )
+    send_telegram(msg)
+
+
 async def _monitor_positions(
     open_positions: list[dict],
     closed_today:   list[dict],
@@ -506,16 +541,17 @@ async def main() -> None:
                 print("[bot] Kill switch etkin — sistem durdu.")
                 break
 
-            if is_paused():
-                import monitor.state as _st
-                reason = "hard_stop" if _st.HARD_PAUSED else "soft_stop"
-                print(f"[bot] {reason} — bekliyor... (/baslat veya /hardbaslat)")
-                await asyncio.sleep(SCAN_INTERVAL_SECS)
-                continue
+            import monitor.state as _st
+
+            # FLATTEN: açık pozisyonları sat → monitor döngüsü öncesinde
+            if _st.FLATTEN_REQUESTED:
+                _st.clear_flatten()
+                await _do_flatten(open_positions, closed_today, conn=conn)
 
             try:
                 n_closed_before = len(closed_today)
 
+                # Pause olsa bile açık pozisyonlar her zaman izlenir (stop/exit koruması)
                 ws_triggered = await _monitor_positions(
                     open_positions, closed_today, conn=conn, failed_slugs=failed_slugs
                 )
@@ -540,6 +576,12 @@ async def main() -> None:
                     elif cb_result == 'soft_stop':
                         notify_soft_stop(config.STREAK_WARN_COUNT, effective_bk)
                         print(f"[bot] SOFT STOP: {config.STREAK_WARN_COUNT} arka arkaya kayıp")
+
+                # Pause modunda scan/heal atlanır — sadece monitor çalışır
+                if is_paused():
+                    reason = "hard_stop" if _st.HARD_PAUSED else "soft_stop/pause"
+                    print(f"[bot] {reason} — yeni islem yok, pozisyon monitor aktif")
+                    continue
 
                 if not ws_triggered:
                     # REST heartbeat: scan + heal + cache yenile

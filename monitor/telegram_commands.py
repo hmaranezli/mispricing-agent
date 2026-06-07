@@ -154,7 +154,11 @@ def handle_command(text: str) -> str:
             "/istatistik6   — Son 6 saat\n"
             "/istatistik12  — Son 12 saat\n"
             "/istatistik24  — Son 24 saat\n"
-            "/durdur        — Kill switch devreye al\n"
+            "/pause         — Yeni islem dur, monitor devam\n"
+            "/devam         — Pause'u kaldir, normale don\n"
+            "/flatten       — Acik pozisyonlari kapat, pause\n"
+            "/hardkill      — Process oldur (son care!)\n"
+            "/durdur        — /hardkill alias (eski kas hafizasi)\n"
             "/baslat        — Soft stop / kill switch kaldir\n"
             "/hardbaslat    — Hard stop (bust) kaldir\n"
             "/help          — Bu mesaj"
@@ -171,9 +175,31 @@ def handle_command(text: str) -> str:
         daily_pnl = _query_daily_pnl()
         return build_durum_message(open_pos, daily_pnl, stale_secs=stale)
 
+    if text == "/pause":
+        from monitor.state import soft_pause
+        soft_pause()
+        return "PAUSE: Yeni islem acilmiyor. Acik pozisyonlar WS hizinda izlenmeye devam ediyor."
+
+    if text == "/devam":
+        from monitor.state import soft_resume
+        from monitor import circuit_breaker
+        soft_resume()
+        circuit_breaker.reset_streak()
+        ks_disarm()
+        return "Devam: Bot normal moda geri dondu."
+
+    if text == "/flatten":
+        from monitor.state import request_flatten
+        request_flatten()
+        return "FLATTEN: Acik pozisyonlar bir sonraki iterasyonda FAK SELL ile kapatilacak. Bot PAUSE moduna giriyor."
+
+    if text == "/hardkill":
+        ks_arm()
+        return "HARD KILL: Process durduruluyor. UYARI: Acik pozisyonlar kaderine birakiliyor, izlenmeyecek!"
+
     if text == "/durdur":
         ks_arm()
-        return "Kill switch DEVREDE. Bot durdu. /baslat ile kaldir."
+        return "HARD KILL (/durdur): Process durduruluyor. UYARI: Acik pozisyonlar kaderine birakiliyor, izlenmeyecek!"
 
     if text == "/baslat":
         from monitor.state import soft_resume
