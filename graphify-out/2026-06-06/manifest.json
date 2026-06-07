@@ -20,8 +20,8 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/tests/test_scout.py": {
-    "mtime": 1780762728.128383,
-    "ast_hash": "3272c0459656f0ac05884e0b4b767086",
+    "mtime": 1780778889.4689596,
+    "ast_hash": "c141f8f167eb5db3e07353be62c2f09d",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/tests/test_fair_value.py": {
@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/.claude/settings.local.json": {
-    "mtime": 1780753671.3010776,
-    "ast_hash": "b26471ee8a3960ade7b20a4679797366",
+    "mtime": 1780777262.5287151,
+    "ast_hash": "544ff58d876f0a71ff60a2ae22784107",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/execution/__init__.py": {
@@ -55,8 +55,8 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/council/scout.py": {
-    "mtime": 1780762776.3677876,
-    "ast_hash": "adb1c8ab95d7d686e46ffa5612c29bed",
+    "mtime": 1780778772.8430169,
+    "ast_hash": "1d1aef217ba61e0163eb9edd59b9ca91",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/monitor/__init__.py": {
@@ -115,8 +115,8 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/tests/test_position.py": {
-    "mtime": 1780753705.127356,
-    "ast_hash": "f226feb0a9ba1ea97f58429fd6e0c8c1",
+    "mtime": 1780778736.0217206,
+    "ast_hash": "9125f55227cb433f69180f7c44cb07d3",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/tests/test_main_loop.py": {
@@ -175,8 +175,8 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/council/redteam.py": {
-    "mtime": 1780762871.1145823,
-    "ast_hash": "5b8cc4e988be9b3ee4236fe506d72963",
+    "mtime": 1780770342.7850423,
+    "ast_hash": "ecec5676d2b61bfa8784f805e24bb721",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/monitor/notifier.py": {
@@ -190,8 +190,8 @@
     "semantic_hash": "aacae764f1892cd0c03e6ac78cd93bb9"
   },
   "/root/mispricing_agent/position/manager.py": {
-    "mtime": 1780753715.8634443,
-    "ast_hash": "5da3ce3f9a9166940aca638a453e9fb6",
+    "mtime": 1780778800.2922382,
+    "ast_hash": "ee290045aa9b924d2b2b26a62a7f126f",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/CLAUDE.md": {
@@ -365,8 +365,8 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/execution/clob_executor.py": {
-    "mtime": 1780677568.5932825,
-    "ast_hash": "5277e7ecf1c48ce0970ae80dc0a71d3a",
+    "mtime": 1780770335.4739785,
+    "ast_hash": "8481045cd1b0368082412556a7f46c3d",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/execution/clob_client.py": {
@@ -380,8 +380,8 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/execution/position_store.py": {
-    "mtime": 1780635640.5025449,
-    "ast_hash": "4713e4f7538c52f268a37e15a156890e",
+    "mtime": 1780770752.955618,
+    "ast_hash": "5738439c2c227525a80ff27ad24658dd",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/execution/reconcile.py": {
