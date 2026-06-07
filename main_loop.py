@@ -482,7 +482,9 @@ async def main() -> None:
             try:
                 n_closed_before = len(closed_today)
 
-                await _monitor_positions(open_positions, closed_today, conn=conn, failed_slugs=failed_slugs)
+                ws_triggered = await _monitor_positions(
+                    open_positions, closed_today, conn=conn, failed_slugs=failed_slugs
+                )
                 # WS üzerinden gelen anlık resolution olaylarını işle
                 if ws_prices._resolved_queue:
                     while not ws_prices._resolved_queue.empty():
@@ -505,18 +507,20 @@ async def main() -> None:
                         notify_soft_stop(config.STREAK_WARN_COUNT, effective_bk)
                         print(f"[bot] SOFT STOP: {config.STREAK_WARN_COUNT} arka arkaya kayıp")
 
-                n_open_before = len(open_positions)  # monitor sonrası al: kapananlar düşüldü
-                effective_bankroll = await get_effective_bankroll(BANKROLL_CONFIG)
-                await _scan_and_execute(open_positions, closed_today, effective_bankroll, conn=conn, failed_slugs=failed_slugs)
-                for pos in open_positions[n_open_before:]:
-                    notify_open(pos)
-
-                await _heal_pending_resolutions(conn, closed_today)
-                positions_cache.set_open_positions(open_positions)
+                if not ws_triggered:
+                    # REST heartbeat: scan + heal + cache yenile
+                    n_open_before = len(open_positions)
+                    effective_bankroll = await get_effective_bankroll(BANKROLL_CONFIG)
+                    await _scan_and_execute(open_positions, closed_today, effective_bankroll,
+                                            conn=conn, failed_slugs=failed_slugs)
+                    for pos in open_positions[n_open_before:]:
+                        notify_open(pos)
+                    await _heal_pending_resolutions(conn, closed_today)
+                    positions_cache.set_open_positions(open_positions)
 
             except Exception as e:
                 print(f"[bot] Döngü hatası: {e}")
-            await asyncio.sleep(SCAN_INTERVAL_SECS)
+            # asyncio.sleep KALDIRILDI — _monitor_positions içinde asyncio.wait_for ile wait eder
     finally:
         await conn.close()
 

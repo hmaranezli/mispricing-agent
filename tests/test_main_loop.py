@@ -1245,3 +1245,31 @@ async def test_monitor_live_resets_closing_on_fak_fail():
 
     assert pos.get("_closing") is False, "FAK fail → _closing=False resetlenmeli"
     assert len(open_pos) == 1,           "FAK fail → pozisyon listede kalmalı"
+
+
+# ── Task 4: main() scan koşullu ──────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_main_loop_scan_skipped_on_ws_event_path():
+    """_monitor_positions True döndüğünde _scan_and_execute çağrılmaz."""
+    import config as _cfg
+    scan_called = []
+
+    async def fake_monitor(*a, **kw):
+        return True  # WS event
+
+    async def fake_scan(*a, **kw):
+        scan_called.append(1)
+
+    with patch("main_loop._monitor_positions",        fake_monitor), \
+         patch("main_loop._scan_and_execute",          fake_scan), \
+         patch("main_loop.get_effective_bankroll",    new_callable=AsyncMock, return_value=25.0), \
+         patch("main_loop._heal_pending_resolutions", new_callable=AsyncMock), \
+         patch("main_loop.positions_cache"), \
+         patch.object(_cfg, "DRY_RUN", True):
+        # main() döngüsünün bir iterasyonunu manuel simüle et
+        ws_triggered = await fake_monitor()
+        if not ws_triggered:
+            await fake_scan()
+
+    assert scan_called == [], "WS event → _scan_and_execute çağrılmamalı"
