@@ -433,6 +433,49 @@ async def test_log_position_close_saves_exit_hl_price(conn):
 
 
 @pytest.mark.asyncio
+async def test_positions_has_partial_fill_columns():
+    """positions tablosunda partial_fill_count, partial_fill_shares, partial_realized_usdc kolonları olmalı."""
+    async with aiosqlite.connect(":memory:") as db:
+        await init_schema(db)
+        async with db.execute("PRAGMA table_info(positions)") as cur:
+            cols = {row[1] for row in await cur.fetchall()}
+    assert "partial_fill_count"   in cols, "partial_fill_count kolonu eksik"
+    assert "partial_fill_shares"  in cols, "partial_fill_shares kolonu eksik"
+    assert "partial_realized_usdc" in cols, "partial_realized_usdc kolonu eksik"
+
+
+@pytest.mark.asyncio
+async def test_log_position_close_persists_partial_fill_telemetry(conn):
+    """Partial fill verileri (count/shares/usdc) kapanışta DB'ye kaydedilmeli."""
+    pos = {
+        "position_id": "pf-001", "slug": "btc-up-5m", "asset": "BTC",
+        "action": "YES", "pm_entry_price": 0.35, "fair_value": 0.55,
+        "ref_price": 95000.0, "edge": 0.20, "position_usd": 1.25,
+        "kelly_f": 0.15, "confidence_score": 82.0,
+        "opened_at": "2026-06-07T10:00:00+00:00",
+    }
+    closed = {
+        **pos, "status": "closed", "exit_reason": "stop_loss_hit",
+        "closed_at": "2026-06-07T10:14:00+00:00",
+        "pm_exit_price": 0.30, "exit_hl_price": 94000.0,
+        "partial_fill_count":   2,
+        "partial_fill_shares":  1.5,
+        "partial_realized_usdc": 0.45,
+    }
+    await logger.log_position_open(conn, pos)
+    await logger.log_position_close(conn, closed)
+    async with conn.execute(
+        """SELECT partial_fill_count, partial_fill_shares, partial_realized_usdc
+           FROM positions WHERE position_id='pf-001'"""
+    ) as cur:
+        row = await cur.fetchone()
+    assert row is not None
+    assert row[0] == 2,                   f"partial_fill_count={row[0]}, beklenen 2"
+    assert abs(row[1] - 1.5) < 0.001,    f"partial_fill_shares={row[1]}, beklenen 1.5"
+    assert abs(row[2] - 0.45) < 0.001,   f"partial_realized_usdc={row[2]}, beklenen 0.45"
+
+
+@pytest.mark.asyncio
 async def test_patch_position_resolution_saves_exit_hl_price(conn):
     """patch_position_resolution exit_hl_price ile çağrılınca DB'ye kaydedilmeli."""
     pos = {

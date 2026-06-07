@@ -75,6 +75,10 @@ _MIGRATIONS = [
     "ALTER TABLE positions ADD COLUMN sl_fill_pct REAL",
     "ALTER TABLE positions ADD COLUMN trigger_fill_gap_pct REAL",
     "ALTER TABLE positions ADD COLUMN trigger_to_fill_secs REAL",
+    # Faz 2.2: Partial fill telemetri
+    "ALTER TABLE positions ADD COLUMN partial_fill_count INTEGER DEFAULT 0",
+    "ALTER TABLE positions ADD COLUMN partial_fill_shares REAL",
+    "ALTER TABLE positions ADD COLUMN partial_realized_usdc REAL",
 ]
 
 

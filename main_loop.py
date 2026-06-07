@@ -426,6 +426,12 @@ async def _monitor_positions(
                         pos["shares"] = round(old_shares - making_shares, 6)
                         pos["_closing"] = False
                         pos["partial_fill_count"] = pos.get("partial_fill_count", 0) + 1
+                        pos["partial_fill_shares"] = round(
+                            pos.get("partial_fill_shares", 0.0) + making_shares, 6
+                        )
+                        pos["partial_realized_usdc"] = round(
+                            pos.get("partial_realized_usdc", 0.0) + pm_exit * making_shares, 6
+                        )
                         print(f"[monitor] {pos['slug']} kısmi fill {making_shares:.4f}/{old_shares:.4f} → {pos['shares']:.4f} kalan")
                         continue
                 closed = close_position(pos, exit_reason, pm_exit_price=pm_exit,

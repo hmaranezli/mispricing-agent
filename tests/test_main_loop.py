@@ -1326,6 +1326,33 @@ async def test_monitor_partial_fill_updates_shares_and_keeps_position():
 
 
 @pytest.mark.asyncio
+async def test_monitor_partial_fill_accumulates_shares_and_usdc():
+    """Kısmi fill → partial_fill_shares ve partial_realized_usdc kümülatif birikir."""
+    import config as _cfg
+    pos = _pos_with_token("YES")
+    pos["_cached_hl_price"]          = 95000.0
+    pos["_cached_seconds_remaining"] = 900
+    pos["shares"]                    = 2.5
+    pos["partial_fill_shares"]       = 0.8   # önceki kısmi fill
+    pos["partial_realized_usdc"]     = 0.24  # önceki kısmi usdc
+    open_pos = [pos]
+
+    # fill_price=0.30, making=1.0 → 1.0 share @ 0.30 USDC = 0.30 USDC
+    with patch("main_loop.check_exit",        return_value="stop_loss_hit"), \
+         patch("main_loop.sell_position",     new_callable=AsyncMock, return_value=(0.30, 1.0)), \
+         patch("main_loop.asyncio.wait_for",  new_callable=AsyncMock, return_value=None), \
+         patch.object(_cfg, "DRY_RUN", False):
+        await _monitor_positions(open_pos, [])
+
+    # partial_fill_shares: 0.8 + 1.0 = 1.8
+    assert abs(pos.get("partial_fill_shares", 0) - 1.8) < 0.001, \
+        f"partial_fill_shares={pos.get('partial_fill_shares')}, beklenen 1.8"
+    # partial_realized_usdc: 0.24 + 0.30 * 1.0 = 0.54
+    assert abs(pos.get("partial_realized_usdc", 0) - 0.54) < 0.001, \
+        f"partial_realized_usdc={pos.get('partial_realized_usdc')}, beklenen 0.54"
+
+
+@pytest.mark.asyncio
 async def test_monitor_full_fill_closes_position():
     """Tam fill (making >= shares * 0.98) → pozisyon listeden çıkar."""
     import config as _cfg
