@@ -2,6 +2,7 @@
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import asyncio
 import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,12 +18,16 @@ from main_loop import _run_council, _scan_and_execute, _monitor_positions, _load
 @pytest.fixture(autouse=True)
 def default_ws_prices():
     """Monitor testlerinde ws_prices varsayılan olarak geçerli fiyat döndürür.
+    asyncio.wait_for her zaman TimeoutError → tüm eski testler REST heartbeat path'ten geçer.
     Stale-Gamma testleri ws_prices'ı None döndürecek şekilde override eder.
     """
-    with patch("main_loop.ws_prices") as mock_ws:
+    with patch("main_loop.ws_prices") as mock_ws, \
+         patch("main_loop.asyncio.wait_for", new_callable=AsyncMock,
+               side_effect=asyncio.TimeoutError):
         mock_ws.get_bid.return_value = 0.50
         mock_ws.get_ask.return_value = 0.50
         mock_ws.subscribe.return_value = None
+        mock_ws.get_price_event.return_value = asyncio.Event()
         yield mock_ws
 
 
@@ -1136,3 +1141,107 @@ async def test_monitor_sets_price_source_clob_rest_ask_complement_for_no_rest_fa
         f"Beklenen clob_rest_ask_complement, alınan: {pos.get('price_source')}"
     assert pos.get("mae_data_quality") == "estimated", \
         f"Beklenen estimated, alınan: {pos.get('mae_data_quality')}"
+
+
+# ── Faz 2: WS event-driven _monitor_positions ────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_monitor_ws_path_returns_true_and_makes_no_rest_calls():
+    """WS event anında gelirse True döner ve current_price/fetch_by_slug çağrılmaz."""
+    import config as _cfg
+    import data.ws_prices as _ws
+    _ws._price_event = None
+    pos = _pos_with_token("YES")
+    pos["_cached_hl_price"]          = 95000.0
+    pos["_cached_seconds_remaining"] = 900
+
+    with patch("main_loop.current_price",       new_callable=AsyncMock) as mock_hl, \
+         patch("main_loop.fetch_by_slug",        new_callable=AsyncMock) as mock_pm, \
+         patch("main_loop.check_exit",           return_value=None), \
+         patch("main_loop.asyncio.wait_for",     new_callable=AsyncMock, return_value=None), \
+         patch.object(_cfg, "DRY_RUN", True):
+        result = await _monitor_positions([pos], [])
+
+    assert result is True, "WS event tetiklendi → True dönmeli"
+    mock_hl.assert_not_called(), "WS path'te current_price (REST) çağrılmamalı"
+    mock_pm.assert_not_called(), "WS path'te fetch_by_slug (REST) çağrılmamalı"
+
+
+@pytest.mark.asyncio
+async def test_monitor_rest_path_returns_false_and_refreshes_cache():
+    """WS event 7s içinde gelmezse False döner, cache güncellenir."""
+    import config as _cfg
+    pos = _pos_with_token("YES")
+    fake_window = {"best_ask": 0.52, "best_bid": 0.50, "seconds_remaining": 888, "neg_risk": False}
+
+    with patch("main_loop.current_price",       new_callable=AsyncMock, return_value=96000.0), \
+         patch("main_loop.fetch_by_slug",        new_callable=AsyncMock, return_value={}), \
+         patch("main_loop.parse_market_window",  return_value=fake_window), \
+         patch("main_loop.check_exit",           return_value=None), \
+         patch.object(_cfg, "DRY_RUN", True):
+        # autouse fixture zaten asyncio.wait_for → TimeoutError yapar (REST path)
+        result = await _monitor_positions([pos], [])
+
+    assert result is False, "Timeout → False dönmeli"
+    assert pos.get("_cached_hl_price")          == 96000.0, "HL cache güncellenmeli"
+    assert pos.get("_cached_seconds_remaining") == 888,     "seconds_remaining cache güncellenmeli"
+
+
+@pytest.mark.asyncio
+async def test_monitor_ws_path_skips_closing_position():
+    """_closing=True pozisyon WS event path'te check_exit çağrılmadan skip edilir."""
+    import config as _cfg
+    pos = _pos_with_token("YES")
+    pos["_cached_hl_price"]          = 95000.0
+    pos["_cached_seconds_remaining"] = 900
+    pos["_closing"] = True
+
+    mock_check = MagicMock(return_value="stop_loss_hit")
+    with patch("main_loop.check_exit",       mock_check), \
+         patch("main_loop.asyncio.wait_for", new_callable=AsyncMock, return_value=None), \
+         patch.object(_cfg, "DRY_RUN", True):
+        await _monitor_positions([pos], [])
+
+    mock_check.assert_not_called(), "_closing pozisyonunda check_exit çağrılmamalı"
+
+
+@pytest.mark.asyncio
+async def test_monitor_live_sets_closing_true_before_sell():
+    """LIVE: exit kararında _closing=True sell_position() çağrısı öncesinde set edilir."""
+    import config as _cfg
+    pos = _pos_with_token("YES")
+    pos["_cached_hl_price"]          = 95000.0
+    pos["_cached_seconds_remaining"] = 900
+
+    closing_at_call = {}
+    async def fake_sell(p):
+        closing_at_call["val"] = p.get("_closing")
+        return 0.30
+
+    with patch("main_loop.check_exit",          return_value="stop_loss_hit"), \
+         patch("main_loop.sell_position",        side_effect=fake_sell), \
+         patch("main_loop.log_position_close",  new_callable=AsyncMock), \
+         patch("main_loop.asyncio.wait_for",    new_callable=AsyncMock, return_value=None), \
+         patch.object(_cfg, "DRY_RUN", False):
+        await _monitor_positions([pos], [])
+
+    assert closing_at_call.get("val") is True, "sell_position() çağrısında _closing=True olmalı"
+
+
+@pytest.mark.asyncio
+async def test_monitor_live_resets_closing_on_fak_fail():
+    """LIVE: sell_position() None dönerse _closing=False reset edilir, pozisyon listede kalır."""
+    import config as _cfg
+    pos = _pos_with_token("YES")
+    pos["_cached_hl_price"]          = 95000.0
+    pos["_cached_seconds_remaining"] = 900
+    open_pos = [pos]
+
+    with patch("main_loop.check_exit",         return_value="stop_loss_hit"), \
+         patch("main_loop.sell_position",       new_callable=AsyncMock, return_value=None), \
+         patch("main_loop.asyncio.wait_for",   new_callable=AsyncMock, return_value=None), \
+         patch.object(_cfg, "DRY_RUN", False):
+        await _monitor_positions(open_pos, [])
+
+    assert pos.get("_closing") is False, "FAK fail → _closing=False resetlenmeli"
+    assert len(open_pos) == 1,           "FAK fail → pozisyon listede kalmalı"

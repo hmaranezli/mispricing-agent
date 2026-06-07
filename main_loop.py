@@ -290,75 +290,117 @@ async def _monitor_positions(
     closed_today:   list[dict],
     conn=None,
     failed_slugs: set | None = None,
-) -> None:
-    """Açık pozisyonları izler, çıkış koşulu varsa kapatır.
+) -> bool:
+    """Açık pozisyonları izler. WS event gelince hızlı path, 7s timeout → REST heartbeat.
+
+    Döner:
+      True  → WS event tetikledi (scan yapma — henüz erken)
+      False → 7s timeout (REST refresh yapıldı — scan zamanı)
 
     failed_slugs: kapanan pozisyon slug'ları buraya eklenir → aynı pencere yeniden açılmaz.
     """
+    price_event = ws_prices.get_price_event()
+    try:
+        await asyncio.wait_for(price_event.wait(), timeout=float(SCAN_INTERVAL_SECS))
+        price_event.clear()
+        ws_triggered = True
+    except asyncio.TimeoutError:
+        ws_triggered = False
+
     for pos in list(open_positions):
+        if pos.get("_closing"):
+            continue
         try:
-            hl_price   = await current_price(pos["asset"])
-            market_raw = await fetch_by_slug(pos["slug"])
-            window     = parse_market_window(market_raw)
-
-            if window is None:
-                resolution = await fetch_resolved(pos["slug"])
-                if resolution:
-                    pm_exit = resolution["yes_exit"] if pos["action"] == "YES" else resolution["no_exit"]
-                    closed = close_position(pos, "market_resolved", pm_exit_price=pm_exit,
-                                            exit_hl_price=hl_price)
-                    await log_position_close(conn, closed)
-                    open_positions.remove(pos)
-                    closed_today.append(closed)
-                # fetch_resolved da None → geçici API hatası, bu döngüde atla
-                # Pozisyonu kapatma: bir sonraki scan döngüsünde tekrar dene
-                continue
-
-            # YES: WS bid → CLOB REST bid. NO: YES ask → CLOB REST ask.
-            # Gamma/window fallback KALDIRILDI: stale market-açılış fiyatı
-            # yanlış stop_loss tetikler. Fiyat yoksa bu döngüyü atla.
-            yes_tid = pos.get("yes_token_id", "")
-            if pos["action"] == "YES":
-                pm_yes_price = ws_prices.get_bid(yes_tid)
-                if pm_yes_price is None:
-                    pm_yes_price = await get_clob_price(yes_tid, "SELL")
-                    _price_source, _data_quality = "clob_rest_bid", "exact"
-                else:
+            if ws_triggered:
+                # ── WS hızlı path: REST yok, cached context ───────────────
+                hl_price          = pos.get("_cached_hl_price") or pos.get("ref_price", 0)
+                seconds_remaining = pos.get("_cached_seconds_remaining", 900)
+                yes_tid           = pos.get("yes_token_id", "")
+                if pos["action"] == "YES":
+                    pm_yes_price = ws_prices.get_bid(yes_tid)
                     _price_source, _data_quality = "ws_bid", "exact"
-            else:
-                pm_yes_price = ws_prices.get_ask(yes_tid)
-                if pm_yes_price is None:
-                    pm_yes_price = await get_clob_price(yes_tid, "BUY")
-                    _price_source, _data_quality = "clob_rest_ask_complement", "estimated"
                 else:
+                    pm_yes_price = ws_prices.get_ask(yes_tid)
                     _price_source, _data_quality = "ws_ask_complement", "estimated"
-            if pm_yes_price is None:
-                continue  # fiyat yok → bu döngüyü atla, bir sonrakinde tekrar dene
-            exit_reason = check_exit(pos, hl_price,
-                                     pm_yes_price,
-                                     window["seconds_remaining"])
+                if pm_yes_price is None:
+                    continue
+            else:
+                # ── REST heartbeat: tam refresh, cache yaz ─────────────────
+                hl_price   = await current_price(pos["asset"])
+                pos["_cached_hl_price"] = hl_price
+                market_raw = await fetch_by_slug(pos["slug"])
+                window     = parse_market_window(market_raw)
+
+                if window is None:
+                    resolution = await fetch_resolved(pos["slug"])
+                    if resolution:
+                        pm_exit = (resolution["yes_exit"] if pos["action"] == "YES"
+                                   else resolution["no_exit"])
+                        closed = close_position(pos, "market_resolved",
+                                                pm_exit_price=pm_exit, exit_hl_price=hl_price)
+                        await log_position_close(conn, closed)
+                        open_positions.remove(pos)
+                        closed_today.append(closed)
+                    # fetch_resolved da None → geçici API hatası, bu döngüde atla
+                    continue
+
+                pos["_cached_seconds_remaining"] = window["seconds_remaining"]
+                seconds_remaining = window["seconds_remaining"]
+                yes_tid = pos.get("yes_token_id", "")
+                if pos["action"] == "YES":
+                    pm_yes_price = ws_prices.get_bid(yes_tid)
+                    if pm_yes_price is None:
+                        pm_yes_price = await get_clob_price(yes_tid, "SELL")
+                        _price_source, _data_quality = "clob_rest_bid", "exact"
+                    else:
+                        _price_source, _data_quality = "ws_bid", "exact"
+                else:
+                    pm_yes_price = ws_prices.get_ask(yes_tid)
+                    if pm_yes_price is None:
+                        pm_yes_price = await get_clob_price(yes_tid, "BUY")
+                        _price_source, _data_quality = "clob_rest_ask_complement", "estimated"
+                    else:
+                        _price_source, _data_quality = "ws_ask_complement", "estimated"
+                if pm_yes_price is None:
+                    continue  # fiyat yok → bu döngüyü atla, bir sonrakinde tekrar dene
+
+            exit_reason = check_exit(pos, hl_price, pm_yes_price, seconds_remaining)
             # Gerçek fiyat kaynağını yaz — check_exit "rest" hardcode eder, biz overwrite ederiz
-            pos["price_source"]    = _price_source
+            pos["price_source"]     = _price_source
             pos["mae_data_quality"] = _data_quality
+
             if exit_reason:
                 if config.DRY_RUN:
                     if pos["action"] == "NO":
                         _no_bid = ws_prices.get_bid(pos.get("no_token_id", ""))
-                        pm_exit = _no_bid if _no_bid is not None else round(1 - window["best_ask"], 4)
+                        if ws_triggered:
+                            pm_exit = (_no_bid if _no_bid is not None
+                                       else round(1 - pm_yes_price, 4))
+                        else:
+                            pm_exit = (_no_bid if _no_bid is not None
+                                       else round(1 - window["best_ask"], 4))
                     else:
                         _yes_bid = ws_prices.get_bid(pos.get("yes_token_id", ""))
-                        pm_exit = _yes_bid if _yes_bid is not None else window["best_bid"]
+                        pm_exit = (_yes_bid if _yes_bid is not None
+                                   else (pm_yes_price if ws_triggered else window["best_bid"]))
                 else:
-                    # LIVE: gerçek SELL order gönder — WS bid varsa kullan
+                    # LIVE: _closing=True → duplicate sell koruması, sonra gerçek SELL order
+                    pos["_closing"] = True
                     if pos["action"] == "NO":
                         _no_bid = ws_prices.get_bid(pos.get("no_token_id", ""))
-                        pos["current_bid"] = _no_bid if _no_bid is not None else round(1 - window["best_ask"], 4)
+                        pos["current_bid"] = (_no_bid if _no_bid is not None
+                                              else round(1 - pm_yes_price, 4)
+                                              if ws_triggered
+                                              else round(1 - window["best_ask"], 4))
                     else:
                         _yes_bid = ws_prices.get_bid(pos.get("yes_token_id", ""))
-                        pos["current_bid"] = _yes_bid if _yes_bid is not None else window["best_bid"]
+                        pos["current_bid"] = (_yes_bid if _yes_bid is not None
+                                              else (pm_yes_price if ws_triggered
+                                                    else window["best_bid"]))
                     pm_exit = await sell_position(pos)
                     if pm_exit is None:
-                        # FAK kill veya hata — pozisyonu açık bırak, sonraki döngüde tekrar dene
+                        # FAK kill veya hata — _closing resetle, pozisyonu açık bırak
+                        pos["_closing"] = False
                         print(f"[monitor] {pos['slug']} SELL başarısız — pozisyon açık kalıyor")
                         continue
                 closed = close_position(pos, exit_reason, pm_exit_price=pm_exit,
@@ -373,6 +415,8 @@ async def _monitor_positions(
 
         except Exception as e:
             print(f"[monitor] {pos['slug']} hata: {e}")
+
+    return ws_triggered
 
 
 async def main() -> None:
