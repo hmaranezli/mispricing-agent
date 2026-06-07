@@ -100,8 +100,8 @@
     "semantic_hash": "4bd831bdb6e5af961fe5c5cc7f56c4d0"
   },
   "/root/mispricing_agent/main_loop.py": {
-    "mtime": 1780842745.6317558,
-    "ast_hash": "28c44f551226f4204b1b923d9dc092e8",
+    "mtime": 1780849008.3144484,
+    "ast_hash": "c1bcf0907df4779f944b4e1db5a1cc29",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/tests/test_monitor.py": {
@@ -115,13 +115,13 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/tests/test_position.py": {
-    "mtime": 1780836709.115675,
-    "ast_hash": "a42ceadac804deadd2a1f81ed64881e0",
+    "mtime": 1780845180.638166,
+    "ast_hash": "cd21c30a613bab6e60f1067c37578254",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/tests/test_main_loop.py": {
-    "mtime": 1780842722.7345588,
-    "ast_hash": "8b945b73dc5d6a036671f208c664bd32",
+    "mtime": 1780849013.5154853,
+    "ast_hash": "8221469426fea497aca480c7f6f2c428",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/tests/test_executor.py": {
@@ -190,8 +190,8 @@
     "semantic_hash": "aacae764f1892cd0c03e6ac78cd93bb9"
   },
   "/root/mispricing_agent/position/manager.py": {
-    "mtime": 1780836730.7748384,
-    "ast_hash": "a8ee03f969df452e49782010852a433e",
+    "mtime": 1780845153.8359692,
+    "ast_hash": "2f7f331e41cd1dc4c9b6081de09465bb",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/CLAUDE.md": {
@@ -505,13 +505,13 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/tests/test_ws_prices.py": {
-    "mtime": 1780659819.0748932,
-    "ast_hash": "d066e506740f142f8336716e24bf9e93",
+    "mtime": 1780844857.8768713,
+    "ast_hash": "e3dc9522df6d372e8bc5d767b72f03ea",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/data/ws_prices.py": {
-    "mtime": 1780753841.6764824,
-    "ast_hash": "f91f833c507c69928cc224b1259ec5b2",
+    "mtime": 1780844876.045027,
+    "ast_hash": "b210385c5642db8afcec5068d16295d1",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/docs/superpowers/plans/2026-06-05-clob-price-accuracy.md": {
@@ -547,6 +547,16 @@
   "/root/mispricing_agent/docs/superpowers/plans/2026-06-07-faz1-mae-mfe-telemetry.md": {
     "mtime": 1780836569.625522,
     "ast_hash": "5d4306f6f3c4bcbb362b1226913b0f20",
+    "semantic_hash": ""
+  },
+  "/root/mispricing_agent/docs/superpowers/specs/2026-06-07-faz2-ws-event-driven-monitor-design.md": {
+    "mtime": 1780844177.4420414,
+    "ast_hash": "7278403cfeae635ab235bb2dd72baee8",
+    "semantic_hash": ""
+  },
+  "/root/mispricing_agent/docs/superpowers/plans/2026-06-07-faz2-ws-event-driven-monitor.md": {
+    "mtime": 1780844470.2945507,
+    "ast_hash": "5c16ee5fcb06adca078f56e3935bd824",
     "semantic_hash": ""
   }
 }
