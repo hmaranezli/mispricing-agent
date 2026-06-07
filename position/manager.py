@@ -124,6 +124,21 @@ def check_exit(
         current_val = 1 - pm_yes_price
         target_val  = 1 - position["fair_value"]
 
+    # ── MAE/MFE in-memory tracking ────────────────────────────────────────────
+    if entry_price and entry_price > 0:
+        current_pct = (current_val - entry_price) / entry_price
+        position["price_source"] = "rest"
+        position["mae_data_quality"] = "estimated" if position["action"] == "NO" else "rest"
+        if position.get("mae_px") is None or current_val < position["mae_px"]:
+            position["mae_px"]  = current_val
+            position["mae_pct"] = current_pct
+            position["mae_ts"]  = now.isoformat()
+        if position.get("mfe_px") is None or current_val > position["mfe_px"]:
+            position["mfe_px"]  = current_val
+            position["mfe_pct"] = current_pct
+            position["mfe_ts"]  = now.isoformat()
+    # ─────────────────────────────────────────────────────────────────────────
+
     # 3. Kâr hedefi — yalnızca BÜYÜK + ONAYLANMIŞ kazançta erken çıkış
     #    a) edge'in PROFIT_TARGET_FRACTION'ı yakalandı (oransal)
     #    b) mutlak kazanç PROFIT_LOCK_MIN'i geçti (round-trip slippage'i hak etsin)
@@ -150,6 +165,13 @@ def check_exit(
     # 5. Dynamic stop-loss: erken geniş, vadeye yakın dar (gamma trap koruması)
     sl_threshold = _dynamic_stop(held_seconds, time_to_expiry_secs)
     if current_val < entry_price * (1 - sl_threshold):
+        position.setdefault("sl_trigger_px", current_val)
+        position.setdefault("first_trigger_ts", now.isoformat())
+        if entry_price and entry_price > 0:
+            position.setdefault(
+                "sl_trigger_pct",
+                (current_val - entry_price) / entry_price,
+            )
         return "stop_loss_hit"
 
     # 6. Varsayılan: resolve'a kadar tut

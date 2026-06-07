@@ -285,3 +285,86 @@ def test_close_position_exit_hl_price_none_when_not_given():
     }
     closed = close_position(pos, "market_expired")
     assert closed.get("exit_hl_price") is None
+
+
+# ── Task 3: MAE/MFE in-memory tracking + stop trigger snapshot ───────────────
+
+def test_check_exit_tracks_mae_when_price_drops():
+    """YES pozisyon: fiyat düşünce mae_px güncellenir."""
+    pos = _position("YES", held_minutes=5)
+    check_exit(pos, hl_price=95000, pm_yes_price=0.32, time_to_expiry_secs=500)
+    assert pos.get("mae_px") == pytest.approx(0.32, abs=1e-6)
+    expected_pct = (0.32 - 0.35) / 0.35
+    assert pos.get("mae_pct") == pytest.approx(expected_pct, abs=1e-6)
+    assert pos.get("mae_ts") is not None
+
+
+def test_check_exit_tracks_mfe_when_price_rises():
+    """YES pozisyon: fiyat yükselince mfe_px güncellenir."""
+    pos = _position("YES", held_minutes=5)
+    check_exit(pos, hl_price=95000, pm_yes_price=0.50, time_to_expiry_secs=500)
+    assert pos.get("mfe_px") == pytest.approx(0.50, abs=1e-6)
+    expected_pct = (0.50 - 0.35) / 0.35
+    assert pos.get("mfe_pct") == pytest.approx(expected_pct, abs=1e-6)
+    assert pos.get("mfe_ts") is not None
+
+
+def test_check_exit_mae_sticks_to_worst_value():
+    """MAE, fiyat toparlansa bile en kötü değerde kalır."""
+    pos = _position("YES", held_minutes=5)
+    check_exit(pos, hl_price=95000, pm_yes_price=0.28, time_to_expiry_secs=500)
+    first_mae = pos["mae_px"]
+    check_exit(pos, hl_price=95000, pm_yes_price=0.40, time_to_expiry_secs=490)
+    assert pos["mae_px"] == pytest.approx(first_mae, abs=1e-6)
+
+
+def test_check_exit_mfe_sticks_to_best_value():
+    """MFE, fiyat düşse bile en iyi değerde kalır."""
+    pos = _position("YES", held_minutes=5)
+    check_exit(pos, hl_price=95000, pm_yes_price=0.52, time_to_expiry_secs=500)
+    first_mfe = pos["mfe_px"]
+    check_exit(pos, hl_price=95000, pm_yes_price=0.38, time_to_expiry_secs=490)
+    assert pos["mfe_px"] == pytest.approx(first_mfe, abs=1e-6)
+
+
+def test_check_exit_no_position_mae_data_quality_estimated():
+    """NO pozisyon: mae_data_quality='estimated' (1-YES ask, gerçek NO bid değil)."""
+    pos = _position("NO", held_minutes=5)
+    check_exit(pos, hl_price=95000, pm_yes_price=0.70, time_to_expiry_secs=500)
+    assert pos.get("mae_data_quality") == "estimated"
+    assert pos.get("price_source") == "rest"
+
+
+def test_check_exit_yes_position_mae_data_quality_rest():
+    """YES pozisyon: mae_data_quality='rest'."""
+    pos = _position("YES", held_minutes=5)
+    check_exit(pos, hl_price=95000, pm_yes_price=0.40, time_to_expiry_secs=500)
+    assert pos.get("mae_data_quality") == "rest"
+    assert pos.get("price_source") == "rest"
+
+
+def test_check_exit_stop_captures_trigger_snapshot():
+    """Stop tetiklenince sl_trigger_px, sl_trigger_pct, first_trigger_ts set edilir."""
+    pos = _position("YES", held_minutes=5)
+    entry = pos["pm_entry_price"]  # 0.35
+    # STOP_LOSS_MAX=0.30: eşik = entry * (1 - 0.30) = 0.245
+    crash_price = round(entry * 0.68, 4)  # 0.238 — stop eşiğinin altında
+    result = check_exit(pos, hl_price=95000, pm_yes_price=crash_price, time_to_expiry_secs=500)
+    assert result == "stop_loss_hit"
+    assert pos.get("sl_trigger_px") == pytest.approx(crash_price, abs=1e-6)
+    expected_pct = (crash_price - entry) / entry
+    assert pos.get("sl_trigger_pct") == pytest.approx(expected_pct, abs=1e-4)
+    assert pos.get("first_trigger_ts") is not None
+
+
+def test_check_exit_stop_trigger_ts_not_overwritten_on_retry():
+    """İkinci stop tetiklemesinde first_trigger_ts değişmez (setdefault)."""
+    pos = _position("YES", held_minutes=5)
+    entry = pos["pm_entry_price"]
+    crash_price = round(entry * 0.68, 4)
+    # İlk tetikleme
+    check_exit(pos, hl_price=95000, pm_yes_price=crash_price, time_to_expiry_secs=500)
+    first_ts = pos["first_trigger_ts"]
+    # FAK başarısız oldu, döngü tekrar çağırdı
+    check_exit(pos, hl_price=95000, pm_yes_price=crash_price - 0.01, time_to_expiry_secs=490)
+    assert pos["first_trigger_ts"] == first_ts, "first_trigger_ts FAK retry'da değişmemeli"
