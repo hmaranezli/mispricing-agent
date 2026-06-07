@@ -24,13 +24,17 @@ import data.ws_prices as ws_prices
 _FLOOR_BUFFER = 0.01   # bid'den bu kadar aşağı floor — PRICE_PREMIUM=0.01 ile simetrik
 
 
-async def sell_position(pos: dict) -> float | None:
+async def sell_position(pos: dict) -> tuple[float, float] | None:
     """Açık pozisyonun token'larını FAK SELL order ile satar.
 
     pos: position dict — action, yes_token_id, no_token_id, shares gerekli
     Döner:
-      float  → fill fiyatı (satış gerçekleşti)
-      None   → FAK kill / hata (satış GERÇEKLEŞMEDİ — pozisyonu açık bırak)
+      (fill_price, making_shares) → satış gerçekleşti (kısmi veya tam)
+      None                        → FAK kill / hata (satış GERÇEKLEŞMEDİ — pozisyonu açık bırak)
+
+    Tam/kısmi ayrımı çağıran (_monitor_positions) tarafından yapılır:
+      making_shares >= pos["shares"] * 0.98 → tam kapanış
+      making_shares < pos["shares"] * 0.98  → kısmi fill, shares güncelle, tekrar dene
 
     Side effects (pos dict güncellenir):
       sell_attempt_count, sell_unmatched_count, exit_bid_at_trigger,
@@ -105,13 +109,14 @@ async def sell_position(pos: dict) -> float | None:
                 fill_price = round(taking / making, 6)
                 _record_fill(pos, fill_price)
                 print(f"[sell] {pos.get('slug')}: SELL FILLED {making:.4f} shares → ${taking:.4f} @ {fill_price:.4f}")
-                return fill_price
+                return (fill_price, making)
         except (ValueError, TypeError):
             pass
-        # takingAmount/makingAmount yoksa başarılı satış kabul et, floor fiyatı kullan
+        # takingAmount/makingAmount yoksa başarılı satış kabul et, tam fill say
         _record_fill(pos, floor_price)
+        assumed_making = pos.get("shares") or 0.0
         print(f"[sell] {pos.get('slug')}: SELL matched ama amounts eksik, floor={floor_price:.4f}")
-        return floor_price
+        return (floor_price, assumed_making)
 
     # status != matched → FAK kill veya başka hata → pozisyonu açık bırak
     pos["sell_unmatched_count"] = pos.get("sell_unmatched_count", 0) + 1

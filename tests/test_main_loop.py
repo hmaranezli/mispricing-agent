@@ -20,7 +20,12 @@ def default_ws_prices():
     """Monitor testlerinde ws_prices varsayılan olarak geçerli fiyat döndürür.
     asyncio.wait_for her zaman TimeoutError → tüm eski testler REST heartbeat path'ten geçer.
     Stale-Gamma testleri ws_prices'ı None döndürecek şekilde override eder.
+    _last_rest_ts her test öncesinde sıfırlanır — heartbeat starvation testleri kendi
+    değerlerini set eder.
     """
+    import main_loop as _ml
+    import time as _time
+    _ml._last_rest_ts = _time.time()  # heartbeat_due=False → WS path testleri temiz çalışır
     with patch("main_loop.ws_prices") as mock_ws, \
          patch("main_loop.asyncio.wait_for", new_callable=AsyncMock,
                side_effect=asyncio.TimeoutError):
@@ -726,7 +731,7 @@ async def test_live_monitor_calls_sell_position_on_exit():
          patch("main_loop.fetch_by_slug",      new_callable=AsyncMock, return_value={}), \
          patch("main_loop.parse_market_window", return_value=fake_window), \
          patch("main_loop.check_exit",          return_value="profit_target_hit"), \
-         patch("main_loop.sell_position",       new_callable=AsyncMock, return_value=0.91) as mock_sell:
+         patch("main_loop.sell_position",       new_callable=AsyncMock, return_value=(0.91, 71.43)) as mock_sell:
         await _monitor_positions(open_pos, closed)
 
     mock_sell.assert_called_once()
@@ -1252,6 +1257,31 @@ async def test_monitor_live_resets_closing_on_fak_fail():
 
 
 @pytest.mark.asyncio
+async def test_monitor_live_no_double_sell_on_log_failure():
+    """SELL başarılı + DB log exception → pozisyon open_positions'dan çıkarılmış olmalı.
+
+    Başarılı SELL sonrası log hatası _closing=False yapmamalı ve pozisyon listede kalmamalı.
+    Aksi halde sonraki tick'te aynı pozisyon tekrar satılmaya çalışılır (double-sell riski).
+    """
+    import config as _cfg
+    pos = _pos_with_token("YES")
+    pos["_cached_hl_price"]          = 95000.0
+    pos["_cached_seconds_remaining"] = 900
+    open_pos = [pos]
+
+    shares = pos.get("shares", 1.0)
+    with patch("main_loop.check_exit",          return_value="stop_loss_hit"), \
+         patch("main_loop.sell_position",       new_callable=AsyncMock, return_value=(0.30, shares)), \
+         patch("main_loop.close_position",      return_value={"slug": pos["slug"]}), \
+         patch("main_loop.log_position_close",  new_callable=AsyncMock, side_effect=Exception("DB çöktü")), \
+         patch("main_loop.asyncio.wait_for",    new_callable=AsyncMock, return_value=None), \
+         patch.object(_cfg, "DRY_RUN", False):
+        await _monitor_positions(open_pos, [])
+
+    assert len(open_pos) == 0, "SELL başarılı → log hatası olsa bile pozisyon listeden çıkarılmalı"
+
+
+@pytest.mark.asyncio
 async def test_monitor_ws_path_skips_position_when_hl_cache_empty():
     """WS event geldiğinde _cached_hl_price yoksa pozisyon skip edilmeli — crash yok, check_exit yok.
 
@@ -1270,6 +1300,88 @@ async def test_monitor_ws_path_skips_position_when_hl_cache_empty():
 
     assert result is True,             "WS path tetiklendi → True dönmeli"
     mock_check.assert_not_called()     # cache yok → check_exit çağrılmamalı
+
+
+@pytest.mark.asyncio
+async def test_monitor_partial_fill_updates_shares_and_keeps_position():
+    """Kısmi fill (making < shares * 0.98) → pozisyon listede kalır, shares azalır, _closing False."""
+    import config as _cfg
+    pos = _pos_with_token("YES")
+    pos["_cached_hl_price"]          = 95000.0
+    pos["_cached_seconds_remaining"] = 900
+    pos["shares"]                    = 2.5
+    open_pos = [pos]
+
+    # making=1.5, old_shares=2.5 → kısmi fill (1.5 < 2.5 * 0.98)
+    with patch("main_loop.check_exit",        return_value="stop_loss_hit"), \
+         patch("main_loop.sell_position",     new_callable=AsyncMock, return_value=(0.30, 1.5)), \
+         patch("main_loop.asyncio.wait_for",  new_callable=AsyncMock, return_value=None), \
+         patch.object(_cfg, "DRY_RUN", False):
+        await _monitor_positions(open_pos, [])
+
+    assert len(open_pos) == 1,                         "Kısmi fill → pozisyon listede kalmalı"
+    assert abs(pos["shares"] - 1.0) < 0.001,           "shares = 2.5 - 1.5 = 1.0 olmalı"
+    assert pos.get("_closing") is False,               "_closing resetlenmeli (sonraki deneme için)"
+    assert pos.get("partial_fill_count") == 1,         "partial_fill_count artmalı"
+
+
+@pytest.mark.asyncio
+async def test_monitor_full_fill_closes_position():
+    """Tam fill (making >= shares * 0.98) → pozisyon listeden çıkar."""
+    import config as _cfg
+    pos = _pos_with_token("YES")
+    pos["_cached_hl_price"]          = 95000.0
+    pos["_cached_seconds_remaining"] = 900
+    pos["shares"]                    = 2.5
+    open_pos = [pos]
+
+    # making=2.49 ≥ 2.5*0.98=2.45 → tam fill sayılır
+    with patch("main_loop.check_exit",        return_value="stop_loss_hit"), \
+         patch("main_loop.sell_position",     new_callable=AsyncMock, return_value=(0.30, 2.49)), \
+         patch("main_loop.close_position",    return_value={"slug": pos["slug"]}), \
+         patch("main_loop.log_position_close", new_callable=AsyncMock), \
+         patch("main_loop.asyncio.wait_for",  new_callable=AsyncMock, return_value=None), \
+         patch.object(_cfg, "DRY_RUN", False):
+        await _monitor_positions(open_pos, [])
+
+    assert len(open_pos) == 0, "Tam fill → pozisyon listeden çıkarılmalı"
+
+
+@pytest.mark.asyncio
+async def test_monitor_forces_rest_heartbeat_when_overdue():
+    """WS event gelse bile heartbeat süresi dolduysa REST path çalışmalı (starvation önleme).
+
+    WS sub-saniye tick'ler gelirse 7s timeout asla ateşlenmez → HL cache güncellenmez,
+    scan/heal bloke olur. Çözüm: last_rest_ts izle, 7s geçtiyse WS event olsa bile REST yap.
+    """
+    import main_loop as ml
+    import config as _cfg
+    import time
+
+    pos = _pos_with_token("YES")
+    pos["_cached_hl_price"]          = 95000.0
+    pos["_cached_seconds_remaining"] = 900
+    fake_window = {"best_ask": 0.52, "best_bid": 0.50, "seconds_remaining": 880, "neg_risk": False}
+
+    # Heartbeat'in son kez 10s önce çalıştığını simüle et (7s sınırı aşılmış)
+    original_last = ml._last_rest_ts
+    ml._last_rest_ts = time.time() - 10.0
+    try:
+        with patch("main_loop.current_price",      new_callable=AsyncMock, return_value=96000.0) as mock_hl, \
+             patch("main_loop.fetch_by_slug",       new_callable=AsyncMock, return_value={}) as mock_pm, \
+             patch("main_loop.parse_market_window", return_value=fake_window), \
+             patch("main_loop.check_exit",          return_value=None), \
+             patch("main_loop.asyncio.wait_for",    new_callable=AsyncMock, return_value=None), \
+             patch.object(_cfg, "DRY_RUN", True):
+            # WS event geliyor (wait_for → None, TimeoutError değil) ama heartbeat süresi dolmuş
+            result = await _monitor_positions([pos], [])
+    finally:
+        ml._last_rest_ts = original_last
+
+    assert result is False,         "Heartbeat vadesi dolmuş → REST path → False dönmeli (scan tetiklensin)"
+    mock_hl.assert_called_once(),   "HL fiyatı REST'ten yenilenmeli"
+    mock_pm.assert_called_once(),   "PM market bilgisi REST'ten yenilenmeli"
+    assert pos.get("_cached_hl_price") == 96000.0, "HL cache güncellenmeli"
 
 
 # ── Task 4: main() scan koşullu ──────────────────────────────────────────────

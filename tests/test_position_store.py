@@ -83,9 +83,10 @@ async def test_sell_position_returns_fill_price_from_taking_making():
     with patch("execution.position_store.get_client", return_value=fake_client), \
          _clob_patch(0.90):
         from execution.position_store import sell_position
-        fill = await sell_position(_open_pos("YES", shares=1.3, bid=0.90))
+        fill_price, making = await sell_position(_open_pos("YES", shares=1.3, bid=0.90))
     expected = round(1.183 / 1.3, 6)  # ≈ 0.91
-    assert abs(fill - expected) < 0.001, f"fill_price={fill:.4f}, beklenen={expected:.4f}"
+    assert abs(fill_price - expected) < 0.001, f"fill_price={fill_price:.4f}, beklenen={expected:.4f}"
+    assert abs(making - 1.3) < 0.001, f"making={making}, beklenen=1.3"
 
 
 @pytest.mark.asyncio
@@ -158,11 +159,11 @@ async def test_sell_position_returns_floor_when_amounts_missing():
     with patch("execution.position_store.get_client", return_value=fake_client), \
          _clob_patch(clob_bid):
         from execution.position_store import sell_position
-        fill = await sell_position(_open_pos("YES", bid=0.88))
+        fill_price, making = await sell_position(_open_pos("YES", bid=0.88))
     expected_floor = round(max(0.01, clob_bid - _FLOOR_BUFFER), 2)
-    assert fill is not None, "matched + amounts eksik → floor_price döner, None değil"
-    assert abs(fill - expected_floor) < 0.001, \
-        f"fill={fill:.4f}, beklenen floor={expected_floor:.4f}"
+    assert fill_price is not None, "matched + amounts eksik → floor_price döner, None değil"
+    assert abs(fill_price - expected_floor) < 0.001, \
+        f"fill={fill_price:.4f}, beklenen floor={expected_floor:.4f}"
 
 
 @pytest.mark.asyncio
@@ -266,9 +267,10 @@ async def test_sell_captures_fill_timing_and_sl_metrics():
          patch("execution.position_store.ws_prices") as mock_ws:
         mock_ws.get_ask.return_value = None
         from execution.position_store import sell_position
-        fill_price = await sell_position(pos)
+        fill_price, making = await sell_position(pos)
 
     assert fill_price == pytest.approx(0.22, abs=1e-3)
+    assert making == pytest.approx(1.3, abs=1e-3)
     assert pos.get("sl_fill_px") == pytest.approx(0.22, abs=1e-3)
 
     entry = 0.35

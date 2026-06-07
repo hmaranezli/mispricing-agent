@@ -2,6 +2,7 @@
 import asyncio
 import sys
 import os
+import time
 from datetime import date, datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -285,6 +286,9 @@ async def _heal_pending_resolutions(
             print(f"[heal] {slug} hata: {e}")
 
 
+_last_rest_ts: float = 0.0  # modül-seviye heartbeat zamanlayıcı
+
+
 async def _monitor_positions(
     open_positions: list[dict],
     closed_today:   list[dict],
@@ -294,18 +298,28 @@ async def _monitor_positions(
     """Açık pozisyonları izler. WS event gelince hızlı path, 7s timeout → REST heartbeat.
 
     Döner:
-      True  → WS event tetikledi (scan yapma — henüz erken)
-      False → 7s timeout (REST refresh yapıldı — scan zamanı)
+      True  → WS hızlı path (scan henüz erken)
+      False → REST heartbeat çalıştı (scan zamanı) — timeout VEYA heartbeat vadesi dolmuş
+
+    Heartbeat starvation koruması: WS sürekli aksa bile her SCAN_INTERVAL_SECS'te bir
+    REST path zorunlu çalışır (HL cache + PM prices yenilenir, scan tetiklenir).
 
     failed_slugs: kapanan pozisyon slug'ları buraya eklenir → aynı pencere yeniden açılmaz.
     """
+    global _last_rest_ts
     price_event = ws_prices.get_price_event()
+    now = time.time()
+    heartbeat_due = (now - _last_rest_ts) >= float(SCAN_INTERVAL_SECS)
+
     try:
         await asyncio.wait_for(price_event.wait(), timeout=float(SCAN_INTERVAL_SECS))
         price_event.clear()
-        ws_triggered = True
+        ws_triggered = not heartbeat_due  # WS event geldi ama heartbeat vadesi dolduysa REST'e düş
     except asyncio.TimeoutError:
         ws_triggered = False
+
+    if not ws_triggered:
+        _last_rest_ts = now
 
     for pos in list(open_positions):
         if pos.get("_closing"):
@@ -399,26 +413,33 @@ async def _monitor_positions(
                         pos["current_bid"] = (_yes_bid if _yes_bid is not None
                                               else (pm_yes_price if ws_triggered
                                                     else window["best_bid"]))
-                    pm_exit = await sell_position(pos)
-                    if pm_exit is None:
+                    sell_result = await sell_position(pos)
+                    if sell_result is None:
                         # FAK kill veya hata — _closing resetle, pozisyonu açık bırak
                         pos["_closing"] = False
                         print(f"[monitor] {pos['slug']} SELL başarısız — pozisyon açık kalıyor")
                         continue
+                    pm_exit, making_shares = sell_result
+                    old_shares = pos.get("shares") or 0.0
+                    if old_shares > 0 and making_shares < old_shares * 0.98:
+                        # Kısmi fill: kalan share'leri tut, sonraki döngüde tekrar dene
+                        pos["shares"] = round(old_shares - making_shares, 6)
+                        pos["_closing"] = False
+                        pos["partial_fill_count"] = pos.get("partial_fill_count", 0) + 1
+                        print(f"[monitor] {pos['slug']} kısmi fill {making_shares:.4f}/{old_shares:.4f} → {pos['shares']:.4f} kalan")
+                        continue
                 closed = close_position(pos, exit_reason, pm_exit_price=pm_exit,
                                         exit_hl_price=hl_price)
+                # SELL borsa tarafında başarılı → pozisyonu HEMEN kaldır.
+                # Log hatası double-sell'e yol açmamalı; reconcile kurtarır.
+                open_positions.remove(pos)
+                closed_today.append(closed)
+                if failed_slugs is not None and exit_reason == "stop_loss_hit":
+                    failed_slugs.add(pos["slug"])
                 try:
                     await log_position_close(conn, closed)
                 except Exception as log_err:
-                    pos["_closing"] = False
-                    print(f"[monitor] {pos['slug']} log hatası: {log_err} — _closing reset, sonraki döngüde tekrar")
-                    raise
-                open_positions.remove(pos)
-                closed_today.append(closed)
-                # Yalnızca stop_loss'ta kilitle: kaybeden tezi aynı pencerede tekrar açma.
-                # profit_target'ta kilitleme — sinyal güçlüyse yüksek-edge re-entry serbest kalsın.
-                if failed_slugs is not None and exit_reason == "stop_loss_hit":
-                    failed_slugs.add(pos["slug"])
+                    print(f"[monitor] {pos['slug']} log hatası: {log_err} — pozisyon kapatıldı, DB yazılamadı")
 
         except Exception as e:
             print(f"[monitor] {pos['slug']} hata: {e}")
