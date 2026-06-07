@@ -17,6 +17,7 @@ NEAR_EXPIRY_SECS       = 90
 STOP_LOSS_MAX          = 0.30  # Erken tutuşta max tolerans (%30) — pozisyonun toparlama vakti var
 STOP_LOSS_MIN          = 0.12  # Vadeye yakında min tolerans (%12) — gamma trap erken tespiti
 MIN_HOLD_SECS          = 30    # İlk 30s: stop_loss çalışmaz — anlık tersine dönüş filtresi
+MIN_PROFIT_CONFIRM_SECS = 3   # WS hızında cycle-sayısı yeterli değil — zaman kapısı
 
 
 def _dynamic_stop(held_secs: float, time_to_expiry_secs: int) -> float:
@@ -152,10 +153,16 @@ def check_exit(
     )
     if profit_ready and not near_expiry:
         position["_profit_confirm"] = position.get("_profit_confirm", 0) + 1
-        if position["_profit_confirm"] >= PROFIT_CONFIRM_CYCLES:
+        position.setdefault("_profit_confirm_first_ts", now.isoformat())
+        elapsed = (now - datetime.fromisoformat(
+            position["_profit_confirm_first_ts"]
+        )).total_seconds()
+        if (position["_profit_confirm"] >= PROFIT_CONFIRM_CYCLES
+                and elapsed >= MIN_PROFIT_CONFIRM_SECS):
             return "profit_target_hit"
     else:
         position["_profit_confirm"] = 0
+        position.pop("_profit_confirm_first_ts", None)
 
     # 4. MIN_HOLD_SECS: ilk 60s içinde stop_loss çalışmaz (anlık ters dönüş gürültüsü)
     held_seconds = (now - opened_at).total_seconds()

@@ -118,26 +118,34 @@ def test_check_exit_holds_when_no_condition_met():
 # ── Task 3: check_exit — kâr hedefi (2-döngü onay + slippage eşiği) ───────────
 
 def test_check_exit_profit_needs_two_cycles_yes():
-    """YES: büyük kâr tek döngüde değil, 2 ardışık döngüde onaylanınca çıkar.
+    """YES: büyük kâr tek döngüde değil, 2 ardışık döngüde + 3s geçince onaylanınca çıkar.
 
     entry=0.35, fair=0.55, edge=0.20; pm=0.53 → captured=0.18 (>=0.10), fraction=0.90 (>=0.85).
-    Tek snapshot spike'ı yanlış çıkış yaptırmasın diye 2 döngü gerek.
+    Tek snapshot spike'ı yanlış çıkış yaptırmasın diye 2 döngü + MIN_PROFIT_CONFIRM_SECS gerek.
     """
     pos = _position(action="YES", held_minutes=5)
     first = check_exit(pos, hl_price=95500, pm_yes_price=0.53, time_to_expiry_secs=900)
     assert first is None, "İlk döngü tek başına çıkış yaptırmamalı"
+    # Zaman kapısını aşmak için first_ts'i 4s önceye al
+    pos["_profit_confirm_first_ts"] = (
+        datetime.now(timezone.utc) - timedelta(seconds=4)
+    ).isoformat()
     second = check_exit(pos, hl_price=95500, pm_yes_price=0.53, time_to_expiry_secs=900)
     assert second == "profit_target_hit"
 
 
 def test_check_exit_profit_needs_two_cycles_no():
-    """NO: büyük kâr 2 ardışık döngüde onaylanınca çıkar.
+    """NO: büyük kâr 2 ardışık döngüde + 3s geçince onaylanınca çıkar.
 
     entry=0.33, fair_NO=0.65, edge=0.32; pm_yes=0.38 → 1-pm=0.62, captured=0.29, fraction=0.906.
     """
     pos = _position(action="NO", held_minutes=5)
     first = check_exit(pos, hl_price=94800, pm_yes_price=0.38, time_to_expiry_secs=900)
     assert first is None
+    # Zaman kapısını aşmak için first_ts'i 4s önceye al
+    pos["_profit_confirm_first_ts"] = (
+        datetime.now(timezone.utc) - timedelta(seconds=4)
+    ).isoformat()
     second = check_exit(pos, hl_price=94800, pm_yes_price=0.38, time_to_expiry_secs=900)
     assert second == "profit_target_hit"
 
@@ -368,3 +376,49 @@ def test_check_exit_stop_trigger_ts_not_overwritten_on_retry():
     # FAK başarısız oldu, döngü tekrar çağırdı
     check_exit(pos, hl_price=95000, pm_yes_price=crash_price - 0.01, time_to_expiry_secs=490)
     assert pos["first_trigger_ts"] == first_ts, "first_trigger_ts FAK retry'da değişmemeli"
+
+
+# ── Task 2: Profit confirm zaman kapısı ──────────────────────────────────────
+
+def test_profit_confirm_time_gate_blocks_exit_when_elapsed_too_short():
+    """Cycles tamamlandı ama <3s geçti → profit_target_hit dönmez."""
+    from datetime import datetime, timezone
+    pos = _position("YES", held_minutes=5)
+    high_price = 0.54
+
+    # İlk çağrı: _profit_confirm_first_ts set edilir
+    result1 = check_exit(pos, hl_price=95000, pm_yes_price=high_price, time_to_expiry_secs=500)
+    assert result1 is None, "İlk cycle: henüz yeterli sayı yok"
+    assert pos.get("_profit_confirm_first_ts") is not None
+
+    # Hemen ikinci çağrı (0ms geçti): cycles=2 tamamlandı ama 3s geçmedi
+    result2 = check_exit(pos, hl_price=95000, pm_yes_price=high_price, time_to_expiry_secs=500)
+    assert result2 is None, "Cycles=2 ama <3s → zaman kapısı bloklamalı"
+
+
+def test_profit_confirm_time_gate_allows_exit_when_elapsed_sufficient():
+    """Cycles tamamlandı VE >=3s geçti → profit_target_hit döner."""
+    from datetime import datetime, timezone, timedelta
+    pos = _position("YES", held_minutes=5)
+    high_price = 0.54
+
+    # _profit_confirm_first_ts'i 4s önceye set et (simüle edilmiş 3s geçmesi)
+    past_ts = (datetime.now(timezone.utc) - timedelta(seconds=4)).isoformat()
+    pos["_profit_confirm_first_ts"] = past_ts
+    pos["_profit_confirm"] = 1  # bir cycle zaten sayılmış
+
+    # Şimdi ikinci çağrı: cycles=2 VE 4s > 3s → çıkış
+    result = check_exit(pos, hl_price=95000, pm_yes_price=high_price, time_to_expiry_secs=500)
+    assert result == "profit_target_hit", f"Beklenen profit_target_hit, alınan: {result}"
+
+
+def test_profit_confirm_reset_clears_first_ts():
+    """Profit hedefi kaybolunca _profit_confirm_first_ts da sıfırlanır."""
+    pos = _position("YES", held_minutes=5)
+    pos["_profit_confirm"] = 1
+    pos["_profit_confirm_first_ts"] = "2026-06-07T10:00:00+00:00"
+
+    # Düşük fiyat → profit_ready=False → reset
+    check_exit(pos, hl_price=95000, pm_yes_price=0.38, time_to_expiry_secs=500)
+    assert pos["_profit_confirm"] == 0
+    assert "_profit_confirm_first_ts" not in pos, "_profit_confirm_first_ts silinmeli"
