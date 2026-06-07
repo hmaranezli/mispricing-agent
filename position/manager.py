@@ -114,9 +114,6 @@ def check_exit(
     opened_at = datetime.fromisoformat(position["opened_at"])
     now = datetime.now(timezone.utc)
     held_minutes = (now - opened_at).total_seconds() / 60
-    if not near_expiry and held_minutes >= config.MAX_HOLD_MINUTES:
-        return "max_hold_time"
-
     entry_price = position["pm_entry_price"]
     if position["action"] == "YES":
         current_val = pm_yes_price
@@ -139,6 +136,10 @@ def check_exit(
             position["mfe_pct"] = current_pct
             position["mfe_ts"]  = now.isoformat()
     # ─────────────────────────────────────────────────────────────────────────
+
+    # 2. Zaman limiti (near_expiry'de engelle — market zaten kapanıyor)
+    if not near_expiry and held_minutes >= config.MAX_HOLD_MINUTES:
+        return "max_hold_time"
 
     # 3. Kâr hedefi — yalnızca BÜYÜK + ONAYLANMIŞ kazançta erken çıkış
     #    a) edge'in PROFIT_TARGET_FRACTION'ı yakalandı (oransal)
