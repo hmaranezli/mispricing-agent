@@ -187,9 +187,16 @@ async def _flush_pending(ws, *, initial_connect: bool = True) -> None:
     if _pending_unsub:
         unsub_batch = list(_pending_unsub)
         _pending_unsub.clear()
+        for tid in unsub_batch:
+            _subscribed.discard(tid)
         msg = json.dumps({"operation": "unsubscribe", "assets_ids": unsub_batch})
         print(f"[ws] Unsubscribe: {len(unsub_batch)} token")
         await ws.send(msg)
+        # Explicit clean close: tüm abonelikler gittiyse bağlantıyı kapat
+        if not _subscribed and not _pending:
+            print("[ws] no subscriptions remaining — clean close")
+            await ws.close(code=1000, reason="no_subscriptions")
+            return
 
     if not _pending:
         return

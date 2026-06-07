@@ -353,3 +353,29 @@ async def test_flush_pending_sends_unsubscribe_message():
     payload = json.loads(first_call)
     assert payload.get("operation") == "unsubscribe"
     assert "tok_unsub" in payload.get("assets_ids", [])
+
+
+# ── Faz 2.5: Explicit Clean Close ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_flush_pending_closes_ws_when_no_subscriptions_remain():
+    """_flush_pending: unsubscribe sonrası subscribed ve pending boşsa ws.close(1000) çağrılır."""
+    _reset()
+    ws._subscribed.add("tok_only")
+    ws._pending_unsub.add("tok_only")
+    # _subscribed ve _pending boş — tüm abonelikler gitti
+    ws_mock = AsyncMock()
+    await ws._flush_pending(ws_mock, initial_connect=False)
+    ws_mock.close.assert_called_once_with(code=1000, reason="no_subscriptions")
+
+
+@pytest.mark.asyncio
+async def test_flush_pending_does_not_close_when_subscriptions_remain():
+    """_flush_pending: başka subscribed token varsa ws.close çağrılmamalı."""
+    _reset()
+    ws._subscribed.add("tok_keep")
+    ws._subscribed.add("tok_unsub")
+    ws._pending_unsub.add("tok_unsub")
+    ws_mock = AsyncMock()
+    await ws._flush_pending(ws_mock, initial_connect=False)
+    ws_mock.close.assert_not_called()
