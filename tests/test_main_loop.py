@@ -1038,3 +1038,101 @@ async def test_handle_ws_resolved_ignores_unrelated_market(monkeypatch):
 
     assert len(open_positions) == 1
     assert len(closed_today) == 0
+
+
+# ── Faz 1.1: price_source overwrite testleri ─────────────────────────────────
+
+def _pos_with_token(action="YES"):
+    """yes_token_id + no_token_id içeren açık pozisyon fixture'ı."""
+    opened_at = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    return {
+        "position_id": "pos-src-001", "asset": "BTC", "action": action,
+        "slug": "btc-up-test-src", "pm_entry_price": 0.35, "fair_value": 0.55,
+        "position_usd": 25.0, "kelly_f": 0.15, "confidence_score": 82.5,
+        "opened_at": opened_at, "status": "open",
+        "yes_token_id": "tok-yes-src", "no_token_id": "tok-no-src",
+    }
+
+
+@pytest.mark.asyncio
+async def test_monitor_sets_price_source_ws_bid_for_yes_ws_price():
+    """YES + WS bid mevcut → price_source='ws_bid', mae_data_quality='exact'."""
+    import config as _cfg
+    pos = _pos_with_token("YES")
+    fake_window = {"best_ask": 0.52, "best_bid": 0.50, "seconds_remaining": 900, "neg_risk": False}
+    with patch("main_loop.current_price",        new_callable=AsyncMock, return_value=95000.0), \
+         patch("main_loop.fetch_by_slug",        new_callable=AsyncMock, return_value={}), \
+         patch("main_loop.parse_market_window",  return_value=fake_window), \
+         patch("main_loop.ws_prices")           as mock_ws, \
+         patch("main_loop.check_exit",           return_value=None), \
+         patch.object(_cfg, "DRY_RUN", True):
+        mock_ws.get_bid.return_value = 0.50
+        mock_ws.get_ask.return_value = 0.52
+        await _monitor_positions([pos], [])
+    assert pos.get("price_source")     == "ws_bid", \
+        f"Beklenen ws_bid, alınan: {pos.get('price_source')}"
+    assert pos.get("mae_data_quality") == "exact", \
+        f"Beklenen exact, alınan: {pos.get('mae_data_quality')}"
+
+
+@pytest.mark.asyncio
+async def test_monitor_sets_price_source_clob_rest_bid_for_yes_rest_fallback():
+    """YES + WS bid None → CLOB REST fallback → price_source='clob_rest_bid', mae_data_quality='exact'."""
+    import config as _cfg
+    pos = _pos_with_token("YES")
+    fake_window = {"best_ask": 0.52, "best_bid": 0.50, "seconds_remaining": 900, "neg_risk": False}
+    with patch("main_loop.current_price",        new_callable=AsyncMock, return_value=95000.0), \
+         patch("main_loop.fetch_by_slug",        new_callable=AsyncMock, return_value={}), \
+         patch("main_loop.parse_market_window",  return_value=fake_window), \
+         patch("main_loop.ws_prices")           as mock_ws, \
+         patch("main_loop.get_clob_price",       new_callable=AsyncMock, return_value=0.49), \
+         patch("main_loop.check_exit",           return_value=None), \
+         patch.object(_cfg, "DRY_RUN", True):
+        mock_ws.get_bid.return_value = None
+        await _monitor_positions([pos], [])
+    assert pos.get("price_source")     == "clob_rest_bid", \
+        f"Beklenen clob_rest_bid, alınan: {pos.get('price_source')}"
+    assert pos.get("mae_data_quality") == "exact", \
+        f"Beklenen exact, alınan: {pos.get('mae_data_quality')}"
+
+
+@pytest.mark.asyncio
+async def test_monitor_sets_price_source_ws_ask_complement_for_no_ws_price():
+    """NO + WS ask mevcut → price_source='ws_ask_complement', mae_data_quality='estimated'."""
+    import config as _cfg
+    pos = _pos_with_token("NO")
+    fake_window = {"best_ask": 0.70, "best_bid": 0.68, "seconds_remaining": 900, "neg_risk": False}
+    with patch("main_loop.current_price",        new_callable=AsyncMock, return_value=95000.0), \
+         patch("main_loop.fetch_by_slug",        new_callable=AsyncMock, return_value={}), \
+         patch("main_loop.parse_market_window",  return_value=fake_window), \
+         patch("main_loop.ws_prices")           as mock_ws, \
+         patch("main_loop.check_exit",           return_value=None), \
+         patch.object(_cfg, "DRY_RUN", True):
+        mock_ws.get_ask.return_value = 0.70
+        mock_ws.get_bid.return_value = 0.68
+        await _monitor_positions([pos], [])
+    assert pos.get("price_source")     == "ws_ask_complement", \
+        f"Beklenen ws_ask_complement, alınan: {pos.get('price_source')}"
+    assert pos.get("mae_data_quality") == "estimated", \
+        f"Beklenen estimated, alınan: {pos.get('mae_data_quality')}"
+
+
+@pytest.mark.asyncio
+async def test_monitor_sets_price_source_clob_rest_ask_complement_for_no_rest_fallback():
+    """NO + WS ask None → CLOB REST fallback → price_source='clob_rest_ask_complement', mae_data_quality='estimated'."""
+    import config as _cfg
+    pos = _pos_with_token("NO")
+    fake_window = {"best_ask": 0.70, "best_bid": 0.68, "seconds_remaining": 900, "neg_risk": False}
+    with patch("main_loop.current_price",        new_callable=AsyncMock, return_value=95000.0), \
+         patch("main_loop.fetch_by_slug",        new_callable=AsyncMock, return_value={}), \
+         patch("main_loop.parse_market_window",  return_value=fake_window), \
+         patch("main_loop.ws_prices")           as mock_ws, \
+         patch("main_loop.get_clob_price",       new_callable=AsyncMock, return_value=0.71), \
+         patch("main_loop.check_exit",           return_value=None), \
+         patch.object(_cfg, "DRY_RUN", True):
+        mock_ws.get_ask.return_value = None
+        await _monitor_positions([pos], [])
+    assert pos.get("price_source")     == "clob_rest_ask_complement", \
+        f"Beklenen clob_rest_ask_complement, alınan: {pos.get('price_source')}"
+    assert pos.get("mae_data_quality") == "estimated", \
+        f"Beklenen estimated, alınan: {pos.get('mae_data_quality')}"

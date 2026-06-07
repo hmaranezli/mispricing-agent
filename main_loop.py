@@ -322,15 +322,24 @@ async def _monitor_positions(
                 pm_yes_price = ws_prices.get_bid(yes_tid)
                 if pm_yes_price is None:
                     pm_yes_price = await get_clob_price(yes_tid, "SELL")
+                    _price_source, _data_quality = "clob_rest_bid", "exact"
+                else:
+                    _price_source, _data_quality = "ws_bid", "exact"
             else:
                 pm_yes_price = ws_prices.get_ask(yes_tid)
                 if pm_yes_price is None:
                     pm_yes_price = await get_clob_price(yes_tid, "BUY")
+                    _price_source, _data_quality = "clob_rest_ask_complement", "estimated"
+                else:
+                    _price_source, _data_quality = "ws_ask_complement", "estimated"
             if pm_yes_price is None:
                 continue  # fiyat yok → bu döngüyü atla, bir sonrakinde tekrar dene
             exit_reason = check_exit(pos, hl_price,
                                      pm_yes_price,
                                      window["seconds_remaining"])
+            # Gerçek fiyat kaynağını yaz — check_exit "rest" hardcode eder, biz overwrite ederiz
+            pos["price_source"]    = _price_source
+            pos["mae_data_quality"] = _data_quality
             if exit_reason:
                 if config.DRY_RUN:
                     if pos["action"] == "NO":
