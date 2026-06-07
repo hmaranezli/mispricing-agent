@@ -190,3 +190,94 @@ async def test_sell_position_falls_back_to_stale_bid_when_clob_unavailable():
     expected_floor = round(max(0.01, stale_bid - _FLOOR_BUFFER), 2)
     assert abs(call.price - expected_floor) < 0.001, \
         f"CLOB None → stale bid={stale_bid} kullanılmalı, floor={expected_floor:.4f}"
+
+
+# ── Task 4: Book snapshot + timing + fill metrics ─────────────────────────────
+
+@pytest.mark.asyncio
+async def test_sell_increments_attempt_count():
+    """Her sell_position çağrısı sell_attempt_count'u artırır."""
+    pos = _open_pos()
+    fake_client = MagicMock()
+    fake_client.create_and_post_order.return_value = _matched_resp()
+    with patch("execution.position_store.get_client", return_value=fake_client), \
+         _clob_patch(0.90), \
+         patch("execution.position_store.ws_prices") as mock_ws:
+        mock_ws.get_ask.return_value = None
+        from execution.position_store import sell_position
+        await sell_position(pos)
+    assert pos.get("sell_attempt_count") == 1
+
+
+@pytest.mark.asyncio
+async def test_sell_increments_unmatched_count_on_fak_kill():
+    """FAK kill (status != matched) sell_unmatched_count'u artırır."""
+    pos = _open_pos()
+    fake_client = MagicMock()
+    fake_client.create_and_post_order.return_value = {"status": "unmatched"}
+    with patch("execution.position_store.get_client", return_value=fake_client), \
+         _clob_patch(0.90), \
+         patch("execution.position_store.ws_prices") as mock_ws:
+        mock_ws.get_ask.return_value = None
+        from execution.position_store import sell_position
+        result = await sell_position(pos)
+    assert result is None
+    assert pos.get("sell_unmatched_count") == 1
+    assert pos.get("sell_attempt_count") == 1
+
+
+@pytest.mark.asyncio
+async def test_sell_captures_exit_bid_at_trigger_first_attempt_only():
+    """exit_bid_at_trigger yalnızca ilk denemede yazılır (setdefault)."""
+    pos = _open_pos()
+    fake_client = MagicMock()
+    fake_client.create_and_post_order.return_value = _matched_resp()
+    with patch("execution.position_store.get_client", return_value=fake_client), \
+         _clob_patch(0.90), \
+         patch("execution.position_store.ws_prices") as mock_ws:
+        mock_ws.get_ask.return_value = 0.92
+        from execution.position_store import sell_position
+        await sell_position(pos)
+    assert pos.get("exit_bid_at_trigger") == pytest.approx(0.90, abs=1e-4)
+    assert pos.get("exit_ask_at_trigger") == pytest.approx(0.92, abs=1e-4)
+    assert pos.get("spread_at_trigger") == pytest.approx(0.02, abs=1e-4)
+
+    # İkinci deneme: bid değişse bile exit_bid_at_trigger değişmez
+    with patch("execution.position_store.get_client", return_value=fake_client), \
+         _clob_patch(0.85), \
+         patch("execution.position_store.ws_prices") as mock_ws:
+        mock_ws.get_ask.return_value = 0.87
+        await sell_position(pos)
+    assert pos.get("exit_bid_at_trigger") == pytest.approx(0.90, abs=1e-4)
+
+
+@pytest.mark.asyncio
+async def test_sell_captures_fill_timing_and_sl_metrics():
+    """Başarılı fill: fill_ts, sl_fill_px, sl_fill_pct, trigger_fill_gap_pct, trigger_to_fill_secs set edilir."""
+    pos = _open_pos()  # pm_entry_price=0.35
+    pos["sl_trigger_pct"] = -0.30
+    pos["first_trigger_ts"] = "2026-06-07T10:13:25+00:00"
+
+    fake_client = MagicMock()
+    # fill_price = 0.286 / 1.3 = 0.22
+    fake_client.create_and_post_order.return_value = _matched_resp(taking="0.286", making="1.3")
+    with patch("execution.position_store.get_client", return_value=fake_client), \
+         _clob_patch(0.90), \
+         patch("execution.position_store.ws_prices") as mock_ws:
+        mock_ws.get_ask.return_value = None
+        from execution.position_store import sell_position
+        fill_price = await sell_position(pos)
+
+    assert fill_price == pytest.approx(0.22, abs=1e-3)
+    assert pos.get("sl_fill_px") == pytest.approx(0.22, abs=1e-3)
+
+    entry = 0.35
+    expected_fill_pct = (0.22 - entry) / entry  # ≈ -0.371
+    assert pos.get("sl_fill_pct") == pytest.approx(expected_fill_pct, abs=1e-3)
+
+    expected_gap = expected_fill_pct - (-0.30)  # ≈ -0.071
+    assert pos.get("trigger_fill_gap_pct") == pytest.approx(expected_gap, abs=1e-3)
+
+    assert pos.get("fill_ts") is not None
+    assert pos.get("trigger_to_fill_secs") is not None
+    assert pos.get("trigger_to_fill_secs") >= 0
