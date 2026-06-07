@@ -520,7 +520,6 @@ async def main() -> None:
 
             except Exception as e:
                 print(f"[bot] Döngü hatası: {e}")
-            # asyncio.sleep KALDIRILDI — _monitor_positions içinde asyncio.wait_for ile wait eder
     finally:
         await conn.close()
 

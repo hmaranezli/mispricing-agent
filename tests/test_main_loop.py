@@ -1250,8 +1250,8 @@ async def test_monitor_live_resets_closing_on_fak_fail():
 # ── Task 4: main() scan koşullu ──────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_main_loop_scan_skipped_on_ws_event_path():
-    """_monitor_positions True döndüğünde _scan_and_execute çağrılmaz."""
+async def test_ws_triggered_flag_skips_scan_execute():
+    """ws_triggered=True iken scan+heal mantığı atlanır (main() koşullu bloğu doğrular)."""
     import config as _cfg
     scan_called = []
 
