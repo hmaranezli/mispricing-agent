@@ -210,3 +210,26 @@ async def patch_position_resolution(
     if conn.total_changes == 0:
         print(f"[patch] WARN: no row found for position_id={position_id!r} — nothing updated")
     await conn.commit()
+
+
+async def log_partial_fill_update(conn, position: dict) -> None:
+    """Kısmi fill sonrası açık pozisyonun shares ve partial_* alanlarını DB'ye yazar.
+
+    Bot crash/restart durumunda partial fill state kaybolmasın diye her kısmi
+    fill'den hemen sonra çağrılır.
+    """
+    if conn is None:
+        return
+    await conn.execute(
+        """UPDATE positions
+           SET shares=?, partial_fill_count=?, partial_fill_shares=?, partial_realized_usdc=?
+           WHERE position_id=? AND status='open'""",
+        (
+            position.get("shares"),
+            position.get("partial_fill_count", 0),
+            position.get("partial_fill_shares"),
+            position.get("partial_realized_usdc"),
+            position["position_id"],
+        ),
+    )
+    await conn.commit()

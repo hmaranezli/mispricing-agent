@@ -30,7 +30,7 @@ from monitor.telegram_commands import poll_commands
 from monitor.state import is_paused
 from monitor import circuit_breaker
 from monitor import positions_cache
-from db.logger import log_candidate, log_position_open, log_position_close, load_closed_today, get_connection, patch_position_resolution
+from db.logger import log_candidate, log_position_open, log_position_close, load_closed_today, get_connection, patch_position_resolution, log_partial_fill_update
 
 SCAN_INTERVAL_SECS = 7
 BANKROLL_CONFIG = float(os.getenv("BANKROLL_USD", "1000.0"))
@@ -48,7 +48,8 @@ async def _load_open_positions(conn) -> list[dict]:
     async with conn.execute(
         "SELECT position_id, ts_open, slug, asset, action, pm_entry_price, "
         "fair_value, ref_price, edge, position_usd, kelly_f, confidence_score, dry_run, "
-        "shares, order_id, yes_token_id, no_token_id, seq_no, entry_hl_price "
+        "shares, order_id, yes_token_id, no_token_id, seq_no, entry_hl_price, "
+        "partial_fill_count, partial_fill_shares, partial_realized_usdc "
         "FROM positions WHERE status='open' AND dry_run=?",
         (1 if config.DRY_RUN else 0,),
     ) as cur:
@@ -78,6 +79,9 @@ async def _load_open_positions(conn) -> list[dict]:
             "closed_at":              None,
             "seq_no":                 r[17],
             "entry_hl_price":         r[18],
+            "partial_fill_count":     r[19] or 0,
+            "partial_fill_shares":    r[20],
+            "partial_realized_usdc":  r[21],
         }
         for r in rows
     ]
@@ -300,18 +304,32 @@ async def _do_flatten(open_positions: list, closed_today: list, conn=None) -> No
         sell_result = await sell_position(pos)
         if sell_result is not None:
             pm_exit, making_shares = sell_result
-            closed_dict = close_position(
-                pos, "panic_flatten",
-                pm_exit_price=pm_exit,
-                exit_hl_price=pos.get("_cached_hl_price"),
-            )
-            open_positions.remove(pos)
-            closed_today.append(closed_dict)
-            notify_close(closed_dict)
-            try:
-                await log_position_close(conn, closed_dict)
-            except Exception as e:
-                print(f"[flatten] {pos['slug']} log hatası: {e}")
+            old_shares = pos.get("shares") or 0.0
+            if old_shares > 0 and making_shares < old_shares * 0.98:
+                # Kısmi fill — pozisyonu açık tut, bir sonraki iterasyonda tekrar dene
+                pos["shares"] = round(old_shares - making_shares, 6)
+                pos["_closing"] = False
+                pos["partial_fill_count"] = pos.get("partial_fill_count", 0) + 1
+                pos["partial_fill_shares"] = round(
+                    pos.get("partial_fill_shares", 0.0) + making_shares, 6
+                )
+                pos["partial_realized_usdc"] = round(
+                    pos.get("partial_realized_usdc", 0.0) + pm_exit * making_shares, 6
+                )
+                print(f"[flatten] {pos['slug']} kısmi fill {making_shares:.4f}/{old_shares:.4f} → {pos['shares']:.4f} kalan")
+            else:
+                closed_dict = close_position(
+                    pos, "panic_flatten",
+                    pm_exit_price=pm_exit,
+                    exit_hl_price=pos.get("_cached_hl_price"),
+                )
+                open_positions.remove(pos)
+                closed_today.append(closed_dict)
+                notify_close(closed_dict)
+                try:
+                    await log_position_close(conn, closed_dict)
+                except Exception as e:
+                    print(f"[flatten] {pos['slug']} log hatası: {e}")
         else:
             pos["_closing"] = False
             print(f"[flatten] {pos['slug']} SELL başarısız — açık kalıyor, monitor devam")
@@ -468,6 +486,10 @@ async def _monitor_positions(
                             pos.get("partial_realized_usdc", 0.0) + pm_exit * making_shares, 6
                         )
                         print(f"[monitor] {pos['slug']} kısmi fill {making_shares:.4f}/{old_shares:.4f} → {pos['shares']:.4f} kalan")
+                        try:
+                            await log_partial_fill_update(conn, pos)
+                        except Exception as _e:
+                            print(f"[monitor] {pos['slug']} partial DB update hatası: {_e}")
                         continue
                 closed = close_position(pos, exit_reason, pm_exit_price=pm_exit,
                                         exit_hl_price=hl_price)

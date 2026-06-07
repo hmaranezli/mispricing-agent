@@ -1469,6 +1469,71 @@ async def test_do_flatten_skips_already_closing():
     sell_mock.assert_not_called(), "zaten kapanmakta olan pozisyon tekrar satılmamalı"
 
 
+# ── Faz 2.3: _do_flatten partial fill ────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_do_flatten_partial_fill_keeps_remaining():
+    """_do_flatten: making_shares < old_shares*0.98 → kısmi fill, pos listede kalır."""
+    from main_loop import _do_flatten
+    pos = _pos_with_token("YES")
+    pos["shares"] = 2.0
+
+    open_pos = [pos]
+    closed   = []
+
+    with patch("main_loop.sell_position",  new_callable=AsyncMock, return_value=(0.80, 0.5)), \
+         patch("main_loop.close_position") as mock_close, \
+         patch("main_loop.send_telegram"):
+        await _do_flatten(open_pos, closed, conn=None)
+
+    assert len(open_pos) == 1,                  "kısmi fill → pozisyon listede kalmalı"
+    assert pos["shares"] == pytest.approx(1.5), "kalan shares güncellenmeli"
+    assert pos.get("_closing") is False,        "_closing sıfırlanmalı"
+    assert pos.get("partial_fill_count") == 1
+    assert len(closed) == 0,                    "kısmi fill → close_position çağrılmamalı"
+    mock_close.assert_not_called()
+
+
+# ── Faz 2.3: _load_open_positions partial fill alanları ──────────────────────
+
+@pytest.mark.asyncio
+async def test_load_open_positions_restores_partial_fill_fields(mem_db):
+    """_load_open_positions partial fill alanlarını DB'den geri yükler."""
+    from db.logger import log_position_open, log_partial_fill_update
+    import config
+
+    pos = {
+        "position_id": "pfu-reload-001", "ts_open": "2026-01-01T00:00:00+00:00",
+        "slug": "eth-up-reload", "asset": "ETH", "action": "YES",
+        "pm_entry_price": 0.60, "fair_value": 0.75, "ref_price": 0.58,
+        "edge": 0.15, "position_usd": 1.25, "kelly_f": 0.10,
+        "confidence_score": 80.0, "dry_run": False, "shares": 2.0,
+        "order_id": "ord-002", "yes_token_id": "tok-yes-2", "no_token_id": "tok-no-2",
+        "seq_no": 2, "entry_hl_price": 3000.0,
+    }
+    await log_position_open(mem_db, pos)
+
+    pos["shares"]                = 0.5
+    pos["partial_fill_count"]    = 2
+    pos["partial_fill_shares"]   = 1.5
+    pos["partial_realized_usdc"] = 0.90
+    await log_partial_fill_update(mem_db, pos)
+
+    old_dry = config.DRY_RUN
+    config.DRY_RUN = False
+    try:
+        loaded = await _load_open_positions(mem_db)
+    finally:
+        config.DRY_RUN = old_dry
+
+    p = next((x for x in loaded if x["position_id"] == "pfu-reload-001"), None)
+    assert p is not None,                             "pozisyon yüklenmeli"
+    assert p["shares"]                == pytest.approx(0.5)
+    assert p["partial_fill_count"]    == 2
+    assert p["partial_fill_shares"]   == pytest.approx(1.5)
+    assert p["partial_realized_usdc"] == pytest.approx(0.90)
+
+
 # ── Task 4: main() scan koşullu ──────────────────────────────────────────────
 
 @pytest.mark.asyncio

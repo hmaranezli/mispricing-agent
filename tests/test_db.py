@@ -535,6 +535,39 @@ async def test_log_position_close_persists_partial_fill_telemetry(conn):
 
 
 @pytest.mark.asyncio
+async def test_log_partial_fill_update_persists_to_db(conn):
+    """log_partial_fill_update() açık pozisyonun shares/partial_* alanlarını günceller."""
+    from db.logger import log_partial_fill_update
+    pos = {
+        "position_id": "pfu-test-001", "ts_open": "2026-01-01T00:00:00+00:00",
+        "slug": "btc-up-pfu", "asset": "BTC", "action": "YES",
+        "pm_entry_price": 0.50, "fair_value": 0.65, "ref_price": 0.48,
+        "edge": 0.15, "position_usd": 1.25, "kelly_f": 0.10,
+        "confidence_score": 80.0, "dry_run": False, "shares": 2.5,
+        "order_id": "ord-pfu", "yes_token_id": "tok-yes-pfu", "no_token_id": "tok-no-pfu",
+        "seq_no": 99, "entry_hl_price": 95000.0,
+    }
+    await logger.log_position_open(conn, pos)
+
+    pos["shares"]                = 1.0
+    pos["partial_fill_count"]    = 1
+    pos["partial_fill_shares"]   = 1.5
+    pos["partial_realized_usdc"] = 0.75
+    await log_partial_fill_update(conn, pos)
+
+    async with conn.execute(
+        "SELECT shares, partial_fill_count, partial_fill_shares, partial_realized_usdc "
+        "FROM positions WHERE position_id='pfu-test-001'"
+    ) as cur:
+        row = await cur.fetchone()
+
+    assert row[0] == pytest.approx(1.0),  "shares güncellenmeli"
+    assert row[1] == 1,                   "partial_fill_count güncellenmeli"
+    assert row[2] == pytest.approx(1.5),  "partial_fill_shares güncellenmeli"
+    assert row[3] == pytest.approx(0.75), "partial_realized_usdc güncellenmeli"
+
+
+@pytest.mark.asyncio
 async def test_patch_position_resolution_saves_exit_hl_price(conn):
     """patch_position_resolution exit_hl_price ile çağrılınca DB'ye kaydedilmeli."""
     pos = {

@@ -190,3 +190,11 @@ def test_update_cache_sets_price_event():
     event.clear()
     ws._update_cache("tok-test", best_bid=0.50, best_ask=0.52)
     assert event.is_set(), "_update_cache() sonrası price_event set olmalı"
+
+
+def test_ws_connect_uses_keepalive_params():
+    """_connect_and_run: websockets.connect ping_interval=20, ping_timeout=20 ile çağrılmalı."""
+    import inspect
+    source = inspect.getsource(ws._connect_and_run)
+    assert "ping_interval=20" in source, "ping_interval=20 ws.connect çağrısında olmalı"
+    assert "ping_timeout=20"  in source, "ping_timeout=20 ws.connect çağrısında olmalı"

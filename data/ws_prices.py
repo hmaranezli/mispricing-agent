@@ -21,6 +21,7 @@ _pending:    set[str]            = set()
 _ws                              = None
 _resolved_queue: asyncio.Queue | None = None
 _price_event: asyncio.Event | None = None
+_reconnect_count: int            = 0
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -152,10 +153,13 @@ async def _flush_pending(ws) -> None:
 
 
 async def _connect_and_run() -> None:
-    global _ws
-    async with websockets.connect(WS_URL) as ws:
+    global _ws, _reconnect_count
+    _reconnect_count += 1
+    if _reconnect_count > 1:
+        print(f"[ws] Yeniden bağlanıyor (#{_reconnect_count})...")
+    async with websockets.connect(WS_URL, ping_interval=20, ping_timeout=20) as ws:
         _ws = ws
-        print("[ws] Polymarket CLOB WebSocket bağlandı")
+        print(f"[ws] Polymarket CLOB WebSocket bağlandı (#{_reconnect_count})")
         # Reconnect sonrası tüm subscribed tokenları yeniden abone et
         if _subscribed:
             _pending.update(_subscribed)
