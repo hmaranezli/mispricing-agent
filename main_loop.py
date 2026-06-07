@@ -156,7 +156,10 @@ async def _scan_and_execute(
     if len(open_positions) >= config.MAX_OPEN_POSITIONS:
         return
 
+    t0 = time.time()
     findings = await scan_edges()
+    t_scan_edges = time.time() - t0
+
     daily_loss = 0.0
     open_slugs  = {p["slug"] for p in open_positions}
     _failed     = failed_slugs if failed_slugs is not None else set()
@@ -170,6 +173,8 @@ async def _scan_and_execute(
     else:
         print(f"[scan {_ts}] edge yok")
 
+    t_council_total = 0.0
+    t_execute_total = 0.0
     for finding in findings:
         if len(open_positions) >= config.MAX_OPEN_POSITIONS:
             break
@@ -179,17 +184,27 @@ async def _scan_and_execute(
         if slug in _failed:
             continue
 
+        t1 = time.time()
         result = await _run_council(finding,
                                     bankroll_usd=bankroll_usd,
                                     n_open=len(open_positions),
                                     daily_loss_usd=daily_loss,
                                     conn=conn)
+        t_council_total += time.time() - t1
         if result is None:
             continue
 
         gate_result, risk_result = result
+        t2 = time.time()
         position = await execute(finding, gate_result, risk_result, open_positions)
+        t_execute_total += time.time() - t2
         if position:
+            # Entry execution telemetri: karar anındaki ask vs gerçek fill
+            ask_at_decision = finding.get("best_ask")
+            position["ask_at_decision"] = ask_at_decision
+            fill_price = position.get("pm_entry_price")
+            if fill_price and ask_at_decision and ask_at_decision > 0:
+                position["slippage_pct"] = (fill_price - ask_at_decision) / ask_at_decision
             await log_position_open(conn, position)
             open_positions.append(position)
             open_slugs.add(slug)
@@ -198,6 +213,13 @@ async def _scan_and_execute(
             ])
         else:
             pass  # FAK kill — capital riske girmedi, bir sonraki taramada yeniden dene
+
+    t_total = time.time() - t0
+    print(
+        f"[scan_perf] total={t_total:.1f}s scan_edges={t_scan_edges:.1f}s "
+        f"council={t_council_total:.1f}s execute={t_execute_total:.1f}s "
+        f"candidates={len(findings)}"
+    )
 
 
 async def _handle_ws_resolved(
@@ -374,6 +396,11 @@ async def _monitor_positions(
     failed_slugs: kapanan pozisyon slug'ları buraya eklenir → aynı pencere yeniden açılmaz.
     """
     global _last_rest_ts
+    print(
+        f"[monitor_perf] open_positions={len(open_positions)} "
+        f"ws_subscribed={len(ws_prices._subscribed)} "
+        f"ws_active={ws_prices._ws is not None}"
+    )
     price_event = ws_prices.get_price_event()
     now = time.time()
     heartbeat_due = (now - _last_rest_ts) >= float(SCAN_INTERVAL_SECS)

@@ -1613,3 +1613,103 @@ async def test_monitor_calls_ws_unsubscribe_on_position_close(default_ws_prices)
     unsubbed = default_ws_prices.unsubscribe.call_args[0][0]
     assert "yes_tok_unsub" in unsubbed, "yes_token_id unsubscribe edilmeli"
     assert "no_tok_unsub"  in unsubbed, "no_token_id unsubscribe edilmeli"
+
+
+# ── Task 2: scan_perf + monitor_perf telemetri ────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_monitor_positions_prints_monitor_perf(capsys, default_ws_prices):
+    """_monitor_positions başlangıçta [monitor_perf] satırı basmalı."""
+    import main_loop as _ml
+    _ml._last_rest_ts = 0  # heartbeat_due=True → REST path
+    default_ws_prices._subscribed = set()
+    default_ws_prices._ws = None
+
+    await _monitor_positions([], [], conn=None)
+
+    captured = capsys.readouterr()
+    assert "[monitor_perf]" in captured.out, "[monitor_perf] log satırı olmalı"
+    assert "open_positions=0" in captured.out
+    assert "ws_active=" in captured.out
+
+
+@pytest.mark.asyncio
+async def test_scan_and_execute_prints_scan_perf(capsys):
+    """_scan_and_execute [scan_perf] timing satırı basmalı."""
+    with patch("main_loop.scan_edges", new_callable=AsyncMock, return_value=[]):
+        await _scan_and_execute([], [], bankroll_usd=100.0, conn=None)
+
+    captured = capsys.readouterr()
+    assert "[scan_perf]" in captured.out, "[scan_perf] log satırı olmalı"
+    assert "total=" in captured.out
+    assert "scan_edges=" in captured.out
+    assert "candidates=0" in captured.out
+
+
+@pytest.mark.asyncio
+async def test_scan_perf_includes_council_and_execute_timing(capsys):
+    """[scan_perf] council ve execute timing içermeli."""
+    with patch("main_loop.scan_edges", new_callable=AsyncMock, return_value=[_finding()]), \
+         patch("main_loop._run_council", new_callable=AsyncMock, return_value=None):
+        await _scan_and_execute([], [], bankroll_usd=100.0, conn=None)
+
+    captured = capsys.readouterr()
+    assert "council=" in captured.out
+    assert "execute=" in captured.out
+
+
+# ── Task 3: ask_at_decision + slippage_pct ───────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_scan_and_execute_sets_ask_at_decision(capsys):
+    """execute() başarılı olduğunda position'a ask_at_decision yazılmalı."""
+    finding = _finding()  # best_ask=0.35
+    fake_pos = {
+        "position_id": "ask-test-pos", "slug": finding["slug"],
+        "asset": "BTC", "action": "YES", "pm_entry_price": 0.36,
+        "fair_value": 0.55, "edge": 0.19, "position_usd": 1.25,
+        "kelly_f": 0.1, "confidence_score": 80, "shares": 2.0,
+        "yes_token_id": "ytid", "no_token_id": "ntid",
+        "order_id": "oid", "opened_at": "2026-06-07T00:00:00+00:00",
+        "dry_run": False,
+    }
+    open_positions: list = []
+    with patch("main_loop.scan_edges", new_callable=AsyncMock, return_value=[finding]), \
+         patch("main_loop._run_council", new_callable=AsyncMock,
+               return_value=(_pass_gate(), _pass_risk())), \
+         patch("main_loop.execute", new_callable=AsyncMock, return_value=fake_pos), \
+         patch("main_loop.log_position_open", new_callable=AsyncMock):
+        await _scan_and_execute(open_positions, [], bankroll_usd=100.0, conn=None)
+
+    assert len(open_positions) == 1
+    pos = open_positions[0]
+    assert pos.get("ask_at_decision") == pytest.approx(0.35), "ask_at_decision = finding best_ask"
+    expected_slippage = (0.36 - 0.35) / 0.35
+    assert pos.get("slippage_pct") == pytest.approx(expected_slippage, abs=1e-6)
+
+
+@pytest.mark.asyncio
+async def test_scan_and_execute_slippage_none_when_ask_missing(capsys):
+    """best_ask yoksa slippage_pct hesaplanmamalı (crash değil)."""
+    finding = _finding()
+    finding["best_ask"] = 0  # ask=0 → slippage hesaplanamaz
+    fake_pos = {
+        "position_id": "no-ask-pos", "slug": finding["slug"],
+        "asset": "BTC", "action": "YES", "pm_entry_price": 0.36,
+        "fair_value": 0.55, "edge": 0.19, "position_usd": 1.25,
+        "kelly_f": 0.1, "confidence_score": 80, "shares": 2.0,
+        "yes_token_id": "ytid2", "no_token_id": "ntid2",
+        "order_id": "oid2", "opened_at": "2026-06-07T00:00:00+00:00",
+        "dry_run": False,
+    }
+    open_positions: list = []
+    with patch("main_loop.scan_edges", new_callable=AsyncMock, return_value=[finding]), \
+         patch("main_loop._run_council", new_callable=AsyncMock,
+               return_value=(_pass_gate(), _pass_risk())), \
+         patch("main_loop.execute", new_callable=AsyncMock, return_value=fake_pos), \
+         patch("main_loop.log_position_open", new_callable=AsyncMock):
+        await _scan_and_execute(open_positions, [], bankroll_usd=100.0, conn=None)
+
+    pos = open_positions[0]
+    assert pos.get("ask_at_decision") == 0  # 0 olarak yazıldı — None değil
+    assert pos.get("slippage_pct") is None  # 0 ask → slippage hesaplanamaz
