@@ -18,6 +18,7 @@ from execution.executor       import execute as _dry_execute
 from execution.clob_executor  import execute as _clob_execute
 from execution.position_store import sell_position
 from execution import air_pocket_shadow
+from execution import paper_tracker
 from execution.balance        import get_effective_bankroll
 from execution.reconcile      import startup_reconcile
 from execution.ghost          import detect_ghosts
@@ -226,6 +227,11 @@ async def _scan_and_execute(
         # sadece gerçek position open atlanır. Monitor/exit/4h shadow ETKILENMEZ.
         if not config.NEW_ENTRIES_ENABLED:
             print(f"[entry_disabled] {slug} council GEÇTİ ama NEW_ENTRIES_ENABLED=False — yeni entry atlandı")
+            # Paper/Shadow tracker: gerçek para YOK, ayrı tablolar. Non-blocking, fail-open.
+            try:
+                paper_tracker.schedule_paper_open(finding, gate_result, risk_result, conn=conn)
+            except Exception as _pte:
+                print(f"[paper] hook fail-open: {_pte}")
             continue
 
         council_pass_ts = datetime.now(timezone.utc).isoformat()
@@ -766,6 +772,7 @@ async def main() -> None:
     ]
     asyncio.create_task(ws_prices.run(initial_tids))
     asyncio.create_task(_shadow_4h_scan_loop(conn))  # 4h shadow — ayrı cadence, live loop'a dokunmaz
+    asyncio.create_task(paper_tracker._paper_monitor_loop())  # paper monitor — ayrı cadence, live loop'a dokunmaz
 
     starting_bankroll = await get_effective_bankroll(BANKROLL_CONFIG)
     circuit_breaker.BUST_PROTECTION_PCT = config.BUST_PROTECTION_PCT

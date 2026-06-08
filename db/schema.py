@@ -121,6 +121,91 @@ CREATE TABLE IF NOT EXISTS air_pocket_shadow (
     error                     TEXT,
     created_at                TEXT
 );
+
+CREATE TABLE IF NOT EXISTS shadow_positions (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    paper_id              TEXT UNIQUE,
+    source_event_id       TEXT,
+    ts_open               TEXT,
+    slug                  TEXT,
+    asset                 TEXT,
+    action                TEXT,
+    entry_price_estimated REAL,
+    entry_method          TEXT,
+    position_usd_paper    REAL,
+    shares_paper          REAL,
+    fair_value            REAL,
+    edge                  REAL,
+    ref_price             REAL,
+    entry_hl_price        REAL,
+    confidence_score      REAL,
+    status                TEXT DEFAULT 'open',
+    ts_close              TEXT,
+    close_reason          TEXT,
+    pm_exit_estimated     REAL,
+    resolve_exit          REAL,
+    mae_pct               REAL,
+    mfe_pct               REAL,
+    mfe_peak              REAL,
+    cohort                TEXT DEFAULT 'paper',
+    confidence_level      TEXT DEFAULT 'low',
+    data_quality          TEXT,
+    is_paper              INTEGER DEFAULT 1,
+    dedupe_reason         TEXT,
+    created_at            TEXT
+);
+
+CREATE TABLE IF NOT EXISTS shadow_stop_events (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    paper_id             TEXT,
+    ts                   TEXT,
+    slug                 TEXT,
+    asset                TEXT,
+    action               TEXT,
+    seconds_remaining    REAL,
+    pm_price             REAL,
+    drawdown_pct         REAL,
+    hl_drift_pct         REAL,
+    mae_pct              REAL,
+    mfe_pct              REAL,
+    mfe_peak             REAL,
+    current_action       TEXT,
+    conservative_action  TEXT,
+    balanced_action      TEXT,
+    mfe_breakeven_action TEXT,
+    decision_reason      TEXT,
+    paper_compute_ms     REAL,
+    created_at           TEXT
+);
+
+CREATE TABLE IF NOT EXISTS shadow_model_pnl (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    paper_id          TEXT,
+    model             TEXT,
+    would_exit_price  REAL,
+    would_exit_reason TEXT,
+    would_exit_ts     TEXT,
+    would_pnl         REAL,
+    resolve_exit      REAL,
+    cohort            TEXT DEFAULT 'paper',
+    created_at        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS paper_entry_events (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    paper_id         TEXT,
+    ts               TEXT,
+    slug             TEXT,
+    asset            TEXT,
+    action           TEXT,
+    best_ask         REAL,
+    depth_walk_price REAL,
+    ask_buffer_price REAL,
+    chosen_price     REAL,
+    chosen_method    TEXT,
+    book_levels      INTEGER,
+    created_at       TEXT
+);
 """
 
 
