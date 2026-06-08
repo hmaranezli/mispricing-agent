@@ -16,6 +16,18 @@ from main_loop import _run_council, _scan_and_execute, _monitor_positions, _load
 # ── Fixture'lar ──────────────────────────────────────────────────────────────
 
 @pytest.fixture(autouse=True)
+def _enable_new_entries():
+    """Bu dosyadaki testler entry-açma davranışını test eder → NEW_ENTRIES_ENABLED=True.
+    Canlı default False (acil risk modu); entry kill-switch testi ayrı dosyada (test_new_entries_flag.py).
+    """
+    import config
+    orig = getattr(config, "NEW_ENTRIES_ENABLED", True)
+    config.NEW_ENTRIES_ENABLED = True
+    yield
+    config.NEW_ENTRIES_ENABLED = orig
+
+
+@pytest.fixture(autouse=True)
 def default_ws_prices():
     """Monitor testlerinde ws_prices varsayılan olarak geçerli fiyat döndürür.
     asyncio.wait_for her zaman TimeoutError → tüm eski testler REST heartbeat path'ten geçer.

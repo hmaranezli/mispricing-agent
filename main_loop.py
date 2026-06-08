@@ -219,6 +219,14 @@ async def _scan_and_execute(
             continue
 
         gate_result, risk_result = result
+
+        # ── ACIL RISK MODU: yeni entry kill-switch ────────────────────────────
+        # Council/telemetri yukarıda çalıştı (shadow_candidates yazıldı). Burada
+        # sadece gerçek position open atlanır. Monitor/exit/4h shadow ETKILENMEZ.
+        if not config.NEW_ENTRIES_ENABLED:
+            print(f"[entry_disabled] {slug} council GEÇTİ ama NEW_ENTRIES_ENABLED=False — yeni entry atlandı")
+            continue
+
         council_pass_ts = datetime.now(timezone.utc).isoformat()
         t2 = time.time()
         position = await execute(finding, gate_result, risk_result, open_positions,

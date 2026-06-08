@@ -84,8 +84,9 @@ async def test_find_shortterm_4h_returns_found_markets():
     }
 
     async def fake_fetch_slug(session, slug):
-        if "btc" in slug and slug.endswith("1780934400"):
-            return fake_market
+        # Zaman-bağımsız: herhangi bir btc 4h slug'ına yanıt ver
+        if "btc" in slug and "updown-4h" in slug:
+            return {**fake_market, "slug": slug}
         return None
 
     with patch("data.shortterm._fetch_slug", side_effect=fake_fetch_slug):
@@ -93,7 +94,7 @@ async def test_find_shortterm_4h_returns_found_markets():
         markets = await find_shortterm_4h(assets=("btc", "eth"), lookback=1)
 
     assert len(markets) == 1
-    assert markets[0]["slug"] == "btc-updown-4h-1780934400"
+    assert markets[0]["slug"].startswith("btc-updown-4h-")
 
 
 @pytest.mark.asyncio

@@ -29,6 +29,12 @@ CONFIDENCE_THRESHOLD = 50     # Konsey guven skoru esigi (0-100) — 75→50 dar
 MAX_HOLD_MINUTES     = 20     # 15m marketlerin resolve'a kadar tutulabilmesi icin (14→20, hold-to-resolution)
 HUMAN_APPROVAL_USD   = 50     # Bu tutar uzeri pozisyon insan onayi ister
 
+# ── ACIL RISK MODU ──
+# Yeni live entry kill-switch. False → council/telemetri/shadow CALISIR, sadece
+# gercek position open atlanır. Monitor/exit/stop logic ETKILENMEZ.
+# GECICI: Epoch 3 kanama — yeni entry durduruldu (2026-06-08, insan komutu)
+NEW_ENTRIES_ENABLED  = False
+
 # ── Anti-hallucination kurallari ──
 REQUIRE_FRESH_API_DATA = True  # Her sayi API'den taze cekilir, hafizadan asla
 HALT_ON_API_MISMATCH   = True  # API ile ajan celisirse islem durur
