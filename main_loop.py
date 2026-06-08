@@ -449,7 +449,7 @@ async def _run_shadow_4h_scan(conn) -> None:
         print(f"[4h_shadow] {count}/{len(markets)} market loglandı")
 
 
-_PAPER_SCAN_SECS = 30  # edge bucket paper scan cadence (live 7s loop'tan bağımsız)
+_PAPER_SCAN_SECS = 60  # edge bucket paper scan cadence (30→60: live loop yükünü azalt; 7s'in katı, çakışma minimal)
 
 
 async def _paper_shadow_scan_loop(conn) -> None:
