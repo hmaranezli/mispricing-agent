@@ -212,3 +212,24 @@ def test_no_complement_is_last_resort_quality_estimated():
         check_exit(pos, hl_price=60000, pm_yes_price=0.68, time_to_expiry_secs=300)
         assert pos["mae_data_quality"] == "estimated"
         assert pos.get("mae_px") == pytest.approx(1 - 0.68)
+
+
+# ── Estimated stop warning ────────────────────────────────────────────────────
+
+def test_estimated_stop_prints_warning(capsys):
+    """NO pozisyon complement fallback ile stop tetiklenince [ESTIMATED_STOP] loglanmalı.
+
+    Setup:
+      entry=0.45, no no_token_id → current_val = 1 - 0.70 = 0.30
+      held=60s, expiry=600s → sl ≈ 0.238 → stop_at = 0.45*(1-0.238) ≈ 0.343
+      0.30 < 0.343 → stop_loss_hit, _mae_quality='estimated' → warning bekleniyor
+    """
+    pos = _pos(action="NO", entry=0.45, fair=0.25)
+    pos["opened_at"] = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
+    # no_token_id yok → WS bid yok → complement → estimated
+    result = check_exit(pos, hl_price=60000, pm_yes_price=0.70, time_to_expiry_secs=600)
+    assert result == "stop_loss_hit", f"stop_loss_hit bekleniyor, '{result}' geldi"
+    captured = capsys.readouterr()
+    assert "[ESTIMATED_STOP]" in captured.out, (
+        "Complement ile stop tetiklenince [ESTIMATED_STOP] uyarısı stdout'ta olmalı"
+    )

@@ -192,6 +192,9 @@ def check_exit(
                 "sl_trigger_pct",
                 (current_val - entry_price) / entry_price,
             )
+        if _mae_quality == "estimated":
+            print(f"[ESTIMATED_STOP] {position.get('slug')} — complement fiyatla stop "
+                  f"({current_val:.3f}), gerçek bid yok", flush=True)
         return "stop_loss_hit"
 
     # 6. Varsayılan: resolve'a kadar tut
