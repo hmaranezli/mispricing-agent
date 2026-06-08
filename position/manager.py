@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
+from data import ws_prices as _ws
 
 LOG_FILE = Path("logs/dry_run.jsonl")
 
@@ -14,9 +15,9 @@ PROFIT_TARGET_FRACTION = 0.85
 PROFIT_LOCK_MIN        = 0.10  # mutlak yakalanan kazanç bu kadarı geçmeli (≈6¢ round-trip slippage + marj)
 PROFIT_CONFIRM_CYCLES  = 2     # kâr sinyali bu kadar ardışık döngü görülmeli (tek snapshot spike koruması)
 NEAR_EXPIRY_SECS       = 90
-STOP_LOSS_MAX          = 0.30  # Erken tutuşta max tolerans (%30) — pozisyonun toparlama vakti var
+STOP_LOSS_MAX          = 0.25  # Kalibrasyon: -%25 eşiği (eski 0.30 — veri: winner P25 MAE=-22.4%, loser P50=-29.5%, sim FalseCut=0)
 STOP_LOSS_MIN          = 0.12  # Vadeye yakında min tolerans (%12) — gamma trap erken tespiti
-MIN_HOLD_SECS          = 30    # İlk 30s: stop_loss çalışmaz — anlık tersine dönüş filtresi
+MIN_HOLD_SECS          = 15    # Kalibrasyon: ilk 15s stop çalışmaz (eski 30 — daha çevik giriş koruması)
 MIN_PROFIT_CONFIRM_SECS = 3   # WS hızında cycle-sayısı yeterli değil — zaman kapısı
 
 
@@ -116,17 +117,25 @@ def check_exit(
     held_minutes = (now - opened_at).total_seconds() / 60
     entry_price = position["pm_entry_price"]
     if position["action"] == "YES":
-        current_val = pm_yes_price
-        target_val  = position["fair_value"]
+        current_val  = pm_yes_price
+        target_val   = position["fair_value"]
+        _mae_quality = "exact"
     else:
-        current_val = 1 - pm_yes_price
-        target_val  = 1 - position["fair_value"]
+        _no_tid = position.get("no_token_id")
+        _no_bid = _ws.get_bid(_no_tid) if _no_tid else None
+        if _no_bid is not None:
+            current_val  = _no_bid
+            _mae_quality = "exact"
+        else:
+            current_val  = 1 - pm_yes_price
+            _mae_quality = "estimated"
+        target_val = 1 - position["fair_value"]
 
     # ── MAE/MFE in-memory tracking ────────────────────────────────────────────
     if entry_price and entry_price > 0:
         current_pct = (current_val - entry_price) / entry_price
-        position["price_source"] = "rest"
-        position["mae_data_quality"] = "estimated" if position["action"] == "NO" else "rest"
+        position["price_source"]     = "rest"
+        position["mae_data_quality"] = _mae_quality
         if position.get("mae_px") is None or current_val < position["mae_px"]:
             position["mae_px"]  = current_val
             position["mae_pct"] = current_pct

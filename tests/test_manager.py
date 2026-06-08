@@ -59,9 +59,106 @@ def test_check_exit_stop_loss_hit_still_has_mae_mfe():
 
 
 def test_check_exit_no_action_tracks_mfe_correctly():
-    """NO pozisyonda current_val=1-pm_yes_price doğru hesaplanmalı."""
+    """NO pozisyonda no_token_id yoksa complement fallback çalışmalı."""
     pos = _pos(action="NO", entry=0.40, fair=0.25, held_minutes=2)
-    # pm_yes_price=0.70 → current_val=1-0.70=0.30 (bizim NO değerimiz)
+    # no_token_id yok → complement: 1-0.70=0.30
     result = check_exit(pos, hl_price=60000, pm_yes_price=0.70,
                         time_to_expiry_secs=500)
     assert pos.get("mae_px") == pytest.approx(0.30)  # 1 - 0.70
+
+
+# ── Task 1: STOP_LOSS_MAX=0.25, MIN_HOLD_SECS=15 ─────────────────────────────
+
+def test_stop_loss_max_constant_is_025():
+    """Kalibrasyon: STOP_LOSS_MAX=0.25 olmalı (eski 0.30 → veri destekli)."""
+    from position.manager import STOP_LOSS_MAX
+    assert STOP_LOSS_MAX == pytest.approx(0.25), f"STOP_LOSS_MAX={STOP_LOSS_MAX}, 0.25 bekleniyor"
+
+
+def test_min_hold_secs_constant_is_15():
+    """Kalibrasyon: MIN_HOLD_SECS=15 olmalı (eski 30 → daha çevik)."""
+    from position.manager import MIN_HOLD_SECS
+    assert MIN_HOLD_SECS == 15, f"MIN_HOLD_SECS={MIN_HOLD_SECS}, 15 bekleniyor"
+
+
+def test_stop_triggers_at_025_threshold():
+    """Yeni eşik: entry=0.60, 16s hold, price=0.450 → stop_loss_hit."""
+    pos = _pos(action="YES", entry=0.60, fair=0.75)
+    pos["opened_at"] = (datetime.now(timezone.utc) - timedelta(seconds=16)).isoformat()
+    # 16s hold, 600s to expiry → dynamic_stop ≈ 0.247 → stop_at=0.60*(1-0.247)=0.452
+    # price=0.450 < 0.452 → STOP
+    result = check_exit(pos, hl_price=60000, pm_yes_price=0.450, time_to_expiry_secs=600)
+    assert result == "stop_loss_hit"
+
+
+def test_stop_does_not_trigger_within_15s():
+    """MIN_HOLD_SECS=15: 14s içinde büyük çöküşte bile stop tetiklenmemeli."""
+    pos = _pos(action="YES", entry=0.60, fair=0.75)
+    pos["opened_at"] = (datetime.now(timezone.utc) - timedelta(seconds=14)).isoformat()
+    result = check_exit(pos, hl_price=60000, pm_yes_price=0.10, time_to_expiry_secs=300)
+    assert result is None, "14s < MIN_HOLD_SECS=15 → stop_loss çalışmamalı"
+
+
+def test_stop_can_trigger_after_15s():
+    """MIN_HOLD_SECS=15: 16s geçtikten sonra büyük düşüşte stop_loss_hit döner."""
+    pos = _pos(action="YES", entry=0.60, fair=0.75)
+    pos["opened_at"] = (datetime.now(timezone.utc) - timedelta(seconds=16)).isoformat()
+    result = check_exit(pos, hl_price=60000, pm_yes_price=0.10, time_to_expiry_secs=300)
+    assert result == "stop_loss_hit", "16s ≥ MIN_HOLD_SECS=15 → stop_loss_hit bekleniyor"
+
+
+# ── Task 3: NO exact MAE ─────────────────────────────────────────────────────
+
+def test_no_position_uses_no_token_bid_for_mae():
+    """NO pozisyon: no_token_id WS bid varsa MAE exact'tir (complement değil)."""
+    from unittest.mock import patch
+    pos = _pos(action="NO", entry=0.45, fair=0.25)
+    pos["no_token_id"] = "no-tok-abc"
+    pos["opened_at"] = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
+
+    with patch("position.manager._ws.get_bid", return_value=0.38) as mock_bid:
+        check_exit(pos, hl_price=60000, pm_yes_price=0.65, time_to_expiry_secs=300)
+        mock_bid.assert_called_with("no-tok-abc")
+        assert pos["mae_data_quality"] == "exact", (
+            f"WS bid mevcut → exact bekleniyor, '{pos['mae_data_quality']}' geldi"
+        )
+        assert pos.get("mae_px") == pytest.approx(0.38), (
+            f"mae_px complement değil WS bid olmalı: 0.38 bekleniyor, {pos.get('mae_px')} geldi"
+        )
+
+
+def test_no_position_falls_back_to_complement_when_no_ws_bid():
+    """WS no_token_id bid yoksa complement kullanılmalı ve quality='estimated'."""
+    from unittest.mock import patch
+    pos = _pos(action="NO", entry=0.45, fair=0.25)
+    pos["no_token_id"] = "no-tok-xyz"
+    pos["opened_at"] = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
+
+    with patch("position.manager._ws.get_bid", return_value=None):
+        check_exit(pos, hl_price=60000, pm_yes_price=0.58, time_to_expiry_secs=300)
+        assert pos["mae_data_quality"] == "estimated"
+        assert pos.get("mae_px") == pytest.approx(1 - 0.58)
+
+
+def test_no_position_without_no_token_id_uses_complement():
+    """no_token_id pozisyonda yoksa complement fallback, quality='estimated'."""
+    pos = _pos(action="NO", entry=0.45, fair=0.25)
+    pos["opened_at"] = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
+    check_exit(pos, hl_price=60000, pm_yes_price=0.55, time_to_expiry_secs=300)
+    assert pos["mae_data_quality"] == "estimated"
+    assert pos.get("mae_px") == pytest.approx(1 - 0.55)
+
+
+def test_no_stop_loss_uses_exact_no_bid():
+    """NO stop-loss kararı da exact WS no_bid kullanmalı (complement değil)."""
+    from unittest.mock import patch
+    pos = _pos(action="NO", entry=0.45, fair=0.25)
+    pos["no_token_id"] = "no-tok-stop"
+    pos["opened_at"] = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
+
+    # no_bid=0.29 → (0.29-0.45)/0.45 = -35.6% → -%25 eşiğini aştı → stop_loss_hit
+    with patch("position.manager._ws.get_bid", return_value=0.29):
+        result = check_exit(pos, hl_price=60000, pm_yes_price=0.72, time_to_expiry_secs=300)
+        assert result == "stop_loss_hit", (
+            f"no_bid=0.29 ile -%35 kayıp → stop_loss_hit bekleniyor, '{result}' geldi"
+        )
