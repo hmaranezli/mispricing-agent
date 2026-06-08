@@ -42,7 +42,7 @@
       "label": "execute()",
       "file_type": "code",
       "source_file": "main_loop.py",
-      "source_location": "L39",
+      "source_location": "L40",
       "id": "mispricing_agent_main_loop_execute",
       "community": 0,
       "norm_label": "execute()"
@@ -51,25 +51,25 @@
       "label": "_load_open_positions()",
       "file_type": "code",
       "source_file": "main_loop.py",
-      "source_location": "L46",
+      "source_location": "L47",
       "id": "mispricing_agent_main_loop_load_open_positions",
-      "community": 152,
+      "community": 0,
       "norm_label": "_load_open_positions()"
     },
     {
       "label": "_run_council()",
       "file_type": "code",
       "source_file": "main_loop.py",
-      "source_location": "L92",
+      "source_location": "L93",
       "id": "mispricing_agent_main_loop_run_council",
-      "community": 62,
+      "community": 151,
       "norm_label": "_run_council()"
     },
     {
       "label": "float",
       "file_type": "code",
       "source_file": "main_loop.py",
-      "source_location": "L92",
+      "source_location": "L93",
       "id": "main_loop_py_float",
       "community": 99,
       "norm_label": "float"
@@ -78,16 +78,16 @@
       "label": "int",
       "file_type": "code",
       "source_file": "main_loop.py",
-      "source_location": "L92",
+      "source_location": "L93",
       "id": "main_loop_py_int",
-      "community": 62,
+      "community": 151,
       "norm_label": "int"
     },
     {
       "label": "_scan_and_execute()",
       "file_type": "code",
       "source_file": "main_loop.py",
-      "source_location": "L168",
+      "source_location": "L169",
       "id": "mispricing_agent_main_loop_scan_and_execute",
       "community": 99,
       "norm_label": "_scan_and_execute()"
@@ -96,16 +96,16 @@
       "label": "_handle_ws_resolved()",
       "file_type": "code",
       "source_file": "main_loop.py",
-      "source_location": "L245",
+      "source_location": "L254",
       "id": "mispricing_agent_main_loop_handle_ws_resolved",
-      "community": 85,
+      "community": 113,
       "norm_label": "_handle_ws_resolved()"
     },
     {
       "label": "_heal_pending_resolutions()",
       "file_type": "code",
       "source_file": "main_loop.py",
-      "source_location": "L282",
+      "source_location": "L291",
       "id": "mispricing_agent_main_loop_heal_pending_resolutions",
       "community": 94,
       "norm_label": "_heal_pending_resolutions()"
@@ -114,7 +114,7 @@
       "label": "_apply_partial_fill()",
       "file_type": "code",
       "source_file": "main_loop.py",
-      "source_location": "L339",
+      "source_location": "L348",
       "id": "mispricing_agent_main_loop_apply_partial_fill",
       "community": 169,
       "norm_label": "_apply_partial_fill()"
@@ -123,7 +123,7 @@
       "label": "bool",
       "file_type": "code",
       "source_file": "main_loop.py",
-      "source_location": "L339",
+      "source_location": "L348",
       "id": "main_loop_py_bool",
       "community": 169,
       "norm_label": "bool"
@@ -132,7 +132,7 @@
       "label": "_do_flatten()",
       "file_type": "code",
       "source_file": "main_loop.py",
-      "source_location": "L361",
+      "source_location": "L370",
       "id": "mispricing_agent_main_loop_do_flatten",
       "community": 72,
       "norm_label": "_do_flatten()"
@@ -141,7 +141,7 @@
       "label": "_monitor_positions()",
       "file_type": "code",
       "source_file": "main_loop.py",
-      "source_location": "L401",
+      "source_location": "L410",
       "id": "mispricing_agent_main_loop_monitor_positions",
       "community": 71,
       "norm_label": "_monitor_positions()"
@@ -150,7 +150,7 @@
       "label": "main()",
       "file_type": "code",
       "source_file": "main_loop.py",
-      "source_location": "L592",
+      "source_location": "L601",
       "id": "mispricing_agent_main_loop_main",
       "community": 74,
       "norm_label": "main()"
@@ -168,8 +168,8 @@
       "label": "DRY_RUN flag'ine g\u00f6re executor se\u00e7. Runtime'da de\u011ferlendirilir.",
       "file_type": "rationale",
       "source_file": "main_loop.py",
-      "source_location": "L40",
-      "id": "mispricing_agent_main_loop_rationale_40",
+      "source_location": "L41",
+      "id": "mispricing_agent_main_loop_rationale_41",
       "community": 0,
       "norm_label": "dry_run flag'ine gore executor sec. runtime'da degerlendirilir."
     },
@@ -177,26 +177,26 @@
       "label": "DB'deki status=open pozisyonlar\u0131 y\u00fckler \u2014 restart sonras\u0131 memory'yi geri dolduru",
       "file_type": "rationale",
       "source_file": "main_loop.py",
-      "source_location": "L47",
-      "id": "mispricing_agent_main_loop_rationale_47",
-      "community": 152,
+      "source_location": "L48",
+      "id": "mispricing_agent_main_loop_rationale_48",
+      "community": 0,
       "norm_label": "db'deki status=open pozisyonlar\u0131 yukler \u2014 restart sonras\u0131 memory'yi geri dolduru"
     },
     {
       "label": "Finding'i 5 katmandan ge\u00e7irir. Herhangi biri d\u00fc\u015ferse None.",
       "file_type": "rationale",
       "source_file": "main_loop.py",
-      "source_location": "L99",
-      "id": "mispricing_agent_main_loop_rationale_99",
-      "community": 62,
+      "source_location": "L100",
+      "id": "mispricing_agent_main_loop_rationale_100",
+      "community": 151,
       "norm_label": "finding'i 5 katmandan gecirir. herhangi biri duserse none."
     },
     {
       "label": "Yeni f\u0131rsatlar\u0131 tarar, konsey ge\u00e7enleri a\u00e7ar.",
       "file_type": "rationale",
       "source_file": "main_loop.py",
-      "source_location": "L175",
-      "id": "mispricing_agent_main_loop_rationale_175",
+      "source_location": "L176",
+      "id": "mispricing_agent_main_loop_rationale_176",
       "community": 99,
       "norm_label": "yeni f\u0131rsatlar\u0131 tarar, konsey gecenleri acar."
     },
@@ -204,17 +204,17 @@
       "label": "WS market_resolved event'\u0131na g\u00f6re a\u00e7\u0131k pozisyonu an\u0131nda kapat.",
       "file_type": "rationale",
       "source_file": "main_loop.py",
-      "source_location": "L252",
-      "id": "mispricing_agent_main_loop_rationale_252",
-      "community": 85,
+      "source_location": "L261",
+      "id": "mispricing_agent_main_loop_rationale_261",
+      "community": 113,
       "norm_label": "ws market_resolved event'\u0131na gore ac\u0131k pozisyonu an\u0131nda kapat."
     },
     {
       "label": "market_expired + pm_exit_price=None kay\u0131tlar\u0131 i\u00e7in resolution retry eder.",
       "file_type": "rationale",
       "source_file": "main_loop.py",
-      "source_location": "L287",
-      "id": "mispricing_agent_main_loop_rationale_287",
+      "source_location": "L296",
+      "id": "mispricing_agent_main_loop_rationale_296",
       "community": 94,
       "norm_label": "market_expired + pm_exit_price=none kay\u0131tlar\u0131 icin resolution retry eder."
     },
@@ -222,8 +222,8 @@
       "label": "K\u0131smi fill kontrol\u00fc + pos g\u00fcncelleme.      Returns:         True  \u2192 k\u0131smi fill o",
       "file_type": "rationale",
       "source_file": "main_loop.py",
-      "source_location": "L340",
-      "id": "mispricing_agent_main_loop_rationale_340",
+      "source_location": "L349",
+      "id": "mispricing_agent_main_loop_rationale_349",
       "community": 169,
       "norm_label": "k\u0131smi fill kontrolu + pos guncelleme.      returns:         true  \u2192 k\u0131smi fill o"
     },
@@ -231,8 +231,8 @@
       "label": "Panic flatten: t\u00fcm a\u00e7\u0131k pozisyonlar\u0131 FAK SELL ile kapatmaya \u00e7al\u0131\u015f\u0131r.",
       "file_type": "rationale",
       "source_file": "main_loop.py",
-      "source_location": "L362",
-      "id": "mispricing_agent_main_loop_rationale_362",
+      "source_location": "L371",
+      "id": "mispricing_agent_main_loop_rationale_371",
       "community": 72,
       "norm_label": "panic flatten: tum ac\u0131k pozisyonlar\u0131 fak sell ile kapatmaya cal\u0131s\u0131r."
     },
@@ -240,8 +240,8 @@
       "label": "A\u00e7\u0131k pozisyonlar\u0131 izler. WS event gelince h\u0131zl\u0131 path, 7s timeout \u2192 REST heartbea",
       "file_type": "rationale",
       "source_file": "main_loop.py",
-      "source_location": "L407",
-      "id": "mispricing_agent_main_loop_rationale_407",
+      "source_location": "L416",
+      "id": "mispricing_agent_main_loop_rationale_416",
       "community": 71,
       "norm_label": "ac\u0131k pozisyonlar\u0131 izler. ws event gelince h\u0131zl\u0131 path, 7s timeout \u2192 rest heartbea"
     },
@@ -1043,7 +1043,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L96",
       "id": "tests_test_db_test_log_position_close",
-      "community": 3,
+      "community": 173,
       "norm_label": "test_log_position_close()"
     },
     {
@@ -1052,7 +1052,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L116",
       "id": "tests_test_db_test_positions_schema_has_ref_price_and_edge",
-      "community": 3,
+      "community": 171,
       "norm_label": "test_positions_schema_has_ref_price_and_edge()"
     },
     {
@@ -1061,7 +1061,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L125",
       "id": "tests_test_db_test_schema_has_faz1_telemetry_columns",
-      "community": 3,
+      "community": 123,
       "norm_label": "test_schema_has_faz1_telemetry_columns()"
     },
     {
@@ -1079,7 +1079,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L202",
       "id": "tests_test_db_test_log_position_open_stores_ref_price_and_edge",
-      "community": 3,
+      "community": 123,
       "norm_label": "test_log_position_open_stores_ref_price_and_edge()"
     },
     {
@@ -1088,7 +1088,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L219",
       "id": "tests_test_db_test_positions_schema_has_realized_pnl",
-      "community": 3,
+      "community": 129,
       "norm_label": "test_positions_schema_has_realized_pnl()"
     },
     {
@@ -1097,7 +1097,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L227",
       "id": "tests_test_db_test_log_position_close_stores_realized_pnl",
-      "community": 3,
+      "community": 130,
       "norm_label": "test_log_position_close_stores_realized_pnl()"
     },
     {
@@ -1106,7 +1106,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L252",
       "id": "tests_test_db_test_log_position_close_realized_pnl_none_when_no_exit_price",
-      "community": 3,
+      "community": 131,
       "norm_label": "test_log_position_close_realized_pnl_none_when_no_exit_price()"
     },
     {
@@ -1115,7 +1115,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L274",
       "id": "tests_test_db_test_load_closed_today_returns_only_todays",
-      "community": 144,
+      "community": 21,
       "norm_label": "test_load_closed_today_returns_only_todays()"
     },
     {
@@ -1133,7 +1133,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L338",
       "id": "tests_test_db_test_patch_position_resolution_conn_none_is_noop",
-      "community": 149,
+      "community": 19,
       "norm_label": "test_patch_position_resolution_conn_none_is_noop()"
     },
     {
@@ -1142,7 +1142,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L345",
       "id": "tests_test_db_test_positions_schema_has_clob_columns",
-      "community": 3,
+      "community": 134,
       "norm_label": "test_positions_schema_has_clob_columns()"
     },
     {
@@ -1151,7 +1151,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L356",
       "id": "tests_test_db_test_log_position_open_stores_clob_fields",
-      "community": 3,
+      "community": 76,
       "norm_label": "test_log_position_open_stores_clob_fields()"
     },
     {
@@ -1169,7 +1169,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L390",
       "id": "tests_test_db_test_log_position_open_saves_entry_hl_price",
-      "community": 3,
+      "community": 149,
       "norm_label": "test_log_position_open_saves_entry_hl_price()"
     },
     {
@@ -1178,7 +1178,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L410",
       "id": "tests_test_db_test_log_position_close_saves_exit_hl_price",
-      "community": 3,
+      "community": 160,
       "norm_label": "test_log_position_close_saves_exit_hl_price()"
     },
     {
@@ -1223,7 +1223,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L538",
       "id": "tests_test_db_test_log_partial_fill_update_persists_to_db",
-      "community": 3,
+      "community": 76,
       "norm_label": "test_log_partial_fill_update_persists_to_db()"
     },
     {
@@ -1232,7 +1232,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L571",
       "id": "tests_test_db_test_patch_position_resolution_saves_exit_hl_price",
-      "community": 3,
+      "community": 76,
       "norm_label": "test_patch_position_resolution_saves_exit_hl_price()"
     },
     {
@@ -1295,7 +1295,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L97",
       "id": "tests_test_db_rationale_97",
-      "community": 3,
+      "community": 173,
       "norm_label": "kapanan pozisyon: status='closed', exit_reason ve pm_exit_price guncellenir."
     },
     {
@@ -1304,7 +1304,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L117",
       "id": "tests_test_db_rationale_117",
-      "community": 3,
+      "community": 171,
       "norm_label": "positions tablosu ref_price ve edge sutunlar\u0131na sahip olmal\u0131."
     },
     {
@@ -1313,7 +1313,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L126",
       "id": "tests_test_db_rationale_126",
-      "community": 3,
+      "community": 123,
       "norm_label": "init_schema sonras\u0131 22 faz 1 telemetri kolonu positions tablosunda var."
     },
     {
@@ -1331,7 +1331,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L203",
       "id": "tests_test_db_rationale_203",
-      "community": 3,
+      "community": 123,
       "norm_label": "log_position_open ref_price ve edge degerlerini db'ye yazar."
     },
     {
@@ -1340,7 +1340,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L220",
       "id": "tests_test_db_rationale_220",
-      "community": 3,
+      "community": 129,
       "norm_label": "positions tablosu realized_pnl sutununa sahip olmal\u0131."
     },
     {
@@ -1349,7 +1349,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L228",
       "id": "tests_test_db_rationale_228",
-      "community": 3,
+      "community": 130,
       "norm_label": "kapanan pozisyonda realized_pnl hesaplan\u0131p db'ye yaz\u0131l\u0131r.     entry=0.40, exit=0"
     },
     {
@@ -1358,7 +1358,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L253",
       "id": "tests_test_db_rationale_253",
-      "community": 3,
+      "community": 131,
       "norm_label": "pm_exit_price=none (market_expired) \u2192 realized_pnl=none."
     },
     {
@@ -1367,7 +1367,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L275",
       "id": "tests_test_db_rationale_275",
-      "community": 144,
+      "community": 21,
       "norm_label": "load_closed_today yaln\u0131zca bugunun utc kapan\u0131slar\u0131n\u0131 dondurur, onceki gunleri de"
     },
     {
@@ -1385,7 +1385,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L339",
       "id": "tests_test_db_rationale_339",
-      "community": 149,
+      "community": 19,
       "norm_label": "conn=none \u2192 sessizce atlan\u0131r, exception yok."
     },
     {
@@ -1394,7 +1394,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L346",
       "id": "tests_test_db_rationale_346",
-      "community": 3,
+      "community": 134,
       "norm_label": "positions tablosu shares, order_id, yes_token_id, no_token_id sutunlar\u0131na sahip"
     },
     {
@@ -1403,7 +1403,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L357",
       "id": "tests_test_db_rationale_357",
-      "community": 3,
+      "community": 76,
       "norm_label": "log_position_open shares, order_id, yes_token_id, no_token_id alanlar\u0131n\u0131 yazar."
     },
     {
@@ -1421,7 +1421,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L391",
       "id": "tests_test_db_rationale_391",
-      "community": 3,
+      "community": 149,
       "norm_label": "log_position_open \u2192 entry_hl_price db'ye kaydedilmeli."
     },
     {
@@ -1430,7 +1430,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L411",
       "id": "tests_test_db_rationale_411",
-      "community": 3,
+      "community": 160,
       "norm_label": "log_position_close \u2192 exit_hl_price db'ye kaydedilmeli."
     },
     {
@@ -1475,7 +1475,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L539",
       "id": "tests_test_db_rationale_539",
-      "community": 3,
+      "community": 76,
       "norm_label": "log_partial_fill_update() ac\u0131k pozisyonun shares/partial_* alanlar\u0131n\u0131 gunceller."
     },
     {
@@ -1484,7 +1484,7 @@
       "source_file": "tests/test_db.py",
       "source_location": "L572",
       "id": "tests_test_db_rationale_572",
-      "community": 3,
+      "community": 76,
       "norm_label": "patch_position_resolution exit_hl_price ile cagr\u0131l\u0131nca db'ye kaydedilmeli."
     },
     {
@@ -2204,7 +2204,7 @@
       "source_file": "tests/test_shortterm.py",
       "source_location": "L95",
       "id": "tests_test_shortterm_test_parse_market_window_missing_best_ask_returns_none",
-      "community": 69,
+      "community": 86,
       "norm_label": "test_parse_market_window_missing_best_ask_returns_none()"
     },
     {
@@ -2213,7 +2213,7 @@
       "source_file": "tests/test_shortterm.py",
       "source_location": "L105",
       "id": "tests_test_shortterm_test_parse_market_window_missing_end_date_returns_none",
-      "community": 69,
+      "community": 86,
       "norm_label": "test_parse_market_window_missing_end_date_returns_none()"
     },
     {
@@ -2240,7 +2240,7 @@
       "source_file": "tests/test_shortterm.py",
       "source_location": "L142",
       "id": "tests_test_shortterm_test_find_shortterm_returns_list",
-      "community": 102,
+      "community": 86,
       "norm_label": "test_find_shortterm_returns_list()"
     },
     {
@@ -2267,7 +2267,7 @@
       "source_file": "tests/test_shortterm.py",
       "source_location": "L174",
       "id": "tests_test_shortterm_test_slugs_lookback_at_least_7",
-      "community": 86,
+      "community": 102,
       "norm_label": "test_slugs_lookback_at_least_7()"
     },
     {
@@ -2375,7 +2375,7 @@
       "source_file": "tests/test_shortterm.py",
       "source_location": "L96",
       "id": "tests_test_shortterm_rationale_96",
-      "community": 69,
+      "community": 86,
       "norm_label": "bestask yoksa none doner."
     },
     {
@@ -2384,7 +2384,7 @@
       "source_file": "tests/test_shortterm.py",
       "source_location": "L106",
       "id": "tests_test_shortterm_rationale_106",
-      "community": 69,
+      "community": 86,
       "norm_label": "enddate yoksa none doner."
     },
     {
@@ -2429,7 +2429,7 @@
       "source_file": "tests/test_shortterm.py",
       "source_location": "L175",
       "id": "tests_test_shortterm_rationale_175",
-      "community": 86,
+      "community": 102,
       "norm_label": "her asset icin en az 7 pencere sorgulanmal\u0131."
     },
     {
@@ -2816,7 +2816,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L44",
       "id": "tests_test_main_loop_finding",
-      "community": 114,
+      "community": 176,
       "norm_label": "_finding()"
     },
     {
@@ -2861,7 +2861,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L72",
       "id": "tests_test_main_loop_test_run_council_returns_none_when_verify_fails",
-      "community": 114,
+      "community": 151,
       "norm_label": "test_run_council_returns_none_when_verify_fails()"
     },
     {
@@ -2888,7 +2888,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L133",
       "id": "tests_test_main_loop_test_scan_skips_when_max_positions_reached",
-      "community": 33,
+      "community": 99,
       "norm_label": "test_scan_skips_when_max_positions_reached()"
     },
     {
@@ -2897,7 +2897,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L143",
       "id": "tests_test_main_loop_test_scan_opens_position_on_full_council_pass",
-      "community": 173,
+      "community": 176,
       "norm_label": "test_scan_opens_position_on_full_council_pass()"
     },
     {
@@ -2906,7 +2906,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L160",
       "id": "tests_test_main_loop_test_scan_skips_already_open_slug",
-      "community": 33,
+      "community": 99,
       "norm_label": "test_scan_skips_already_open_slug()"
     },
     {
@@ -2915,7 +2915,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L173",
       "id": "tests_test_main_loop_test_scan_does_not_open_same_slug_twice_in_one_scan",
-      "community": 171,
+      "community": 176,
       "norm_label": "test_scan_does_not_open_same_slug_twice_in_one_scan()"
     },
     {
@@ -2924,7 +2924,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L193",
       "id": "tests_test_main_loop_test_fok_failed_slug_not_added_to_failed_set",
-      "community": 21,
+      "community": 176,
       "norm_label": "test_fok_failed_slug_not_added_to_failed_set()"
     },
     {
@@ -2933,7 +2933,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L208",
       "id": "tests_test_main_loop_test_fok_failed_slug_skipped_before_council",
-      "community": 21,
+      "community": 176,
       "norm_label": "test_fok_failed_slug_skipped_before_council()"
     },
     {
@@ -2951,7 +2951,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L238",
       "id": "tests_test_main_loop_test_successful_fill_not_added_to_failed_slugs",
-      "community": 134,
+      "community": 176,
       "norm_label": "test_successful_fill_not_added_to_failed_slugs()"
     },
     {
@@ -3050,7 +3050,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L459",
       "id": "tests_test_main_loop_test_monitor_profit_target_does_not_lock_slug",
-      "community": 104,
+      "community": 80,
       "norm_label": "test_monitor_profit_target_does_not_lock_slug()"
     },
     {
@@ -3059,7 +3059,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L478",
       "id": "tests_test_main_loop_test_monitor_yes_position_exit_uses_best_bid_not_ask",
-      "community": 129,
+      "community": 133,
       "norm_label": "test_monitor_yes_position_exit_uses_best_bid_not_ask()"
     },
     {
@@ -3095,7 +3095,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L593",
       "id": "tests_test_main_loop_test_heal_respects_limit",
-      "community": 137,
+      "community": 85,
       "norm_label": "test_heal_respects_limit()"
     },
     {
@@ -3104,7 +3104,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L619",
       "id": "tests_test_main_loop_test_heal_calls_notify_resolved_late",
-      "community": 125,
+      "community": 73,
       "norm_label": "test_heal_calls_notify_resolved_late()"
     },
     {
@@ -3149,7 +3149,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L744",
       "id": "tests_test_main_loop_test_live_monitor_keeps_position_open_when_sell_returns_none",
-      "community": 110,
+      "community": 111,
       "norm_label": "test_live_monitor_keeps_position_open_when_sell_returns_none()"
     },
     {
@@ -3158,7 +3158,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L784",
       "id": "tests_test_main_loop_test_load_open_positions_includes_entry_hl_price",
-      "community": 110,
+      "community": 104,
       "norm_label": "test_load_open_positions_includes_entry_hl_price()"
     },
     {
@@ -3167,7 +3167,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L802",
       "id": "tests_test_main_loop_test_monitor_passes_exit_hl_price_to_closed_position",
-      "community": 80,
+      "community": 62,
       "norm_label": "test_monitor_passes_exit_hl_price_to_closed_position()"
     },
     {
@@ -3212,7 +3212,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L958",
       "id": "tests_test_main_loop_test_handle_ws_resolved_closes_no_position_on_no_win",
-      "community": 130,
+      "community": 113,
       "norm_label": "test_handle_ws_resolved_closes_no_position_on_no_win()"
     },
     {
@@ -3221,7 +3221,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L993",
       "id": "tests_test_main_loop_test_handle_ws_resolved_yes_position_loses",
-      "community": 131,
+      "community": 113,
       "norm_label": "test_handle_ws_resolved_yes_position_loses()"
     },
     {
@@ -3230,7 +3230,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1027",
       "id": "tests_test_main_loop_test_handle_ws_resolved_ignores_unrelated_market",
-      "community": 85,
+      "community": 113,
       "norm_label": "test_handle_ws_resolved_ignores_unrelated_market()"
     },
     {
@@ -3248,7 +3248,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1073",
       "id": "tests_test_main_loop_test_monitor_sets_price_source_ws_bid_for_yes_ws_price",
-      "community": 221,
+      "community": 71,
       "norm_label": "test_monitor_sets_price_source_ws_bid_for_yes_ws_price()"
     },
     {
@@ -3311,7 +3311,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1248",
       "id": "tests_test_main_loop_test_monitor_no_ws_bid_yes_ask_none_calls_check_exit",
-      "community": 222,
+      "community": 71,
       "norm_label": "test_monitor_no_ws_bid_yes_ask_none_calls_check_exit()"
     },
     {
@@ -3338,7 +3338,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1331",
       "id": "tests_test_main_loop_test_monitor_ws_path_returns_true_and_makes_no_rest_calls",
-      "community": 222,
+      "community": 71,
       "norm_label": "test_monitor_ws_path_returns_true_and_makes_no_rest_calls()"
     },
     {
@@ -3347,7 +3347,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1353",
       "id": "tests_test_main_loop_test_monitor_rest_path_returns_false_and_refreshes_cache",
-      "community": 71,
+      "community": 114,
       "norm_label": "test_monitor_rest_path_returns_false_and_refreshes_cache()"
     },
     {
@@ -3374,7 +3374,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1414",
       "id": "tests_test_main_loop_test_monitor_live_resets_closing_on_fak_fail",
-      "community": 222,
+      "community": 71,
       "norm_label": "test_monitor_live_resets_closing_on_fak_fail()"
     },
     {
@@ -3392,7 +3392,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1458",
       "id": "tests_test_main_loop_test_monitor_ws_path_skips_position_when_hl_cache_empty",
-      "community": 71,
+      "community": 125,
       "norm_label": "test_monitor_ws_path_skips_position_when_hl_cache_empty()"
     },
     {
@@ -3401,7 +3401,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1479",
       "id": "tests_test_main_loop_test_monitor_partial_fill_updates_shares_and_keeps_position",
-      "community": 71,
+      "community": 126,
       "norm_label": "test_monitor_partial_fill_updates_shares_and_keeps_position()"
     },
     {
@@ -3437,7 +3437,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1590",
       "id": "tests_test_main_loop_test_do_flatten_sells_all_and_clears_list",
-      "community": 76,
+      "community": 144,
       "norm_label": "test_do_flatten_sells_all_and_clears_list()"
     },
     {
@@ -3482,7 +3482,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1713",
       "id": "tests_test_main_loop_test_ws_triggered_flag_skips_scan_execute",
-      "community": 76,
+      "community": 144,
       "norm_label": "test_ws_triggered_flag_skips_scan_execute()"
     },
     {
@@ -3491,7 +3491,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1741",
       "id": "tests_test_main_loop_test_monitor_calls_ws_unsubscribe_on_position_close",
-      "community": 71,
+      "community": 144,
       "norm_label": "test_monitor_calls_ws_unsubscribe_on_position_close()"
     },
     {
@@ -3500,7 +3500,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1793",
       "id": "tests_test_main_loop_test_monitor_positions_prints_monitor_perf",
-      "community": 71,
+      "community": 144,
       "norm_label": "test_monitor_positions_prints_monitor_perf()"
     },
     {
@@ -3518,7 +3518,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1822",
       "id": "tests_test_main_loop_test_scan_perf_includes_council_and_execute_timing",
-      "community": 114,
+      "community": 176,
       "norm_label": "test_scan_perf_includes_council_and_execute_timing()"
     },
     {
@@ -3572,7 +3572,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L73",
       "id": "tests_test_main_loop_rationale_73",
-      "community": 114,
+      "community": 151,
       "norm_label": "verify() fail \u2192 _run_council none doner."
     },
     {
@@ -3599,7 +3599,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L134",
       "id": "tests_test_main_loop_rationale_134",
-      "community": 33,
+      "community": 99,
       "norm_label": "max_open_positions doluysa scan_edges hic cagr\u0131lmaz."
     },
     {
@@ -3608,7 +3608,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L144",
       "id": "tests_test_main_loop_rationale_144",
-      "community": 173,
+      "community": 176,
       "norm_label": "konsey gecince execute() cagr\u0131l\u0131r, pozisyon open_positions'a eklenir."
     },
     {
@@ -3617,7 +3617,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L161",
       "id": "tests_test_main_loop_rationale_161",
-      "community": 33,
+      "community": 99,
       "norm_label": "ayn\u0131 slug icin ac\u0131k pozisyon varsa _run_council cagr\u0131lmaz."
     },
     {
@@ -3626,7 +3626,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L174",
       "id": "tests_test_main_loop_rationale_174",
-      "community": 171,
+      "community": 176,
       "norm_label": "findings listesinde ayn\u0131 slug iki kez varsa yaln\u0131zca bir pozisyon ac\u0131l\u0131r."
     },
     {
@@ -3635,7 +3635,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L194",
       "id": "tests_test_main_loop_rationale_194",
-      "community": 21,
+      "community": 176,
       "norm_label": "fak kill (execute\u2192none) olan slug failed_slugs'a eklenmemeli.     capital riske"
     },
     {
@@ -3644,7 +3644,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L209",
       "id": "tests_test_main_loop_rationale_209",
-      "community": 21,
+      "community": 176,
       "norm_label": "failed_slugs'taki slug icin _run_council hic cagr\u0131lmaz."
     },
     {
@@ -3662,7 +3662,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L239",
       "id": "tests_test_main_loop_rationale_239",
-      "community": 134,
+      "community": 176,
       "norm_label": "basar\u0131l\u0131 fill (execute\u2192position) olan slug failed_slugs'a eklenmez."
     },
     {
@@ -3752,7 +3752,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L460",
       "id": "tests_test_main_loop_rationale_460",
-      "community": 104,
+      "community": 80,
       "norm_label": "profit_target_hit \u2192 slug failed_slugs'a eklenmez (yuksek-edge re-entry serbest)."
     },
     {
@@ -3761,7 +3761,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L479",
       "id": "tests_test_main_loop_rationale_479",
-      "community": 129,
+      "community": 133,
       "norm_label": "dry_run yes c\u0131k\u0131sta pm_exit_price = ws bid (sat\u0131s fiyat\u0131), ask degil."
     },
     {
@@ -3797,7 +3797,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L594",
       "id": "tests_test_main_loop_rationale_594",
-      "community": 120,
+      "community": 85,
       "norm_label": "limit=2 \u2192 5 null kay\u0131t varsa sadece 2 islenir, 3 null kal\u0131r."
     },
     {
@@ -3806,7 +3806,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L620",
       "id": "tests_test_main_loop_rationale_620",
-      "community": 125,
+      "community": 73,
       "norm_label": "heal basar\u0131l\u0131ysa notify_resolved_late dogru asset/seq_no ile cagr\u0131l\u0131r."
     },
     {
@@ -3851,7 +3851,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L745",
       "id": "tests_test_main_loop_rationale_745",
-      "community": 110,
+      "community": 111,
       "norm_label": "dry_run=false iken sell_position none \u2192 pozisyon acik kal\u0131r, kapat\u0131lmaz.      fa"
     },
     {
@@ -3860,7 +3860,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L785",
       "id": "tests_test_main_loop_rationale_785",
-      "community": 110,
+      "community": 104,
       "norm_label": "db'den yuklenen pozisyonda entry_hl_price alan\u0131 olmal\u0131."
     },
     {
@@ -3869,7 +3869,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L803",
       "id": "tests_test_main_loop_rationale_803",
-      "community": 80,
+      "community": 62,
       "norm_label": "_monitor_positions exit an\u0131ndaki hl fiyat\u0131n\u0131 closed dict'e eklemeli."
     },
     {
@@ -3914,7 +3914,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L959",
       "id": "tests_test_main_loop_rationale_959",
-      "community": 130,
+      "community": 113,
       "norm_label": "no pozisyon + 'no' kazan\u0131nca pm_exit=1.0 ile kapanmal\u0131."
     },
     {
@@ -3923,7 +3923,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L994",
       "id": "tests_test_main_loop_rationale_994",
-      "community": 131,
+      "community": 113,
       "norm_label": "yes pozisyon + 'no' kazan\u0131nca pm_exit=0.0 ile kapanmal\u0131."
     },
     {
@@ -3932,7 +3932,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1028",
       "id": "tests_test_main_loop_rationale_1028",
-      "community": 85,
+      "community": 113,
       "norm_label": "assets_ids eslesmiyorsa pozisyona dokunmamal\u0131."
     },
     {
@@ -3950,7 +3950,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1074",
       "id": "tests_test_main_loop_rationale_1074",
-      "community": 221,
+      "community": 71,
       "norm_label": "yes + ws bid mevcut \u2192 price_source='ws_bid', mae_data_quality='exact'."
     },
     {
@@ -4013,7 +4013,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1249",
       "id": "tests_test_main_loop_rationale_1249",
-      "community": 222,
+      "community": 71,
       "norm_label": "no + ws no_bid var + yes ask none \u2192 check_exit cagr\u0131lmal\u0131, skip edilmemeli."
     },
     {
@@ -4040,7 +4040,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1332",
       "id": "tests_test_main_loop_rationale_1332",
-      "community": 222,
+      "community": 71,
       "norm_label": "ws event an\u0131nda gelirse true doner ve current_price/fetch_by_slug cagr\u0131lmaz."
     },
     {
@@ -4049,7 +4049,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1354",
       "id": "tests_test_main_loop_rationale_1354",
-      "community": 71,
+      "community": 114,
       "norm_label": "ws event 7s icinde gelmezse false doner, cache guncellenir."
     },
     {
@@ -4076,7 +4076,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1415",
       "id": "tests_test_main_loop_rationale_1415",
-      "community": 222,
+      "community": 71,
       "norm_label": "live: sell_position() none donerse _closing=false reset edilir, pozisyon listede"
     },
     {
@@ -4094,7 +4094,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1459",
       "id": "tests_test_main_loop_rationale_1459",
-      "community": 71,
+      "community": 125,
       "norm_label": "ws event geldiginde _cached_hl_price yoksa pozisyon skip edilmeli \u2014 crash yok, c"
     },
     {
@@ -4103,7 +4103,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1480",
       "id": "tests_test_main_loop_rationale_1480",
-      "community": 71,
+      "community": 126,
       "norm_label": "k\u0131smi fill (making < shares * 0.98) \u2192 pozisyon listede kal\u0131r, shares azal\u0131r, _cl"
     },
     {
@@ -4184,7 +4184,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1714",
       "id": "tests_test_main_loop_rationale_1714",
-      "community": 76,
+      "community": 144,
       "norm_label": "ws_triggered=true iken scan+heal mant\u0131g\u0131 atlan\u0131r (main() kosullu blogu dogrular)"
     },
     {
@@ -4193,7 +4193,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1742",
       "id": "tests_test_main_loop_rationale_1742",
-      "community": 71,
+      "community": 144,
       "norm_label": "pozisyon kapan\u0131nca ws_prices.unsubscribe() yes/no token'lar\u0131yla cagr\u0131l\u0131r."
     },
     {
@@ -4202,7 +4202,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1794",
       "id": "tests_test_main_loop_rationale_1794",
-      "community": 71,
+      "community": 144,
       "norm_label": "_monitor_positions baslang\u0131cta [monitor_perf] sat\u0131r\u0131 basmal\u0131."
     },
     {
@@ -4220,7 +4220,7 @@
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1823",
       "id": "tests_test_main_loop_rationale_1823",
-      "community": 114,
+      "community": 176,
       "norm_label": "[scan_perf] council ve execute timing icermeli."
     },
     {
@@ -5786,7 +5786,7 @@
       "source_file": "tests/test_position_store.py",
       "source_location": "L22",
       "id": "tests_test_position_store_open_pos",
-      "community": 185,
+      "community": 6,
       "norm_label": "_open_pos()"
     },
     {
@@ -6560,7 +6560,7 @@
       "source_file": "tests/test_clob_price.py",
       "source_location": "L93",
       "id": "tests_test_clob_price_test_get_book_returns_dict_with_bids_and_asks",
-      "community": 111,
+      "community": 4,
       "norm_label": "test_get_book_returns_dict_with_bids_and_asks()"
     },
     {
@@ -6578,7 +6578,7 @@
       "source_file": "tests/test_clob_price.py",
       "source_location": "L134",
       "id": "tests_test_clob_price_test_get_book_returns_none_for_none_token",
-      "community": 111,
+      "community": 4,
       "norm_label": "test_get_book_returns_none_for_none_token()"
     },
     {
@@ -6596,7 +6596,7 @@
       "source_file": "tests/test_clob_price.py",
       "source_location": "L159",
       "id": "tests_test_clob_price_test_get_book_returns_none_on_exception",
-      "community": 111,
+      "community": 4,
       "norm_label": "test_get_book_returns_none_on_exception()"
     },
     {
@@ -6668,7 +6668,7 @@
       "source_file": "tests/test_clob_price.py",
       "source_location": "L94",
       "id": "tests_test_clob_price_rationale_94",
-      "community": 111,
+      "community": 4,
       "norm_label": "basar\u0131l\u0131 yan\u0131tta bids/asks iceren dict doner."
     },
     {
@@ -6686,7 +6686,7 @@
       "source_file": "tests/test_clob_price.py",
       "source_location": "L135",
       "id": "tests_test_clob_price_rationale_135",
-      "community": 111,
+      "community": 4,
       "norm_label": "none token_id \u2192 api cagr\u0131s\u0131 yap\u0131lmaz, none doner."
     },
     {
@@ -6704,7 +6704,7 @@
       "source_file": "tests/test_clob_price.py",
       "source_location": "L160",
       "id": "tests_test_clob_price_rationale_160",
-      "community": 111,
+      "community": 4,
       "norm_label": "network exception \u2192 none doner (crash yok)."
     },
     {
@@ -6821,7 +6821,7 @@
       "source_file": "tests/test_verifier.py",
       "source_location": "L181",
       "id": "tests_test_verifier_test_verify_passes_through_scout_clob_prices",
-      "community": 97,
+      "community": 39,
       "norm_label": "test_verify_passes_through_scout_clob_prices()"
     },
     {
@@ -6830,7 +6830,7 @@
       "source_file": "tests/test_verifier.py",
       "source_location": "L199",
       "id": "tests_test_verifier_test_verify_no_clob_api_call",
-      "community": 97,
+      "community": 39,
       "norm_label": "test_verify_no_clob_api_call()"
     },
     {
@@ -6938,7 +6938,7 @@
       "source_file": "tests/test_verifier.py",
       "source_location": "L182",
       "id": "tests_test_verifier_rationale_182",
-      "community": 97,
+      "community": 39,
       "norm_label": "verifier art\u0131k clob cagr\u0131s\u0131 yapmaz, scout'un best_ask/best_bid'ini gecirir."
     },
     {
@@ -6947,7 +6947,7 @@
       "source_file": "tests/test_verifier.py",
       "source_location": "L200",
       "id": "tests_test_verifier_rationale_200",
-      "community": 97,
+      "community": 39,
       "norm_label": "verifier art\u0131k clob api cagr\u0131s\u0131 yapmaz (scout zaten yapt\u0131)."
     },
     {
@@ -7172,7 +7172,7 @@
       "source_file": "tests/test_ws_prices.py",
       "source_location": "L250",
       "id": "tests_test_ws_prices_test_ping_interval_is_8",
-      "community": 180,
+      "community": 174,
       "norm_label": "test_ping_interval_is_8()"
     },
     {
@@ -7181,7 +7181,7 @@
       "source_file": "tests/test_ws_prices.py",
       "source_location": "L255",
       "id": "tests_test_ws_prices_test_ping_loop_first_ping_at_1s",
-      "community": 205,
+      "community": 180,
       "norm_label": "test_ping_loop_first_ping_at_1s()"
     },
     {
@@ -7199,7 +7199,7 @@
       "source_file": "tests/test_ws_prices.py",
       "source_location": "L271",
       "id": "tests_test_ws_prices_test_run_circuit_breaker_uses_had_subs",
-      "community": 189,
+      "community": 180,
       "norm_label": "test_run_circuit_breaker_uses_had_subs()"
     },
     {
@@ -7370,7 +7370,7 @@
       "source_file": "tests/test_ws_prices.py",
       "source_location": "L251",
       "id": "tests_test_ws_prices_rationale_251",
-      "community": 180,
+      "community": 174,
       "norm_label": "ping_interval 8s olmal\u0131 \u2014 sunucunun 10s limitinin 2s oncesi."
     },
     {
@@ -7379,7 +7379,7 @@
       "source_file": "tests/test_ws_prices.py",
       "source_location": "L256",
       "id": "tests_test_ws_prices_rationale_256",
-      "community": 205,
+      "community": 180,
       "norm_label": "_ping_loop: ilk ping 1s sonra (ping_interval degil) gonderilmeli."
     },
     {
@@ -7397,7 +7397,7 @@
       "source_file": "tests/test_ws_prices.py",
       "source_location": "L272",
       "id": "tests_test_ws_prices_rationale_272",
-      "community": 189,
+      "community": 180,
       "norm_label": "run(): circuit breaker yaln\u0131zca gercekten subscribed baglant\u0131lar\u0131 saymal\u0131."
     },
     {
@@ -7887,6 +7887,168 @@
       "norm_label": "market hala ac\u0131k (window mevcut) \u2192 pozisyona dokunulmaz."
     },
     {
+      "label": "test_depth_enricher.py",
+      "file_type": "code",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L1",
+      "id": "tests_test_depth_enricher_py",
+      "community": 4,
+      "norm_label": "test_depth_enricher.py"
+    },
+    {
+      "label": "_make_db()",
+      "file_type": "code",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L11",
+      "id": "tests_test_depth_enricher_make_db",
+      "community": 4,
+      "norm_label": "_make_db()"
+    },
+    {
+      "label": "Path",
+      "file_type": "code",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L11",
+      "id": "tests_test_depth_enricher_py_path",
+      "community": 4,
+      "norm_label": "path"
+    },
+    {
+      "label": "_read_pos()",
+      "file_type": "code",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L35",
+      "id": "tests_test_depth_enricher_read_pos",
+      "community": 4,
+      "norm_label": "_read_pos()"
+    },
+    {
+      "label": "str",
+      "file_type": "code",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L35",
+      "id": "tests_test_depth_enricher_py_str",
+      "community": 4,
+      "norm_label": "str"
+    },
+    {
+      "label": "test_enrich_populates_depth_fields()",
+      "file_type": "code",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L62",
+      "id": "tests_test_depth_enricher_test_enrich_populates_depth_fields",
+      "community": 4,
+      "norm_label": "test_enrich_populates_depth_fields()"
+    },
+    {
+      "label": "test_enrich_thin_book_multi_level()",
+      "file_type": "code",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L80",
+      "id": "tests_test_depth_enricher_test_enrich_thin_book_multi_level",
+      "community": 4,
+      "norm_label": "test_enrich_thin_book_multi_level()"
+    },
+    {
+      "label": "test_enrich_get_book_none_leaves_nulls()",
+      "file_type": "code",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L105",
+      "id": "tests_test_depth_enricher_test_enrich_get_book_none_leaves_nulls",
+      "community": 4,
+      "norm_label": "test_enrich_get_book_none_leaves_nulls()"
+    },
+    {
+      "label": "test_enrich_network_exception_leaves_nulls()",
+      "file_type": "code",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L119",
+      "id": "tests_test_depth_enricher_test_enrich_network_exception_leaves_nulls",
+      "community": 4,
+      "norm_label": "test_enrich_network_exception_leaves_nulls()"
+    },
+    {
+      "label": "test_enrich_empty_bids_leaves_nulls()",
+      "file_type": "code",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L133",
+      "id": "tests_test_depth_enricher_test_enrich_empty_bids_leaves_nulls",
+      "community": 4,
+      "norm_label": "test_enrich_empty_bids_leaves_nulls()"
+    },
+    {
+      "label": "test_enrich_wrong_position_id_is_noop()",
+      "file_type": "code",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L147",
+      "id": "tests_test_depth_enricher_test_enrich_wrong_position_id_is_noop",
+      "community": 4,
+      "norm_label": "test_enrich_wrong_position_id_is_noop()"
+    },
+    {
+      "label": "tests/test_depth_enricher.py \u2014 Shadow Mode depth telemetri TDD.",
+      "file_type": "rationale",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L1",
+      "id": "tests_test_depth_enricher_rationale_1",
+      "community": 4,
+      "norm_label": "tests/test_depth_enricher.py \u2014 shadow mode depth telemetri tdd."
+    },
+    {
+      "label": "Normal derin kitap \u2192 t\u00fcm depth alanlar\u0131 DB'e yaz\u0131lmal\u0131.",
+      "file_type": "rationale",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L63",
+      "id": "tests_test_depth_enricher_rationale_63",
+      "community": 4,
+      "norm_label": "normal derin kitap \u2192 tum depth alanlar\u0131 db'e yaz\u0131lmal\u0131."
+    },
+    {
+      "label": "\u0130nce kitap: 2+ level gerekiyor.",
+      "file_type": "rationale",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L81",
+      "id": "tests_test_depth_enricher_rationale_81",
+      "community": 4,
+      "norm_label": "ince kitap: 2+ level gerekiyor."
+    },
+    {
+      "label": "get_book None d\u00f6nerse \u2192 alanlar NULL kalmal\u0131, exception olmamal\u0131.",
+      "file_type": "rationale",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L106",
+      "id": "tests_test_depth_enricher_rationale_106",
+      "community": 4,
+      "norm_label": "get_book none donerse \u2192 alanlar null kalmal\u0131, exception olmamal\u0131."
+    },
+    {
+      "label": "get_book exception \u2192 sessizce ge\u00e7, NULL b\u0131rak, trade bloklanmaz.",
+      "file_type": "rationale",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L120",
+      "id": "tests_test_depth_enricher_rationale_120",
+      "community": 4,
+      "norm_label": "get_book exception \u2192 sessizce gec, null b\u0131rak, trade bloklanmaz."
+    },
+    {
+      "label": "Bids bo\u015f \u2192 NULL b\u0131rak.",
+      "file_type": "rationale",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L134",
+      "id": "tests_test_depth_enricher_rationale_134",
+      "community": 4,
+      "norm_label": "bids bos \u2192 null b\u0131rak."
+    },
+    {
+      "label": "Yanl\u0131\u015f position_id \u2192 DB de\u011fi\u015fmez, exception yok.",
+      "file_type": "rationale",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L148",
+      "id": "tests_test_depth_enricher_rationale_148",
+      "community": 4,
+      "norm_label": "yanl\u0131s position_id \u2192 db degismez, exception yok."
+    },
+    {
       "label": "test_clob_client.py",
       "file_type": "code",
       "source_file": "tests/test_clob_client.py",
@@ -8054,7 +8216,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L56",
       "id": "tests_test_scout_test_drift_ok_blocks_no_when_hl_bullish_beyond_threshold",
-      "community": 65,
+      "community": 1,
       "norm_label": "test_drift_ok_blocks_no_when_hl_bullish_beyond_threshold()"
     },
     {
@@ -8063,7 +8225,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L61",
       "id": "tests_test_scout_test_drift_ok_blocks_yes_when_hl_bearish_beyond_threshold",
-      "community": 65,
+      "community": 1,
       "norm_label": "test_drift_ok_blocks_yes_when_hl_bearish_beyond_threshold()"
     },
     {
@@ -8072,7 +8234,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L66",
       "id": "tests_test_scout_test_drift_ok_allows_no_within_threshold",
-      "community": 65,
+      "community": 1,
       "norm_label": "test_drift_ok_allows_no_within_threshold()"
     },
     {
@@ -8288,7 +8450,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L300",
       "id": "tests_test_scout_test_scan_edges_fair_value_in_range",
-      "community": 126,
+      "community": 65,
       "norm_label": "test_scan_edges_fair_value_in_range()"
     },
     {
@@ -8297,7 +8459,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L308",
       "id": "tests_test_scout_test_scan_edges_prices_positive",
-      "community": 123,
+      "community": 107,
       "norm_label": "test_scan_edges_prices_positive()"
     },
     {
@@ -8324,7 +8486,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L339",
       "id": "tests_test_scout_test_scan_edges_findings_include_raw_market",
-      "community": 126,
+      "community": 65,
       "norm_label": "test_scan_edges_findings_include_raw_market()"
     },
     {
@@ -8405,7 +8567,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L619",
       "id": "tests_test_scout_test_yes_bid_uses_sell_endpoint_when_ws_bid_is_none",
-      "community": 17,
+      "community": 148,
       "norm_label": "test_yes_bid_uses_sell_endpoint_when_ws_bid_is_none()"
     },
     {
@@ -8423,7 +8585,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L686",
       "id": "tests_test_scout_test_no_edge_uses_real_no_ask_and_correct_formula",
-      "community": 160,
+      "community": 148,
       "norm_label": "test_no_edge_uses_real_no_ask_and_correct_formula()"
     },
     {
@@ -8558,7 +8720,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L57",
       "id": "tests_test_scout_rationale_57",
-      "community": 65,
+      "community": 1,
       "norm_label": "no islem: hl ref'ten %0.5 ustte \u2192 giris engellenmeli (hl bullish, no yanl\u0131s yon)"
     },
     {
@@ -8567,7 +8729,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L62",
       "id": "tests_test_scout_rationale_62",
-      "community": 65,
+      "community": 1,
       "norm_label": "yes islem: hl ref'ten %0.5 altta \u2192 giris engellenmeli (hl bearish, yes yanl\u0131s yo"
     },
     {
@@ -8576,7 +8738,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L67",
       "id": "tests_test_scout_rationale_67",
-      "community": 65,
+      "community": 1,
       "norm_label": "no islem: hl ref'ten %0.2 ustte (<%0.3 esik) \u2192 kucuk gurultu, giris gecmeli."
     },
     {
@@ -8783,7 +8945,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L301",
       "id": "tests_test_scout_rationale_301",
-      "community": 126,
+      "community": 65,
       "norm_label": "fair_value her zaman [0, 1] aras\u0131nda."
     },
     {
@@ -8792,7 +8954,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L309",
       "id": "tests_test_scout_rationale_309",
-      "community": 123,
+      "community": 107,
       "norm_label": "ref_price ve cur_price pozitif."
     },
     {
@@ -8819,7 +8981,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L340",
       "id": "tests_test_scout_rationale_340",
-      "community": 126,
+      "community": 65,
       "norm_label": "her bulgu _raw_market iceriyor \u2014 redteam spread/liquidity/fee fallback icin."
     },
     {
@@ -8900,7 +9062,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L620",
       "id": "tests_test_scout_rationale_620",
-      "community": 17,
+      "community": 148,
       "norm_label": "ws get_bid none \u2192 /price?side=sell cagr\u0131l\u0131r; clob_ask kullan\u0131lmaz."
     },
     {
@@ -8918,7 +9080,7 @@
       "source_file": "tests/test_scout.py",
       "source_location": "L687",
       "id": "tests_test_scout_rationale_687",
-      "community": 160,
+      "community": 148,
       "norm_label": "no sinyali: gercek no_ask ile (1-fair)-no_ask edge hesaplan\u0131r, finding'e yaz\u0131l\u0131r"
     },
     {
@@ -9962,7 +10124,7 @@
       "source_file": "analysis/performance.py",
       "source_location": "L1",
       "id": "analysis_performance_py",
-      "community": 27,
+      "community": 33,
       "norm_label": "performance.py"
     },
     {
@@ -9971,7 +10133,7 @@
       "source_file": "analysis/performance.py",
       "source_location": "L15",
       "id": "analysis_performance_overview",
-      "community": 27,
+      "community": 33,
       "norm_label": "_overview()"
     },
     {
@@ -9980,7 +10142,7 @@
       "source_file": "analysis/performance.py",
       "source_location": "L15",
       "id": "analysis_performance_py_str",
-      "community": 27,
+      "community": 33,
       "norm_label": "str"
     },
     {
@@ -9989,7 +10151,7 @@
       "source_file": "analysis/performance.py",
       "source_location": "L34",
       "id": "analysis_performance_by_exit_reason",
-      "community": 27,
+      "community": 33,
       "norm_label": "_by_exit_reason()"
     },
     {
@@ -9998,7 +10160,7 @@
       "source_file": "analysis/performance.py",
       "source_location": "L45",
       "id": "analysis_performance_by_asset",
-      "community": 27,
+      "community": 33,
       "norm_label": "_by_asset()"
     },
     {
@@ -10007,7 +10169,7 @@
       "source_file": "analysis/performance.py",
       "source_location": "L56",
       "id": "analysis_performance_veto_stats",
-      "community": 27,
+      "community": 33,
       "norm_label": "_veto_stats()"
     },
     {
@@ -10016,7 +10178,7 @@
       "source_file": "analysis/performance.py",
       "source_location": "L68",
       "id": "analysis_performance_top_trades",
-      "community": 27,
+      "community": 33,
       "norm_label": "_top_trades()"
     },
     {
@@ -10025,7 +10187,7 @@
       "source_file": "analysis/performance.py",
       "source_location": "L68",
       "id": "analysis_performance_py_int",
-      "community": 27,
+      "community": 33,
       "norm_label": "int"
     },
     {
@@ -10034,7 +10196,7 @@
       "source_file": "analysis/performance.py",
       "source_location": "L80",
       "id": "analysis_performance_pct",
-      "community": 27,
+      "community": 33,
       "norm_label": "_pct()"
     },
     {
@@ -10043,7 +10205,7 @@
       "source_file": "analysis/performance.py",
       "source_location": "L84",
       "id": "analysis_performance_trade_line",
-      "community": 27,
+      "community": 33,
       "norm_label": "_trade_line()"
     },
     {
@@ -10052,7 +10214,7 @@
       "source_file": "analysis/performance.py",
       "source_location": "L90",
       "id": "analysis_performance_run",
-      "community": 27,
+      "community": 33,
       "norm_label": "run()"
     },
     {
@@ -10061,7 +10223,7 @@
       "source_file": "analysis/performance.py",
       "source_location": "L159",
       "id": "analysis_performance_main",
-      "community": 27,
+      "community": 33,
       "norm_label": "main()"
     },
     {
@@ -10070,7 +10232,7 @@
       "source_file": "analysis/test_order.py",
       "source_location": "L1",
       "id": "analysis_test_order_py",
-      "community": 102,
+      "community": 93,
       "norm_label": "test_order.py"
     },
     {
@@ -10079,7 +10241,7 @@
       "source_file": "analysis/test_order.py",
       "source_location": "L35",
       "id": "analysis_test_order_run_test",
-      "community": 102,
+      "community": 93,
       "norm_label": "run_test()"
     },
     {
@@ -10088,7 +10250,7 @@
       "source_file": "analysis/test_order.py",
       "source_location": "L35",
       "id": "analysis_test_order_py_bool",
-      "community": 102,
+      "community": 93,
       "norm_label": "bool"
     },
     {
@@ -10376,7 +10538,7 @@
       "source_file": "execution/reconcile.py",
       "source_location": "L1",
       "id": "execution_reconcile_py",
-      "community": 38,
+      "community": 69,
       "norm_label": "reconcile.py"
     },
     {
@@ -10385,7 +10547,7 @@
       "source_file": "execution/reconcile.py",
       "source_location": "L11",
       "id": "execution_reconcile_startup_reconcile",
-      "community": 38,
+      "community": 69,
       "norm_label": "startup_reconcile()"
     },
     {
@@ -10394,7 +10556,7 @@
       "source_file": "execution/reconcile.py",
       "source_location": "L1",
       "id": "execution_reconcile_rationale_1",
-      "community": 38,
+      "community": 69,
       "norm_label": "execution/reconcile.py \u2014 live startup pozisyon mutabakat\u0131."
     },
     {
@@ -10403,7 +10565,7 @@
       "source_file": "execution/reconcile.py",
       "source_location": "L12",
       "id": "execution_reconcile_rationale_12",
-      "community": 38,
+      "community": 69,
       "norm_label": "live startup: db'deki ac\u0131k pozisyonlar\u0131 polymarket ile kars\u0131last\u0131r\u0131r.     dry_ru"
     },
     {
@@ -10601,14 +10763,14 @@
       "source_file": "db/schema.py",
       "source_location": "L1",
       "id": "db_schema_py",
-      "community": 144,
+      "community": 27,
       "norm_label": "schema.py"
     },
     {
       "label": "init_schema()",
       "file_type": "code",
       "source_file": "db/schema.py",
-      "source_location": "L109",
+      "source_location": "L115",
       "id": "db_schema_init_schema",
       "community": 3,
       "norm_label": "init_schema()"
@@ -10619,7 +10781,7 @@
       "source_file": "db/schema.py",
       "source_location": "L1",
       "id": "db_schema_rationale_1",
-      "community": 144,
+      "community": 27,
       "norm_label": "db/schema.py \u2014 sqlite semas\u0131 ve baslatma."
     },
     {
@@ -10637,7 +10799,7 @@
       "source_file": "db/logger.py",
       "source_location": "L1",
       "id": "db_logger_py",
-      "community": 144,
+      "community": 27,
       "norm_label": "logger.py"
     },
     {
@@ -10718,7 +10880,7 @@
       "source_file": "db/logger.py",
       "source_location": "L133",
       "id": "db_logger_log_position_close",
-      "community": 144,
+      "community": 69,
       "norm_label": "log_position_close()"
     },
     {
@@ -10727,7 +10889,7 @@
       "source_file": "db/logger.py",
       "source_location": "L204",
       "id": "db_logger_load_closed_today",
-      "community": 144,
+      "community": 21,
       "norm_label": "load_closed_today()"
     },
     {
@@ -10754,7 +10916,7 @@
       "source_file": "db/logger.py",
       "source_location": "L1",
       "id": "db_logger_rationale_1",
-      "community": 144,
+      "community": 27,
       "norm_label": "db/logger.py \u2014 aday ve pozisyon kay\u0131tlar\u0131. conn=none \u2192 sessiz atla."
     },
     {
@@ -10772,7 +10934,7 @@
       "source_file": "db/logger.py",
       "source_location": "L205",
       "id": "db_logger_rationale_205",
-      "community": 144,
+      "community": 21,
       "norm_label": "bugunun utc kapanan pozisyonlar\u0131n\u0131 yukler \u2014 restart sonras\u0131 daily_loss recovery."
     },
     {
@@ -11060,7 +11222,7 @@
       "source_file": "council/scout.py",
       "source_location": "L112",
       "id": "council_scout_drift_ok",
-      "community": 65,
+      "community": 1,
       "norm_label": "_drift_ok()"
     },
     {
@@ -11069,7 +11231,7 @@
       "source_file": "council/scout.py",
       "source_location": "L112",
       "id": "council_scout_py_bool",
-      "community": 65,
+      "community": 1,
       "norm_label": "bool"
     },
     {
@@ -11141,7 +11303,7 @@
       "source_file": "council/scout.py",
       "source_location": "L113",
       "id": "council_scout_rationale_113",
-      "community": 65,
+      "community": 1,
       "norm_label": "entry filter: hl zaten yanl\u0131s yonde guclu hareket etmisse giris engelle.      et"
     },
     {
@@ -12851,7 +13013,7 @@
       "source_file": "data/shortterm.py",
       "source_location": "L23",
       "id": "data_shortterm_parse_token_ids",
-      "community": 106,
+      "community": 69,
       "norm_label": "_parse_token_ids()"
     },
     {
@@ -12860,7 +13022,7 @@
       "source_file": "data/shortterm.py",
       "source_location": "L23",
       "id": "data_shortterm_py_str",
-      "community": 106,
+      "community": 69,
       "norm_label": "str"
     },
     {
@@ -12950,7 +13112,7 @@
       "source_file": "data/shortterm.py",
       "source_location": "L24",
       "id": "data_shortterm_rationale_24",
-      "community": 106,
+      "community": 69,
       "norm_label": "clobtokenids alan\u0131n\u0131 her zaman list[str] dondur. json string veya list kabul ede"
     },
     {
@@ -13013,7 +13175,7 @@
       "source_file": "data/clob_price.py",
       "source_location": "L1",
       "id": "data_clob_price_py",
-      "community": 111,
+      "community": 4,
       "norm_label": "clob_price.py"
     },
     {
@@ -13031,7 +13193,7 @@
       "source_file": "data/clob_price.py",
       "source_location": "L7",
       "id": "data_clob_price_py_str",
-      "community": 111,
+      "community": 4,
       "norm_label": "str"
     },
     {
@@ -13049,7 +13211,7 @@
       "source_file": "data/clob_price.py",
       "source_location": "L32",
       "id": "data_clob_price_get_book",
-      "community": 111,
+      "community": 4,
       "norm_label": "get_book()"
     },
     {
@@ -13058,7 +13220,7 @@
       "source_file": "data/clob_price.py",
       "source_location": "L1",
       "id": "data_clob_price_rationale_1",
-      "community": 111,
+      "community": 4,
       "norm_label": "data/clob_price.py \u2014 clob anl\u0131k fiyat yard\u0131mc\u0131s\u0131 (paylas\u0131ml\u0131)."
     },
     {
@@ -13076,8 +13238,71 @@
       "source_file": "data/clob_price.py",
       "source_location": "L33",
       "id": "data_clob_price_rationale_33",
-      "community": 111,
+      "community": 4,
       "norm_label": "clob get /book?token_id=<id> \u2192 tam orderbooksummary.      bids: fiyata gore azal"
+    },
+    {
+      "label": "depth_enricher.py",
+      "file_type": "code",
+      "source_file": "data/depth_enricher.py",
+      "source_location": "L1",
+      "id": "data_depth_enricher_py",
+      "community": 4,
+      "norm_label": "depth_enricher.py"
+    },
+    {
+      "label": "enrich_entry_depth()",
+      "file_type": "code",
+      "source_file": "data/depth_enricher.py",
+      "source_location": "L17",
+      "id": "data_depth_enricher_enrich_entry_depth",
+      "community": 4,
+      "norm_label": "enrich_entry_depth()"
+    },
+    {
+      "label": "str",
+      "file_type": "code",
+      "source_file": "data/depth_enricher.py",
+      "source_location": "L17",
+      "id": "data_depth_enricher_py_str",
+      "community": 4,
+      "norm_label": "str"
+    },
+    {
+      "label": "float",
+      "file_type": "code",
+      "source_file": "data/depth_enricher.py",
+      "source_location": "L17",
+      "id": "data_depth_enricher_py_float",
+      "community": 4,
+      "norm_label": "float"
+    },
+    {
+      "label": "Path",
+      "file_type": "code",
+      "source_file": "data/depth_enricher.py",
+      "source_location": "L17",
+      "id": "data_depth_enricher_py_path",
+      "community": 4,
+      "norm_label": "path"
+    },
+    {
+      "label": "data/depth_enricher.py \u2014 Faz 4A-0 Shadow Mode depth telemetri.  Pozisyon a\u00e7\u0131ld\u0131k",
+      "file_type": "rationale",
+      "source_file": "data/depth_enricher.py",
+      "source_location": "L1",
+      "id": "data_depth_enricher_rationale_1",
+      "community": 4,
+      "norm_label": "data/depth_enricher.py \u2014 faz 4a-0 shadow mode depth telemetri.  pozisyon ac\u0131ld\u0131k"
+    },
+    {
+      "label": "Exit-side book depth metrikleri pozisyon kayd\u0131na yaz (fire-and-forget).      tok",
+      "file_type": "rationale",
+      "source_file": "data/depth_enricher.py",
+      "source_location": "L24",
+      "id": "data_depth_enricher_rationale_24",
+      "community": 4,
+      "norm_label": "exit-side book depth metrikleri pozisyon kayd\u0131na yaz (fire-and-forget).      tok"
     },
     {
       "label": "CLAUDE.md",
@@ -17184,11 +17409,92 @@
       "norm_label": "spec self-review"
     },
     {
+      "label": "DRY_RUN flag'ine g\u00f6re executor se\u00e7. Runtime'da de\u011ferlendirilir.",
+      "file_type": "rationale",
+      "source_file": "main_loop.py",
+      "source_location": "L40",
+      "community": 0,
+      "norm_label": "dry_run flag'ine gore executor sec. runtime'da degerlendirilir.",
+      "id": "mispricing_agent_main_loop_rationale_40"
+    },
+    {
+      "label": "DB'deki status=open pozisyonlar\u0131 y\u00fckler \u2014 restart sonras\u0131 memory'yi geri dolduru",
+      "file_type": "rationale",
+      "source_file": "main_loop.py",
+      "source_location": "L47",
+      "community": 0,
+      "norm_label": "db'deki status=open pozisyonlar\u0131 yukler \u2014 restart sonras\u0131 memory'yi geri dolduru",
+      "id": "mispricing_agent_main_loop_rationale_47"
+    },
+    {
+      "label": "Finding'i 5 katmandan ge\u00e7irir. Herhangi biri d\u00fc\u015ferse None.",
+      "file_type": "rationale",
+      "source_file": "main_loop.py",
+      "source_location": "L99",
+      "community": 151,
+      "norm_label": "finding'i 5 katmandan gecirir. herhangi biri duserse none.",
+      "id": "mispricing_agent_main_loop_rationale_99"
+    },
+    {
+      "label": "Yeni f\u0131rsatlar\u0131 tarar, konsey ge\u00e7enleri a\u00e7ar.",
+      "file_type": "rationale",
+      "source_file": "main_loop.py",
+      "source_location": "L175",
+      "community": 99,
+      "norm_label": "yeni f\u0131rsatlar\u0131 tarar, konsey gecenleri acar.",
+      "id": "mispricing_agent_main_loop_rationale_175"
+    },
+    {
+      "label": "WS market_resolved event'\u0131na g\u00f6re a\u00e7\u0131k pozisyonu an\u0131nda kapat.",
+      "file_type": "rationale",
+      "source_file": "main_loop.py",
+      "source_location": "L252",
+      "community": 113,
+      "norm_label": "ws market_resolved event'\u0131na gore ac\u0131k pozisyonu an\u0131nda kapat.",
+      "id": "mispricing_agent_main_loop_rationale_252"
+    },
+    {
+      "label": "market_expired + pm_exit_price=None kay\u0131tlar\u0131 i\u00e7in resolution retry eder.",
+      "file_type": "rationale",
+      "source_file": "main_loop.py",
+      "source_location": "L287",
+      "community": 94,
+      "norm_label": "market_expired + pm_exit_price=none kay\u0131tlar\u0131 icin resolution retry eder.",
+      "id": "mispricing_agent_main_loop_rationale_287"
+    },
+    {
+      "label": "K\u0131smi fill kontrol\u00fc + pos g\u00fcncelleme.      Returns:         True  \u2192 k\u0131smi fill o",
+      "file_type": "rationale",
+      "source_file": "main_loop.py",
+      "source_location": "L340",
+      "community": 169,
+      "norm_label": "k\u0131smi fill kontrolu + pos guncelleme.      returns:         true  \u2192 k\u0131smi fill o",
+      "id": "mispricing_agent_main_loop_rationale_340"
+    },
+    {
+      "label": "Panic flatten: t\u00fcm a\u00e7\u0131k pozisyonlar\u0131 FAK SELL ile kapatmaya \u00e7al\u0131\u015f\u0131r.",
+      "file_type": "rationale",
+      "source_file": "main_loop.py",
+      "source_location": "L362",
+      "community": 72,
+      "norm_label": "panic flatten: tum ac\u0131k pozisyonlar\u0131 fak sell ile kapatmaya cal\u0131s\u0131r.",
+      "id": "mispricing_agent_main_loop_rationale_362"
+    },
+    {
+      "label": "A\u00e7\u0131k pozisyonlar\u0131 izler. WS event gelince h\u0131zl\u0131 path, 7s timeout \u2192 REST heartbea",
+      "file_type": "rationale",
+      "source_file": "main_loop.py",
+      "source_location": "L407",
+      "community": 71,
+      "norm_label": "ac\u0131k pozisyonlar\u0131 izler. ws event gelince h\u0131zl\u0131 path, 7s timeout \u2192 rest heartbea",
+      "id": "mispricing_agent_main_loop_rationale_407"
+    },
+    {
       "label": "WS event 7s i\u00e7inde gelmezse False d\u00f6ner, cache g\u00fcncellenir.",
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1271",
-      "community": 71,
+      "community": 114,
       "norm_label": "ws event 7s icinde gelmezse false doner, cache guncellenir.",
       "id": "tests_test_main_loop_rationale_1271"
     },
@@ -17224,7 +17530,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1376",
-      "community": 71,
+      "community": 125,
       "norm_label": "ws event geldiginde _cached_hl_price yoksa pozisyon skip edilmeli \u2014 crash yok, c",
       "id": "tests_test_main_loop_rationale_1376"
     },
@@ -17233,7 +17539,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1397",
-      "community": 71,
+      "community": 126,
       "norm_label": "k\u0131smi fill (making < shares * 0.98) \u2192 pozisyon listede kal\u0131r, shares azal\u0131r, _cl",
       "id": "tests_test_main_loop_rationale_1397"
     },
@@ -17269,7 +17575,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1508",
-      "community": 76,
+      "community": 144,
       "norm_label": "_do_flatten tum ac\u0131k pozisyonlar\u0131 fak sell ile kapat\u0131r, listeden siler.",
       "id": "tests_test_main_loop_rationale_1508"
     },
@@ -17305,7 +17611,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1631",
-      "community": 76,
+      "community": 144,
       "norm_label": "ws_triggered=true iken scan+heal mant\u0131g\u0131 atlan\u0131r (main() kosullu blogu dogrular)",
       "id": "tests_test_main_loop_rationale_1631"
     },
@@ -17314,7 +17620,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1659",
-      "community": 71,
+      "community": 144,
       "norm_label": "pozisyon kapan\u0131nca ws_prices.unsubscribe() yes/no token'lar\u0131yla cagr\u0131l\u0131r.",
       "id": "tests_test_main_loop_rationale_1659"
     },
@@ -17323,7 +17629,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1711",
-      "community": 71,
+      "community": 144,
       "norm_label": "_monitor_positions baslang\u0131cta [monitor_perf] sat\u0131r\u0131 basmal\u0131.",
       "id": "tests_test_main_loop_rationale_1711"
     },
@@ -17341,7 +17647,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1740",
-      "community": 114,
+      "community": 176,
       "norm_label": "[scan_perf] council ve execute timing icermeli.",
       "id": "tests_test_main_loop_rationale_1740"
     },
@@ -17665,7 +17971,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1160",
-      "community": 222,
+      "community": 71,
       "norm_label": "ws event an\u0131nda gelirse true doner ve current_price/fetch_by_slug cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_1160"
     },
@@ -17674,7 +17980,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1182",
-      "community": 71,
+      "community": 114,
       "norm_label": "ws event 7s icinde gelmezse false doner, cache guncellenir.",
       "id": "tests_test_main_loop_rationale_1182"
     },
@@ -17701,7 +18007,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1243",
-      "community": 222,
+      "community": 71,
       "norm_label": "live: sell_position() none donerse _closing=false reset edilir, pozisyon listede",
       "id": "tests_test_main_loop_rationale_1243"
     },
@@ -17719,7 +18025,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1287",
-      "community": 71,
+      "community": 125,
       "norm_label": "ws event geldiginde _cached_hl_price yoksa pozisyon skip edilmeli \u2014 crash yok, c",
       "id": "tests_test_main_loop_rationale_1287"
     },
@@ -17728,7 +18034,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1308",
-      "community": 71,
+      "community": 126,
       "norm_label": "k\u0131smi fill (making < shares * 0.98) \u2192 pozisyon listede kal\u0131r, shares azal\u0131r, _cl",
       "id": "tests_test_main_loop_rationale_1308"
     },
@@ -17764,7 +18070,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1419",
-      "community": 76,
+      "community": 144,
       "norm_label": "_do_flatten tum ac\u0131k pozisyonlar\u0131 fak sell ile kapat\u0131r, listeden siler.",
       "id": "tests_test_main_loop_rationale_1419"
     },
@@ -17809,7 +18115,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1542",
-      "community": 76,
+      "community": 144,
       "norm_label": "ws_triggered=true iken scan+heal mant\u0131g\u0131 atlan\u0131r (main() kosullu blogu dogrular)",
       "id": "tests_test_main_loop_rationale_1542"
     },
@@ -17818,7 +18124,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1570",
-      "community": 71,
+      "community": 144,
       "norm_label": "pozisyon kapan\u0131nca ws_prices.unsubscribe() yes/no token'lar\u0131yla cagr\u0131l\u0131r.",
       "id": "tests_test_main_loop_rationale_1570"
     },
@@ -17827,7 +18133,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1622",
-      "community": 71,
+      "community": 144,
       "norm_label": "_monitor_positions baslang\u0131cta [monitor_perf] sat\u0131r\u0131 basmal\u0131.",
       "id": "tests_test_main_loop_rationale_1622"
     },
@@ -17845,7 +18151,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1651",
-      "community": 114,
+      "community": 176,
       "norm_label": "[scan_perf] council ve execute timing icermeli.",
       "id": "tests_test_main_loop_rationale_1651"
     },
@@ -17917,7 +18223,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L95",
-      "community": 62,
+      "community": 151,
       "norm_label": "finding'i 5 katmandan gecirir. herhangi biri duserse none.",
       "id": "mispricing_agent_main_loop_rationale_95"
     },
@@ -17935,7 +18241,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L206",
-      "community": 85,
+      "community": 113,
       "norm_label": "ws market_resolved event'\u0131na gore ac\u0131k pozisyonu an\u0131nda kapat.",
       "id": "mispricing_agent_main_loop_rationale_206"
     },
@@ -17971,7 +18277,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L72",
-      "community": 114,
+      "community": 151,
       "norm_label": "verify() fail \u2192 _run_council none doner.",
       "id": "tests_test_main_loop_rationale_72"
     },
@@ -17998,7 +18304,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L133",
-      "community": 33,
+      "community": 99,
       "norm_label": "max_open_positions doluysa scan_edges hic cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_133"
     },
@@ -18007,7 +18313,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L143",
-      "community": 173,
+      "community": 176,
       "norm_label": "konsey gecince execute() cagr\u0131l\u0131r, pozisyon open_positions'a eklenir.",
       "id": "tests_test_main_loop_rationale_143"
     },
@@ -18016,7 +18322,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L160",
-      "community": 33,
+      "community": 99,
       "norm_label": "ayn\u0131 slug icin ac\u0131k pozisyon varsa _run_council cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_160"
     },
@@ -18025,7 +18331,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L173",
-      "community": 171,
+      "community": 176,
       "norm_label": "findings listesinde ayn\u0131 slug iki kez varsa yaln\u0131zca bir pozisyon ac\u0131l\u0131r.",
       "id": "tests_test_main_loop_rationale_173"
     },
@@ -18034,7 +18340,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L193",
-      "community": 21,
+      "community": 176,
       "norm_label": "fak kill (execute\u2192none) olan slug failed_slugs'a eklenmemeli.     capital riske",
       "id": "tests_test_main_loop_rationale_193"
     },
@@ -18043,7 +18349,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L208",
-      "community": 21,
+      "community": 176,
       "norm_label": "failed_slugs'taki slug icin _run_council hic cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_208"
     },
@@ -18061,7 +18367,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L238",
-      "community": 134,
+      "community": 176,
       "norm_label": "basar\u0131l\u0131 fill (execute\u2192position) olan slug failed_slugs'a eklenmez.",
       "id": "tests_test_main_loop_rationale_238"
     },
@@ -18151,7 +18457,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L459",
-      "community": 104,
+      "community": 80,
       "norm_label": "profit_target_hit \u2192 slug failed_slugs'a eklenmez (yuksek-edge re-entry serbest).",
       "id": "tests_test_main_loop_rationale_459"
     },
@@ -18160,7 +18466,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L478",
-      "community": 129,
+      "community": 133,
       "norm_label": "dry_run yes c\u0131k\u0131sta pm_exit_price = ws bid (sat\u0131s fiyat\u0131), ask degil.",
       "id": "tests_test_main_loop_rationale_478"
     },
@@ -18196,7 +18502,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L593",
-      "community": 137,
+      "community": 85,
       "norm_label": "limit=2 \u2192 5 null kay\u0131t varsa sadece 2 islenir, 3 null kal\u0131r.",
       "id": "tests_test_main_loop_rationale_593"
     },
@@ -18205,7 +18511,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L619",
-      "community": 125,
+      "community": 73,
       "norm_label": "heal basar\u0131l\u0131ysa notify_resolved_late dogru asset/seq_no ile cagr\u0131l\u0131r.",
       "id": "tests_test_main_loop_rationale_619"
     },
@@ -18250,7 +18556,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L744",
-      "community": 110,
+      "community": 111,
       "norm_label": "dry_run=false iken sell_position none \u2192 pozisyon acik kal\u0131r, kapat\u0131lmaz.      fa",
       "id": "tests_test_main_loop_rationale_744"
     },
@@ -18259,7 +18565,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L784",
-      "community": 110,
+      "community": 104,
       "norm_label": "db'den yuklenen pozisyonda entry_hl_price alan\u0131 olmal\u0131.",
       "id": "tests_test_main_loop_rationale_784"
     },
@@ -18268,7 +18574,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L802",
-      "community": 80,
+      "community": 62,
       "norm_label": "_monitor_positions exit an\u0131ndaki hl fiyat\u0131n\u0131 closed dict'e eklemeli.",
       "id": "tests_test_main_loop_rationale_802"
     },
@@ -18313,7 +18619,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L958",
-      "community": 130,
+      "community": 113,
       "norm_label": "no pozisyon + 'no' kazan\u0131nca pm_exit=1.0 ile kapanmal\u0131.",
       "id": "tests_test_main_loop_rationale_958"
     },
@@ -18322,7 +18628,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L993",
-      "community": 131,
+      "community": 113,
       "norm_label": "yes pozisyon + 'no' kazan\u0131nca pm_exit=0.0 ile kapanmal\u0131.",
       "id": "tests_test_main_loop_rationale_993"
     },
@@ -18331,7 +18637,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1027",
-      "community": 85,
+      "community": 113,
       "norm_label": "assets_ids eslesmiyorsa pozisyona dokunmamal\u0131.",
       "id": "tests_test_main_loop_rationale_1027"
     },
@@ -18349,7 +18655,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1073",
-      "community": 221,
+      "community": 71,
       "norm_label": "yes + ws bid mevcut \u2192 price_source='ws_bid', mae_data_quality='exact'.",
       "id": "tests_test_main_loop_rationale_1073"
     },
@@ -18385,7 +18691,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1159",
-      "community": 222,
+      "community": 71,
       "norm_label": "ws event an\u0131nda gelirse true doner ve current_price/fetch_by_slug cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_1159"
     },
@@ -18394,7 +18700,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1181",
-      "community": 71,
+      "community": 114,
       "norm_label": "ws event 7s icinde gelmezse false doner, cache guncellenir.",
       "id": "tests_test_main_loop_rationale_1181"
     },
@@ -18421,7 +18727,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1242",
-      "community": 222,
+      "community": 71,
       "norm_label": "live: sell_position() none donerse _closing=false reset edilir, pozisyon listede",
       "id": "tests_test_main_loop_rationale_1242"
     },
@@ -18439,7 +18745,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1286",
-      "community": 71,
+      "community": 125,
       "norm_label": "ws event geldiginde _cached_hl_price yoksa pozisyon skip edilmeli \u2014 crash yok, c",
       "id": "tests_test_main_loop_rationale_1286"
     },
@@ -18448,7 +18754,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1307",
-      "community": 71,
+      "community": 126,
       "norm_label": "k\u0131smi fill (making < shares * 0.98) \u2192 pozisyon listede kal\u0131r, shares azal\u0131r, _cl",
       "id": "tests_test_main_loop_rationale_1307"
     },
@@ -18484,7 +18790,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1418",
-      "community": 76,
+      "community": 144,
       "norm_label": "_do_flatten tum ac\u0131k pozisyonlar\u0131 fak sell ile kapat\u0131r, listeden siler.",
       "id": "tests_test_main_loop_rationale_1418"
     },
@@ -18511,7 +18817,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1476",
-      "community": 76,
+      "community": 144,
       "norm_label": "ws_triggered=true iken scan+heal mant\u0131g\u0131 atlan\u0131r (main() kosullu blogu dogrular)",
       "id": "tests_test_main_loop_rationale_1476"
     },
@@ -18556,7 +18862,7 @@
       "file_type": "rationale",
       "source_file": "db/logger.py",
       "source_location": "L162",
-      "community": 144,
+      "community": 21,
       "norm_label": "bugunun utc kapanan pozisyonlar\u0131n\u0131 yukler \u2014 restart sonras\u0131 daily_loss recovery.",
       "id": "db_logger_rationale_162"
     },
@@ -18646,7 +18952,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L480",
-      "community": 3,
+      "community": 76,
       "norm_label": "patch_position_resolution exit_hl_price ile cagr\u0131l\u0131nca db'ye kaydedilmeli.",
       "id": "tests_test_db_rationale_480"
     },
@@ -18655,7 +18961,7 @@
       "file_type": "rationale",
       "source_file": "db/logger.py",
       "source_location": "L155",
-      "community": 144,
+      "community": 21,
       "norm_label": "bugunun utc kapanan pozisyonlar\u0131n\u0131 yukler \u2014 restart sonras\u0131 daily_loss recovery.",
       "id": "db_logger_rationale_155"
     },
@@ -18700,7 +19006,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1391",
-      "community": 76,
+      "community": 144,
       "norm_label": "ws_triggered=true iken scan+heal mant\u0131g\u0131 atlan\u0131r (main() kosullu blogu dogrular)",
       "id": "tests_test_main_loop_rationale_1391"
     },
@@ -18709,7 +19015,7 @@
       "file_type": "rationale",
       "source_file": "db/logger.py",
       "source_location": "L151",
-      "community": 144,
+      "community": 21,
       "norm_label": "bugunun utc kapanan pozisyonlar\u0131n\u0131 yukler \u2014 restart sonras\u0131 daily_loss recovery.",
       "id": "db_logger_rationale_151"
     },
@@ -18736,7 +19042,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L46",
-      "community": 152,
+      "community": 0,
       "norm_label": "db'deki status=open pozisyonlar\u0131 yukler \u2014 restart sonras\u0131 memory'yi geri dolduru",
       "id": "mispricing_agent_main_loop_rationale_46"
     },
@@ -18745,7 +19051,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L94",
-      "community": 62,
+      "community": 151,
       "norm_label": "finding'i 5 katmandan gecirir. herhangi biri duserse none.",
       "id": "mispricing_agent_main_loop_rationale_94"
     },
@@ -18763,7 +19069,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L205",
-      "community": 85,
+      "community": 113,
       "norm_label": "ws market_resolved event'\u0131na gore ac\u0131k pozisyonu an\u0131nda kapat.",
       "id": "mispricing_agent_main_loop_rationale_205"
     },
@@ -18790,7 +19096,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L67",
-      "community": 114,
+      "community": 151,
       "norm_label": "verify() fail \u2192 _run_council none doner.",
       "id": "tests_test_main_loop_rationale_67"
     },
@@ -18817,7 +19123,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L128",
-      "community": 33,
+      "community": 99,
       "norm_label": "max_open_positions doluysa scan_edges hic cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_128"
     },
@@ -18826,7 +19132,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L138",
-      "community": 173,
+      "community": 176,
       "norm_label": "konsey gecince execute() cagr\u0131l\u0131r, pozisyon open_positions'a eklenir.",
       "id": "tests_test_main_loop_rationale_138"
     },
@@ -18835,7 +19141,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L155",
-      "community": 33,
+      "community": 99,
       "norm_label": "ayn\u0131 slug icin ac\u0131k pozisyon varsa _run_council cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_155"
     },
@@ -18844,7 +19150,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L168",
-      "community": 171,
+      "community": 176,
       "norm_label": "findings listesinde ayn\u0131 slug iki kez varsa yaln\u0131zca bir pozisyon ac\u0131l\u0131r.",
       "id": "tests_test_main_loop_rationale_168"
     },
@@ -18853,7 +19159,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L188",
-      "community": 21,
+      "community": 176,
       "norm_label": "fak kill (execute\u2192none) olan slug failed_slugs'a eklenmemeli.     capital riske",
       "id": "tests_test_main_loop_rationale_188"
     },
@@ -18862,7 +19168,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L203",
-      "community": 21,
+      "community": 176,
       "norm_label": "failed_slugs'taki slug icin _run_council hic cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_203"
     },
@@ -18880,7 +19186,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L233",
-      "community": 134,
+      "community": 176,
       "norm_label": "basar\u0131l\u0131 fill (execute\u2192position) olan slug failed_slugs'a eklenmez.",
       "id": "tests_test_main_loop_rationale_233"
     },
@@ -18970,7 +19276,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L454",
-      "community": 104,
+      "community": 80,
       "norm_label": "profit_target_hit \u2192 slug failed_slugs'a eklenmez (yuksek-edge re-entry serbest).",
       "id": "tests_test_main_loop_rationale_454"
     },
@@ -18979,7 +19285,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L473",
-      "community": 129,
+      "community": 133,
       "norm_label": "dry_run yes c\u0131k\u0131sta pm_exit_price = ws bid (sat\u0131s fiyat\u0131), ask degil.",
       "id": "tests_test_main_loop_rationale_473"
     },
@@ -19015,7 +19321,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L588",
-      "community": 137,
+      "community": 85,
       "norm_label": "limit=2 \u2192 5 null kay\u0131t varsa sadece 2 islenir, 3 null kal\u0131r.",
       "id": "tests_test_main_loop_rationale_588"
     },
@@ -19024,7 +19330,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L614",
-      "community": 125,
+      "community": 73,
       "norm_label": "heal basar\u0131l\u0131ysa notify_resolved_late dogru asset/seq_no ile cagr\u0131l\u0131r.",
       "id": "tests_test_main_loop_rationale_614"
     },
@@ -19033,7 +19339,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L640",
-      "community": 110,
+      "community": 111,
       "norm_label": "fetch_resolved none dondururse notify_resolved_late cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_640"
     },
@@ -19051,7 +19357,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L694",
-      "community": 73,
+      "community": 120,
       "norm_label": "bankroll_usd env degiskeni set edilince main_loop bu degeri kullan\u0131r.",
       "id": "tests_test_main_loop_rationale_694"
     },
@@ -19069,7 +19375,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L739",
-      "community": 110,
+      "community": 111,
       "norm_label": "dry_run=false iken sell_position none \u2192 pozisyon acik kal\u0131r, kapat\u0131lmaz.      fa",
       "id": "tests_test_main_loop_rationale_739"
     },
@@ -19078,7 +19384,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L779",
-      "community": 110,
+      "community": 104,
       "norm_label": "db'den yuklenen pozisyonda entry_hl_price alan\u0131 olmal\u0131.",
       "id": "tests_test_main_loop_rationale_779"
     },
@@ -19087,7 +19393,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L797",
-      "community": 80,
+      "community": 62,
       "norm_label": "_monitor_positions exit an\u0131ndaki hl fiyat\u0131n\u0131 closed dict'e eklemeli.",
       "id": "tests_test_main_loop_rationale_797"
     },
@@ -19132,7 +19438,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L953",
-      "community": 130,
+      "community": 113,
       "norm_label": "no pozisyon + 'no' kazan\u0131nca pm_exit=1.0 ile kapanmal\u0131.",
       "id": "tests_test_main_loop_rationale_953"
     },
@@ -19141,7 +19447,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L988",
-      "community": 131,
+      "community": 113,
       "norm_label": "yes pozisyon + 'no' kazan\u0131nca pm_exit=0.0 ile kapanmal\u0131.",
       "id": "tests_test_main_loop_rationale_988"
     },
@@ -19150,7 +19456,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1022",
-      "community": 85,
+      "community": 113,
       "norm_label": "assets_ids eslesmiyorsa pozisyona dokunmamal\u0131.",
       "id": "tests_test_main_loop_rationale_1022"
     },
@@ -19168,7 +19474,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1068",
-      "community": 221,
+      "community": 71,
       "norm_label": "yes + ws bid mevcut \u2192 price_source='ws_bid', mae_data_quality='exact'.",
       "id": "tests_test_main_loop_rationale_1068"
     },
@@ -19204,7 +19510,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1154",
-      "community": 222,
+      "community": 71,
       "norm_label": "ws event an\u0131nda gelirse true doner ve current_price/fetch_by_slug cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_1154"
     },
@@ -19213,7 +19519,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1176",
-      "community": 71,
+      "community": 114,
       "norm_label": "ws event 7s icinde gelmezse false doner, cache guncellenir.",
       "id": "tests_test_main_loop_rationale_1176"
     },
@@ -19240,7 +19546,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1237",
-      "community": 222,
+      "community": 71,
       "norm_label": "live: sell_position() none donerse _closing=false reset edilir, pozisyon listede",
       "id": "tests_test_main_loop_rationale_1237"
     },
@@ -19249,7 +19555,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1258",
-      "community": 76,
+      "community": 144,
       "norm_label": "ws_triggered=true iken scan+heal mant\u0131g\u0131 atlan\u0131r (main() kosullu blogu dogrular)",
       "id": "tests_test_main_loop_rationale_1258"
     },
@@ -19528,7 +19834,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L58",
-      "community": 114,
+      "community": 151,
       "norm_label": "verify() fail \u2192 _run_council none doner.",
       "id": "tests_test_main_loop_rationale_58"
     },
@@ -19546,7 +19852,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L86",
-      "community": 173,
+      "community": 176,
       "norm_label": "verify() taze fiyat dondurunce finding guncellenir \u2014 execute stale fiyat kullanm",
       "id": "tests_test_main_loop_rationale_86"
     },
@@ -19555,7 +19861,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L119",
-      "community": 33,
+      "community": 99,
       "norm_label": "max_open_positions doluysa scan_edges hic cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_119"
     },
@@ -19564,7 +19870,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L129",
-      "community": 173,
+      "community": 176,
       "norm_label": "konsey gecince execute() cagr\u0131l\u0131r, pozisyon open_positions'a eklenir.",
       "id": "tests_test_main_loop_rationale_129"
     },
@@ -19573,7 +19879,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L146",
-      "community": 33,
+      "community": 99,
       "norm_label": "ayn\u0131 slug icin ac\u0131k pozisyon varsa _run_council cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_146"
     },
@@ -19582,7 +19888,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L159",
-      "community": 171,
+      "community": 176,
       "norm_label": "findings listesinde ayn\u0131 slug iki kez varsa yaln\u0131zca bir pozisyon ac\u0131l\u0131r.",
       "id": "tests_test_main_loop_rationale_159"
     },
@@ -19591,7 +19897,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L179",
-      "community": 21,
+      "community": 176,
       "norm_label": "fak kill (execute\u2192none) olan slug failed_slugs'a eklenmemeli.     capital riske",
       "id": "tests_test_main_loop_rationale_179"
     },
@@ -19609,7 +19915,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L224",
-      "community": 134,
+      "community": 176,
       "norm_label": "basar\u0131l\u0131 fill (execute\u2192position) olan slug failed_slugs'a eklenmez.",
       "id": "tests_test_main_loop_rationale_224"
     },
@@ -19690,7 +19996,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L445",
-      "community": 104,
+      "community": 80,
       "norm_label": "profit_target_hit \u2192 slug failed_slugs'a eklenmez (yuksek-edge re-entry serbest).",
       "id": "tests_test_main_loop_rationale_445"
     },
@@ -19699,7 +20005,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L464",
-      "community": 129,
+      "community": 133,
       "norm_label": "dry_run yes c\u0131k\u0131sta pm_exit_price = ws bid (sat\u0131s fiyat\u0131), ask degil.",
       "id": "tests_test_main_loop_rationale_464"
     },
@@ -19744,7 +20050,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L605",
-      "community": 125,
+      "community": 73,
       "norm_label": "heal basar\u0131l\u0131ysa notify_resolved_late dogru asset/seq_no ile cagr\u0131l\u0131r.",
       "id": "tests_test_main_loop_rationale_605"
     },
@@ -19789,7 +20095,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L730",
-      "community": 110,
+      "community": 111,
       "norm_label": "dry_run=false iken sell_position none \u2192 pozisyon acik kal\u0131r, kapat\u0131lmaz.      fa",
       "id": "tests_test_main_loop_rationale_730"
     },
@@ -19798,7 +20104,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L770",
-      "community": 110,
+      "community": 104,
       "norm_label": "db'den yuklenen pozisyonda entry_hl_price alan\u0131 olmal\u0131.",
       "id": "tests_test_main_loop_rationale_770"
     },
@@ -19807,7 +20113,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L788",
-      "community": 80,
+      "community": 62,
       "norm_label": "_monitor_positions exit an\u0131ndaki hl fiyat\u0131n\u0131 closed dict'e eklemeli.",
       "id": "tests_test_main_loop_rationale_788"
     },
@@ -19852,7 +20158,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L944",
-      "community": 130,
+      "community": 113,
       "norm_label": "no pozisyon + 'no' kazan\u0131nca pm_exit=1.0 ile kapanmal\u0131.",
       "id": "tests_test_main_loop_rationale_944"
     },
@@ -19861,7 +20167,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L979",
-      "community": 131,
+      "community": 113,
       "norm_label": "yes pozisyon + 'no' kazan\u0131nca pm_exit=0.0 ile kapanmal\u0131.",
       "id": "tests_test_main_loop_rationale_979"
     },
@@ -19870,7 +20176,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1013",
-      "community": 85,
+      "community": 113,
       "norm_label": "assets_ids eslesmiyorsa pozisyona dokunmamal\u0131.",
       "id": "tests_test_main_loop_rationale_1013"
     },
@@ -19888,7 +20194,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1059",
-      "community": 221,
+      "community": 71,
       "norm_label": "yes + ws bid mevcut \u2192 price_source='ws_bid', mae_data_quality='exact'.",
       "id": "tests_test_main_loop_rationale_1059"
     },
@@ -19987,7 +20293,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L143",
-      "community": 3,
+      "community": 129,
       "norm_label": "positions tablosu realized_pnl sutununa sahip olmal\u0131.",
       "id": "tests_test_db_rationale_143"
     },
@@ -19996,7 +20302,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L151",
-      "community": 3,
+      "community": 130,
       "norm_label": "kapanan pozisyonda realized_pnl hesaplan\u0131p db'ye yaz\u0131l\u0131r.     entry=0.40, exit=0",
       "id": "tests_test_db_rationale_151"
     },
@@ -20005,7 +20311,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L176",
-      "community": 3,
+      "community": 131,
       "norm_label": "pm_exit_price=none (market_expired) \u2192 realized_pnl=none.",
       "id": "tests_test_db_rationale_176"
     },
@@ -20014,7 +20320,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L198",
-      "community": 144,
+      "community": 21,
       "norm_label": "load_closed_today yaln\u0131zca bugunun utc kapan\u0131slar\u0131n\u0131 dondurur, onceki gunleri de",
       "id": "tests_test_db_rationale_198"
     },
@@ -20032,7 +20338,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L262",
-      "community": 149,
+      "community": 19,
       "norm_label": "conn=none \u2192 sessizce atlan\u0131r, exception yok.",
       "id": "tests_test_db_rationale_262"
     },
@@ -20041,7 +20347,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L269",
-      "community": 3,
+      "community": 134,
       "norm_label": "positions tablosu shares, order_id, yes_token_id, no_token_id sutunlar\u0131na sahip",
       "id": "tests_test_db_rationale_269"
     },
@@ -20050,7 +20356,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L280",
-      "community": 3,
+      "community": 76,
       "norm_label": "log_position_open shares, order_id, yes_token_id, no_token_id alanlar\u0131n\u0131 yazar.",
       "id": "tests_test_db_rationale_280"
     },
@@ -20068,7 +20374,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L314",
-      "community": 3,
+      "community": 149,
       "norm_label": "log_position_open \u2192 entry_hl_price db'ye kaydedilmeli.",
       "id": "tests_test_db_rationale_314"
     },
@@ -20077,7 +20383,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L334",
-      "community": 3,
+      "community": 160,
       "norm_label": "log_position_close \u2192 exit_hl_price db'ye kaydedilmeli.",
       "id": "tests_test_db_rationale_334"
     },
@@ -20086,7 +20392,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L360",
-      "community": 3,
+      "community": 76,
       "norm_label": "patch_position_resolution exit_hl_price ile cagr\u0131l\u0131nca db'ye kaydedilmeli.",
       "id": "tests_test_db_rationale_360"
     },
@@ -20104,7 +20410,7 @@
       "file_type": "rationale",
       "source_file": "db/logger.py",
       "source_location": "L121",
-      "community": 144,
+      "community": 21,
       "norm_label": "bugunun utc kapanan pozisyonlar\u0131n\u0131 yukler \u2014 restart sonras\u0131 daily_loss recovery.",
       "id": "db_logger_rationale_121"
     },
@@ -20131,7 +20437,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L194",
-      "community": 85,
+      "community": 113,
       "norm_label": "ws market_resolved event'\u0131na gore ac\u0131k pozisyonu an\u0131nda kapat.",
       "id": "mispricing_agent_main_loop_rationale_194"
     },
@@ -20176,7 +20482,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L223",
-      "community": 134,
+      "community": 176,
       "norm_label": "basar\u0131l\u0131 fill (execute\u2192position) olan slug failed_slugs'a eklenmez.",
       "id": "tests_test_main_loop_rationale_223"
     },
@@ -20257,7 +20563,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L444",
-      "community": 104,
+      "community": 80,
       "norm_label": "profit_target_hit \u2192 slug failed_slugs'a eklenmez (yuksek-edge re-entry serbest).",
       "id": "tests_test_main_loop_rationale_444"
     },
@@ -20266,7 +20572,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L463",
-      "community": 129,
+      "community": 133,
       "norm_label": "dry_run yes c\u0131k\u0131sta pm_exit_price = ws bid (sat\u0131s fiyat\u0131), ask degil.",
       "id": "tests_test_main_loop_rationale_463"
     },
@@ -20293,7 +20599,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L553",
-      "community": 125,
+      "community": 73,
       "norm_label": "fetch_resolved hala none donerse db kayd\u0131na dokunulmaz.",
       "id": "tests_test_main_loop_rationale_553"
     },
@@ -20311,7 +20617,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L604",
-      "community": 125,
+      "community": 73,
       "norm_label": "heal basar\u0131l\u0131ysa notify_resolved_late dogru asset/seq_no ile cagr\u0131l\u0131r.",
       "id": "tests_test_main_loop_rationale_604"
     },
@@ -20347,7 +20653,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L729",
-      "community": 110,
+      "community": 111,
       "norm_label": "dry_run=false iken sell_position none \u2192 pozisyon acik kal\u0131r, kapat\u0131lmaz.      fa",
       "id": "tests_test_main_loop_rationale_729"
     },
@@ -20356,7 +20662,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L769",
-      "community": 110,
+      "community": 104,
       "norm_label": "db'den yuklenen pozisyonda entry_hl_price alan\u0131 olmal\u0131.",
       "id": "tests_test_main_loop_rationale_769"
     },
@@ -20365,7 +20671,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L787",
-      "community": 80,
+      "community": 62,
       "norm_label": "_monitor_positions exit an\u0131ndaki hl fiyat\u0131n\u0131 closed dict'e eklemeli.",
       "id": "tests_test_main_loop_rationale_787"
     },
@@ -20410,7 +20716,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L943",
-      "community": 130,
+      "community": 113,
       "norm_label": "no pozisyon + 'no' kazan\u0131nca pm_exit=1.0 ile kapanmal\u0131.",
       "id": "tests_test_main_loop_rationale_943"
     },
@@ -20419,7 +20725,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L978",
-      "community": 131,
+      "community": 113,
       "norm_label": "yes pozisyon + 'no' kazan\u0131nca pm_exit=0.0 ile kapanmal\u0131.",
       "id": "tests_test_main_loop_rationale_978"
     },
@@ -20428,7 +20734,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L1012",
-      "community": 85,
+      "community": 113,
       "norm_label": "assets_ids eslesmiyorsa pozisyona dokunmamal\u0131.",
       "id": "tests_test_main_loop_rationale_1012"
     },
@@ -20671,7 +20977,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L264",
-      "community": 126,
+      "community": 65,
       "norm_label": "fair_value her zaman [0, 1] aras\u0131nda.",
       "id": "tests_test_scout_rationale_264"
     },
@@ -20680,7 +20986,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L272",
-      "community": 123,
+      "community": 107,
       "norm_label": "ref_price ve cur_price pozitif.",
       "id": "tests_test_scout_rationale_272"
     },
@@ -20698,7 +21004,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L290",
-      "community": 117,
+      "community": 108,
       "norm_label": "her bulgu _window iceriyor \u2014 verifier pm fallback icin.",
       "id": "tests_test_scout_rationale_290"
     },
@@ -20707,7 +21013,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L303",
-      "community": 126,
+      "community": 65,
       "norm_label": "her bulgu _raw_market iceriyor \u2014 redteam spread/liquidity/fee fallback icin.",
       "id": "tests_test_scout_rationale_303"
     },
@@ -20788,7 +21094,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L583",
-      "community": 17,
+      "community": 148,
       "norm_label": "ws get_bid none \u2192 /price?side=sell cagr\u0131l\u0131r; clob_ask kullan\u0131lmaz.",
       "id": "tests_test_scout_rationale_583"
     },
@@ -20806,7 +21112,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L650",
-      "community": 160,
+      "community": 148,
       "norm_label": "no sinyali: gercek no_ask ile (1-fair)-no_ask edge hesaplan\u0131r, finding'e yaz\u0131l\u0131r",
       "id": "tests_test_scout_rationale_650"
     },
@@ -20995,7 +21301,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L45",
-      "community": 152,
+      "community": 0,
       "norm_label": "db'deki status=open pozisyonlar\u0131 yukler \u2014 restart sonras\u0131 memory'yi geri dolduru",
       "id": "mispricing_agent_main_loop_rationale_45"
     },
@@ -21004,7 +21310,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L93",
-      "community": 62,
+      "community": 151,
       "norm_label": "finding'i 5 katmandan gecirir. herhangi biri duserse none.",
       "id": "mispricing_agent_main_loop_rationale_93"
     },
@@ -21022,7 +21328,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L193",
-      "community": 85,
+      "community": 113,
       "norm_label": "ws market_resolved event'\u0131na gore ac\u0131k pozisyonu an\u0131nda kapat.",
       "id": "mispricing_agent_main_loop_rationale_193"
     },
@@ -21139,7 +21445,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L46",
-      "community": 114,
+      "community": 151,
       "norm_label": "verify() fail \u2192 _run_council none doner.",
       "id": "tests_test_main_loop_rationale_46"
     },
@@ -21166,7 +21472,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L107",
-      "community": 33,
+      "community": 99,
       "norm_label": "max_open_positions doluysa scan_edges hic cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_107"
     },
@@ -21175,7 +21481,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L117",
-      "community": 173,
+      "community": 176,
       "norm_label": "konsey gecince execute() cagr\u0131l\u0131r, pozisyon open_positions'a eklenir.",
       "id": "tests_test_main_loop_rationale_117"
     },
@@ -21184,7 +21490,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L147",
-      "community": 171,
+      "community": 176,
       "norm_label": "findings listesinde ayn\u0131 slug iki kez varsa yaln\u0131zca bir pozisyon ac\u0131l\u0131r.",
       "id": "tests_test_main_loop_rationale_147"
     },
@@ -21202,7 +21508,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L181",
-      "community": 21,
+      "community": 176,
       "norm_label": "failed_slugs'taki slug icin _run_council hic cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_181"
     },
@@ -21211,7 +21517,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L211",
-      "community": 134,
+      "community": 176,
       "norm_label": "basar\u0131l\u0131 fill (execute\u2192position) olan slug failed_slugs'a eklenmez.",
       "id": "tests_test_main_loop_rationale_211"
     },
@@ -21274,7 +21580,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L393",
-      "community": 104,
+      "community": 80,
       "norm_label": "profit_target_hit \u2192 slug failed_slugs'a eklenmez (yuksek-edge re-entry serbest).",
       "id": "tests_test_main_loop_rationale_393"
     },
@@ -21283,7 +21589,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L412",
-      "community": 129,
+      "community": 133,
       "norm_label": "dry_run yes c\u0131k\u0131sta pm_exit_price = best_bid (sat\u0131s fiyat\u0131), best_ask degil.",
       "id": "tests_test_main_loop_rationale_412"
     },
@@ -21319,7 +21625,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L527",
-      "community": 137,
+      "community": 85,
       "norm_label": "limit=2 \u2192 5 null kay\u0131t varsa sadece 2 islenir, 3 null kal\u0131r.",
       "id": "tests_test_main_loop_rationale_527"
     },
@@ -21355,7 +21661,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L678",
-      "community": 110,
+      "community": 111,
       "norm_label": "dry_run=false iken sell_position none \u2192 pozisyon acik kal\u0131r, kapat\u0131lmaz.      fa",
       "id": "tests_test_main_loop_rationale_678"
     },
@@ -21364,7 +21670,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L718",
-      "community": 110,
+      "community": 104,
       "norm_label": "db'den yuklenen pozisyonda entry_hl_price alan\u0131 olmal\u0131.",
       "id": "tests_test_main_loop_rationale_718"
     },
@@ -21373,7 +21679,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L736",
-      "community": 80,
+      "community": 62,
       "norm_label": "_monitor_positions exit an\u0131ndaki hl fiyat\u0131n\u0131 closed dict'e eklemeli.",
       "id": "tests_test_main_loop_rationale_736"
     },
@@ -21409,7 +21715,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L892",
-      "community": 130,
+      "community": 113,
       "norm_label": "no pozisyon + 'no' kazan\u0131nca pm_exit=1.0 ile kapanmal\u0131.",
       "id": "tests_test_main_loop_rationale_892"
     },
@@ -21418,7 +21724,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L927",
-      "community": 131,
+      "community": 113,
       "norm_label": "yes pozisyon + 'no' kazan\u0131nca pm_exit=0.0 ile kapanmal\u0131.",
       "id": "tests_test_main_loop_rationale_927"
     },
@@ -21427,7 +21733,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L961",
-      "community": 85,
+      "community": 113,
       "norm_label": "assets_ids eslesmiyorsa pozisyona dokunmamal\u0131.",
       "id": "tests_test_main_loop_rationale_961"
     },
@@ -21625,7 +21931,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L568",
-      "community": 17,
+      "community": 148,
       "norm_label": "ws get_bid none \u2192 /price?side=sell cagr\u0131l\u0131r; clob_ask kullan\u0131lmaz.",
       "id": "tests_test_scout_rationale_568"
     },
@@ -21643,7 +21949,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L635",
-      "community": 160,
+      "community": 148,
       "norm_label": "no sinyali: gercek no_ask ile (1-fair)-no_ask edge hesaplan\u0131r, finding'e yaz\u0131l\u0131r",
       "id": "tests_test_scout_rationale_635"
     },
@@ -21823,7 +22129,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L240",
-      "community": 126,
+      "community": 65,
       "norm_label": "fair_value her zaman [0, 1] aras\u0131nda.",
       "id": "tests_test_scout_rationale_240"
     },
@@ -21832,7 +22138,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L248",
-      "community": 123,
+      "community": 107,
       "norm_label": "ref_price ve cur_price pozitif.",
       "id": "tests_test_scout_rationale_248"
     },
@@ -21850,7 +22156,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L279",
-      "community": 126,
+      "community": 65,
       "norm_label": "her bulgu _raw_market iceriyor \u2014 redteam spread/liquidity/fee fallback icin.",
       "id": "tests_test_scout_rationale_279"
     },
@@ -21913,7 +22219,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L544",
-      "community": 17,
+      "community": 148,
       "norm_label": "ws get_bid none \u2192 /price?side=sell cagr\u0131l\u0131r; clob_ask kullan\u0131lmaz.",
       "id": "tests_test_scout_rationale_544"
     },
@@ -21931,7 +22237,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L611",
-      "community": 160,
+      "community": 148,
       "norm_label": "no sinyali: gercek no_ask ile (1-fair)-no_ask edge hesaplan\u0131r, finding'e yaz\u0131l\u0131r",
       "id": "tests_test_scout_rationale_611"
     },
@@ -22129,7 +22435,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L44",
-      "community": 152,
+      "community": 0,
       "norm_label": "db'deki status=open pozisyonlar\u0131 yukler \u2014 restart sonras\u0131 memory'yi geri dolduru",
       "id": "mispricing_agent_main_loop_rationale_44"
     },
@@ -22138,7 +22444,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L92",
-      "community": 62,
+      "community": 151,
       "norm_label": "finding'i 5 katmandan gecirir. herhangi biri duserse none.",
       "id": "mispricing_agent_main_loop_rationale_92"
     },
@@ -22156,7 +22462,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L182",
-      "community": 85,
+      "community": 113,
       "norm_label": "ws market_resolved event'\u0131na gore ac\u0131k pozisyonu an\u0131nda kapat.",
       "id": "mispricing_agent_main_loop_rationale_182"
     },
@@ -22291,7 +22597,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L489",
-      "community": 137,
+      "community": 85,
       "norm_label": "limit=2 \u2192 5 null kay\u0131t varsa sadece 2 islenir, 3 null kal\u0131r.",
       "id": "tests_test_main_loop_rationale_489"
     },
@@ -22300,7 +22606,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L515",
-      "community": 125,
+      "community": 73,
       "norm_label": "heal basar\u0131l\u0131ysa notify_resolved_late dogru asset/seq_no ile cagr\u0131l\u0131r.",
       "id": "tests_test_main_loop_rationale_515"
     },
@@ -22327,7 +22633,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L680",
-      "community": 110,
+      "community": 104,
       "norm_label": "db'den yuklenen pozisyonda entry_hl_price alan\u0131 olmal\u0131.",
       "id": "tests_test_main_loop_rationale_680"
     },
@@ -22336,7 +22642,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L698",
-      "community": 80,
+      "community": 62,
       "norm_label": "_monitor_positions exit an\u0131ndaki hl fiyat\u0131n\u0131 closed dict'e eklemeli.",
       "id": "tests_test_main_loop_rationale_698"
     },
@@ -22381,7 +22687,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L854",
-      "community": 130,
+      "community": 113,
       "norm_label": "no pozisyon + 'no' kazan\u0131nca pm_exit=1.0 ile kapanmal\u0131.",
       "id": "tests_test_main_loop_rationale_854"
     },
@@ -22390,7 +22696,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L889",
-      "community": 131,
+      "community": 113,
       "norm_label": "yes pozisyon + 'no' kazan\u0131nca pm_exit=0.0 ile kapanmal\u0131.",
       "id": "tests_test_main_loop_rationale_889"
     },
@@ -22399,7 +22705,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L923",
-      "community": 85,
+      "community": 113,
       "norm_label": "assets_ids eslesmiyorsa pozisyona dokunmamal\u0131.",
       "id": "tests_test_main_loop_rationale_923"
     },
@@ -22462,7 +22768,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L43",
-      "community": 152,
+      "community": 0,
       "norm_label": "db'deki status=open pozisyonlar\u0131 yukler \u2014 restart sonras\u0131 memory'yi geri dolduru",
       "id": "mispricing_agent_main_loop_rationale_43"
     },
@@ -22471,7 +22777,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L91",
-      "community": 62,
+      "community": 151,
       "norm_label": "finding'i 5 katmandan gecirir. herhangi biri duserse none.",
       "id": "mispricing_agent_main_loop_rationale_91"
     },
@@ -22678,7 +22984,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L658",
-      "community": 80,
+      "community": 62,
       "norm_label": "_monitor_positions exit an\u0131ndaki hl fiyat\u0131n\u0131 closed dict'e eklemeli.",
       "id": "tests_test_main_loop_rationale_658"
     },
@@ -22714,7 +23020,7 @@
       "file_type": "code",
       "source_file": "tests/test_position_store.py",
       "source_location": "L99",
-      "community": 185,
+      "community": 6,
       "norm_label": "test_sell_position_returns_fallback_on_exception()",
       "id": "tests_test_position_store_test_sell_position_returns_fallback_on_exception"
     },
@@ -22723,7 +23029,7 @@
       "file_type": "code",
       "source_file": "tests/test_position_store.py",
       "source_location": "L110",
-      "community": 226,
+      "community": 6,
       "norm_label": "test_sell_position_returns_fallback_on_unmatched()",
       "id": "tests_test_position_store_test_sell_position_returns_fallback_on_unmatched"
     },
@@ -22732,7 +23038,7 @@
       "file_type": "code",
       "source_file": "tests/test_position_store.py",
       "source_location": "L121",
-      "community": 154,
+      "community": 6,
       "norm_label": "test_sell_position_returns_fallback_when_amounts_missing()",
       "id": "tests_test_position_store_test_sell_position_returns_fallback_when_amounts_missing"
     },
@@ -22786,7 +23092,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_position_store.py",
       "source_location": "L100",
-      "community": 185,
+      "community": 6,
       "norm_label": "api exception \u2192 current_bid fallback doner, exception f\u0131rlat\u0131lmaz.",
       "id": "tests_test_position_store_rationale_100"
     },
@@ -22795,7 +23101,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_position_store.py",
       "source_location": "L111",
-      "community": 226,
+      "community": 6,
       "norm_label": "unmatched \u2192 current_bid fallback doner.",
       "id": "tests_test_position_store_rationale_111"
     },
@@ -22804,7 +23110,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_position_store.py",
       "source_location": "L122",
-      "community": 154,
+      "community": 6,
       "norm_label": "takingamount/makingamount yoksa fallback kullan\u0131l\u0131r.",
       "id": "tests_test_position_store_rationale_122"
     },
@@ -23164,7 +23470,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L182",
-      "community": 126,
+      "community": 65,
       "norm_label": "fair_value her zaman [0, 1] aras\u0131nda.",
       "id": "tests_test_scout_rationale_182"
     },
@@ -23173,7 +23479,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L190",
-      "community": 123,
+      "community": 107,
       "norm_label": "ref_price ve cur_price pozitif.",
       "id": "tests_test_scout_rationale_190"
     },
@@ -23182,7 +23488,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L221",
-      "community": 126,
+      "community": 65,
       "norm_label": "her bulgu _raw_market iceriyor \u2014 redteam spread/liquidity/fee fallback icin.",
       "id": "tests_test_scout_rationale_221"
     },
@@ -23335,7 +23641,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L488",
-      "community": 137,
+      "community": 85,
       "norm_label": "limit=2 \u2192 5 null kay\u0131t varsa sadece 2 islenir, 3 null kal\u0131r.",
       "id": "tests_test_main_loop_rationale_488"
     },
@@ -23344,7 +23650,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L514",
-      "community": 125,
+      "community": 73,
       "norm_label": "heal basar\u0131l\u0131ysa notify_resolved_late dogru asset/seq_no ile cagr\u0131l\u0131r.",
       "id": "tests_test_main_loop_rationale_514"
     },
@@ -23371,7 +23677,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L639",
-      "community": 110,
+      "community": 104,
       "norm_label": "db'den yuklenen pozisyonda entry_hl_price alan\u0131 olmal\u0131.",
       "id": "tests_test_main_loop_rationale_639"
     },
@@ -23380,7 +23686,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L657",
-      "community": 80,
+      "community": 62,
       "norm_label": "_monitor_positions exit an\u0131ndaki hl fiyat\u0131n\u0131 closed dict'e eklemeli.",
       "id": "tests_test_main_loop_rationale_657"
     },
@@ -23533,7 +23839,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L94",
-      "community": 3,
+      "community": 173,
       "norm_label": "kapanan pozisyon: status='closed', exit_reason ve pm_exit_price guncellenir.",
       "id": "tests_test_db_rationale_94"
     },
@@ -23542,7 +23848,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L114",
-      "community": 3,
+      "community": 171,
       "norm_label": "positions tablosu ref_price ve edge sutunlar\u0131na sahip olmal\u0131.",
       "id": "tests_test_db_rationale_114"
     },
@@ -23551,7 +23857,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L123",
-      "community": 3,
+      "community": 123,
       "norm_label": "log_position_open ref_price ve edge degerlerini db'ye yazar.",
       "id": "tests_test_db_rationale_123"
     },
@@ -23560,7 +23866,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L140",
-      "community": 3,
+      "community": 129,
       "norm_label": "positions tablosu realized_pnl sutununa sahip olmal\u0131.",
       "id": "tests_test_db_rationale_140"
     },
@@ -23569,7 +23875,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L148",
-      "community": 3,
+      "community": 130,
       "norm_label": "kapanan pozisyonda realized_pnl hesaplan\u0131p db'ye yaz\u0131l\u0131r.     entry=0.40, exit=0",
       "id": "tests_test_db_rationale_148"
     },
@@ -23578,7 +23884,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L173",
-      "community": 3,
+      "community": 131,
       "norm_label": "pm_exit_price=none (market_expired) \u2192 realized_pnl=none.",
       "id": "tests_test_db_rationale_173"
     },
@@ -23587,7 +23893,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L195",
-      "community": 144,
+      "community": 21,
       "norm_label": "load_closed_today yaln\u0131zca bugunun utc kapan\u0131slar\u0131n\u0131 dondurur, onceki gunleri de",
       "id": "tests_test_db_rationale_195"
     },
@@ -23605,7 +23911,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L259",
-      "community": 149,
+      "community": 19,
       "norm_label": "conn=none \u2192 sessizce atlan\u0131r, exception yok.",
       "id": "tests_test_db_rationale_259"
     },
@@ -23614,7 +23920,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L266",
-      "community": 3,
+      "community": 134,
       "norm_label": "positions tablosu shares, order_id, yes_token_id, no_token_id sutunlar\u0131na sahip",
       "id": "tests_test_db_rationale_266"
     },
@@ -23623,7 +23929,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L277",
-      "community": 3,
+      "community": 76,
       "norm_label": "log_position_open shares, order_id, yes_token_id, no_token_id alanlar\u0131n\u0131 yazar.",
       "id": "tests_test_db_rationale_277"
     },
@@ -23641,7 +23947,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L311",
-      "community": 3,
+      "community": 149,
       "norm_label": "log_position_open \u2192 entry_hl_price db'ye kaydedilmeli.",
       "id": "tests_test_db_rationale_311"
     },
@@ -23650,7 +23956,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_db.py",
       "source_location": "L331",
-      "community": 3,
+      "community": 160,
       "norm_label": "log_position_close \u2192 exit_hl_price db'ye kaydedilmeli.",
       "id": "tests_test_db_rationale_331"
     },
@@ -23794,7 +24100,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L76",
-      "community": 33,
+      "community": 99,
       "norm_label": "max_open_positions doluysa scan_edges hic cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_76"
     },
@@ -23803,7 +24109,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L103",
-      "community": 33,
+      "community": 99,
       "norm_label": "ayn\u0131 slug icin ac\u0131k pozisyon varsa _run_council cagr\u0131lmaz.",
       "id": "tests_test_main_loop_rationale_103"
     },
@@ -23812,7 +24118,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L116",
-      "community": 171,
+      "community": 176,
       "norm_label": "findings listesinde ayn\u0131 slug iki kez varsa yaln\u0131zca bir pozisyon ac\u0131l\u0131r.",
       "id": "tests_test_main_loop_rationale_116"
     },
@@ -23884,7 +24190,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L275",
-      "community": 129,
+      "community": 133,
       "norm_label": "dry_run yes c\u0131k\u0131sta pm_exit_price = best_bid (sat\u0131s fiyat\u0131), best_ask degil.",
       "id": "tests_test_main_loop_rationale_275"
     },
@@ -23911,7 +24217,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L363",
-      "community": 137,
+      "community": 133,
       "norm_label": "fetch_resolved hala none donerse db kayd\u0131na dokunulmaz.",
       "id": "tests_test_main_loop_rationale_363"
     },
@@ -23947,7 +24253,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L539",
-      "community": 110,
+      "community": 104,
       "norm_label": "db'den yuklenen pozisyonda entry_hl_price alan\u0131 olmal\u0131.",
       "id": "tests_test_main_loop_rationale_539"
     },
@@ -23956,7 +24262,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L557",
-      "community": 80,
+      "community": 62,
       "norm_label": "_monitor_positions exit an\u0131ndaki hl fiyat\u0131n\u0131 closed dict'e eklemeli.",
       "id": "tests_test_main_loop_rationale_557"
     },
@@ -24010,7 +24316,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_position_store.py",
       "source_location": "L74",
-      "community": 226,
+      "community": 6,
       "norm_label": "unmatched status \u2192 current_bid fallback doner, exception yok.",
       "id": "tests_test_position_store_rationale_74"
     },
@@ -24019,7 +24325,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_scout.py",
       "source_location": "L151",
-      "community": 123,
+      "community": 107,
       "norm_label": "ref_price ve cur_price pozitif.",
       "id": "tests_test_scout_rationale_151"
     },
@@ -24118,7 +24424,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L90",
-      "community": 62,
+      "community": 151,
       "norm_label": "finding'i 5 katmandan gecirir. herhangi biri duserse none.",
       "id": "mispricing_agent_main_loop_rationale_90"
     },
@@ -24208,7 +24514,7 @@
       "file_type": "rationale",
       "source_file": "db/logger.py",
       "source_location": "L118",
-      "community": 144,
+      "community": 21,
       "norm_label": "bugunun utc kapanan pozisyonlar\u0131n\u0131 yukler \u2014 restart sonras\u0131 daily_loss recovery.",
       "id": "db_logger_rationale_118"
     },
@@ -24334,7 +24640,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L345",
-      "community": 137,
+      "community": 85,
       "norm_label": "limit=2 \u2192 5 null kay\u0131t varsa sadece 2 islenir, 3 null kal\u0131r.",
       "id": "tests_test_main_loop_rationale_345"
     },
@@ -24343,7 +24649,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L371",
-      "community": 125,
+      "community": 73,
       "norm_label": "heal basar\u0131l\u0131ysa notify_resolved_late dogru asset/seq_no ile cagr\u0131l\u0131r.",
       "id": "tests_test_main_loop_rationale_371"
     },
@@ -24406,7 +24712,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L343",
-      "community": 137,
+      "community": 85,
       "norm_label": "limit=2 \u2192 5 null kay\u0131t varsa sadece 2 islenir, 3 null kal\u0131r.",
       "id": "tests_test_main_loop_rationale_343"
     },
@@ -24496,7 +24802,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L42",
-      "community": 152,
+      "community": 0,
       "norm_label": "db'deki status=open pozisyonlar\u0131 yukler \u2014 restart sonras\u0131 memory'yi geri dolduru",
       "id": "mispricing_agent_main_loop_rationale_42"
     },
@@ -24505,7 +24811,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L88",
-      "community": 62,
+      "community": 151,
       "norm_label": "finding'i 5 katmandan gecirir. herhangi biri duserse none.",
       "id": "mispricing_agent_main_loop_rationale_88"
     },
@@ -24541,7 +24847,7 @@
       "file_type": "rationale",
       "source_file": "db/logger.py",
       "source_location": "L113",
-      "community": 144,
+      "community": 21,
       "norm_label": "bugunun utc kapanan pozisyonlar\u0131n\u0131 yukler \u2014 restart sonras\u0131 daily_loss recovery.",
       "id": "db_logger_rationale_113"
     },
@@ -24600,15 +24906,6 @@
       "id": "mispricing_agent_main_loop_rationale_78"
     },
     {
-      "label": "Finding'i 5 katmandan ge\u00e7irir. Herhangi biri d\u00fc\u015ferse None.",
-      "file_type": "rationale",
-      "source_file": "main_loop.py",
-      "source_location": "L100",
-      "community": 62,
-      "norm_label": "finding'i 5 katmandan gecirir. herhangi biri duserse none.",
-      "id": "mispricing_agent_main_loop_rationale_100"
-    },
-    {
       "label": "market_expired + pm_exit_price=None kay\u0131tlar\u0131 i\u00e7in resolution retry eder.",
       "file_type": "rationale",
       "source_file": "main_loop.py",
@@ -24658,7 +24955,7 @@
       "file_type": "rationale",
       "source_file": "tests/test_main_loop.py",
       "source_location": "L368",
-      "community": 137,
+      "community": 85,
       "norm_label": "limit=2 \u2192 5 null kay\u0131t varsa sadece 2 islenir, 3 null kal\u0131r.",
       "id": "tests_test_main_loop_rationale_368"
     },
@@ -24721,7 +25018,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L28",
-      "community": 152,
+      "community": 0,
       "norm_label": "db'deki status=open pozisyonlar\u0131 yukler \u2014 restart sonras\u0131 memory'yi geri dolduru",
       "id": "mispricing_agent_main_loop_rationale_28"
     },
@@ -24739,7 +25036,7 @@
       "file_type": "rationale",
       "source_file": "main_loop.py",
       "source_location": "L82",
-      "community": 62,
+      "community": 151,
       "norm_label": "finding'i 5 katmandan gecirir. herhangi biri duserse none.",
       "id": "mispricing_agent_main_loop_rationale_82"
     },
@@ -24775,7 +25072,7 @@
       "file_type": "rationale",
       "source_file": "db/logger.py",
       "source_location": "L108",
-      "community": 144,
+      "community": 21,
       "norm_label": "bugunun utc kapanan pozisyonlar\u0131n\u0131 yukler \u2014 restart sonras\u0131 daily_loss recovery.",
       "id": "db_logger_rationale_108"
     },
@@ -25012,6 +25309,17 @@
       "confidence_score": 1.0,
       "source": "main_loop_py",
       "target": "data_clob_price_get_clob_price"
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "main_loop.py",
+      "source_location": "L27",
+      "weight": 1.0,
+      "source": "main_loop_py",
+      "target": "data_depth_enricher_enrich_entry_depth",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -25649,6 +25957,16 @@
       "target": "mispricing_agent_main_loop_execute"
     },
     {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "main_loop.py",
+      "source_location": "L41",
+      "weight": 1.0,
+      "source": "mispricing_agent_main_loop_rationale_41",
+      "target": "mispricing_agent_main_loop_execute",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -25749,6 +26067,16 @@
       "confidence_score": 1.0,
       "source": "mispricing_agent_main_loop_rationale_47",
       "target": "mispricing_agent_main_loop_load_open_positions"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "main_loop.py",
+      "source_location": "L48",
+      "weight": 1.0,
+      "source": "mispricing_agent_main_loop_rationale_48",
+      "target": "mispricing_agent_main_loop_load_open_positions",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -26214,6 +26542,16 @@
       "target": "mispricing_agent_main_loop_scan_and_execute"
     },
     {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "main_loop.py",
+      "source_location": "L176",
+      "weight": 1.0,
+      "source": "mispricing_agent_main_loop_rationale_176",
+      "target": "mispricing_agent_main_loop_scan_and_execute",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -26223,6 +26561,17 @@
       "confidence_score": 1.0,
       "source": "mispricing_agent_main_loop_scan_and_execute",
       "target": "council_scout_scan_edges"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "main_loop.py",
+      "source_location": "L236",
+      "weight": 1.0,
+      "source": "mispricing_agent_main_loop_scan_and_execute",
+      "target": "data_depth_enricher_enrich_entry_depth",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -26538,6 +26887,16 @@
       "target": "mispricing_agent_main_loop_handle_ws_resolved"
     },
     {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "main_loop.py",
+      "source_location": "L261",
+      "weight": 1.0,
+      "source": "mispricing_agent_main_loop_rationale_261",
+      "target": "mispricing_agent_main_loop_handle_ws_resolved",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -26778,6 +27137,16 @@
       "target": "mispricing_agent_main_loop_heal_pending_resolutions"
     },
     {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "main_loop.py",
+      "source_location": "L296",
+      "weight": 1.0,
+      "source": "mispricing_agent_main_loop_rationale_296",
+      "target": "mispricing_agent_main_loop_heal_pending_resolutions",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -26896,6 +27265,16 @@
       "confidence_score": 1.0,
       "source": "mispricing_agent_main_loop_rationale_340",
       "target": "mispricing_agent_main_loop_apply_partial_fill"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "main_loop.py",
+      "source_location": "L349",
+      "weight": 1.0,
+      "source": "mispricing_agent_main_loop_rationale_349",
+      "target": "mispricing_agent_main_loop_apply_partial_fill",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -27026,6 +27405,16 @@
       "confidence_score": 1.0,
       "source": "mispricing_agent_main_loop_rationale_362",
       "target": "mispricing_agent_main_loop_do_flatten"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "main_loop.py",
+      "source_location": "L371",
+      "weight": 1.0,
+      "source": "mispricing_agent_main_loop_rationale_371",
+      "target": "mispricing_agent_main_loop_do_flatten",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -27372,6 +27761,16 @@
       "confidence_score": 1.0,
       "source": "mispricing_agent_main_loop_rationale_407",
       "target": "mispricing_agent_main_loop_monitor_positions"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "main_loop.py",
+      "source_location": "L416",
+      "weight": 1.0,
+      "source": "mispricing_agent_main_loop_rationale_416",
+      "target": "mispricing_agent_main_loop_monitor_positions",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -50454,6 +50853,398 @@
       "target": "tests_test_reconcile_test_reconcile_active_market_not_closed"
     },
     {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L64",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_py",
+      "target": "data_depth_enricher_enrich_entry_depth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L11",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_py",
+      "target": "tests_test_depth_enricher_make_db",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L35",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_py",
+      "target": "tests_test_depth_enricher_read_pos",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L133",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_py",
+      "target": "tests_test_depth_enricher_test_enrich_empty_bids_leaves_nulls",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L105",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_py",
+      "target": "tests_test_depth_enricher_test_enrich_get_book_none_leaves_nulls",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L119",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_py",
+      "target": "tests_test_depth_enricher_test_enrich_network_exception_leaves_nulls",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L62",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_py",
+      "target": "tests_test_depth_enricher_test_enrich_populates_depth_fields",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L80",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_py",
+      "target": "tests_test_depth_enricher_test_enrich_thin_book_multi_level",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L147",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_py",
+      "target": "tests_test_depth_enricher_test_enrich_wrong_position_id_is_noop",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_rationale_1",
+      "target": "tests_test_depth_enricher_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L11",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_make_db",
+      "target": "tests_test_depth_enricher_py_path",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L137",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_empty_bids_leaves_nulls",
+      "target": "tests_test_depth_enricher_make_db",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L109",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_get_book_none_leaves_nulls",
+      "target": "tests_test_depth_enricher_make_db",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L123",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_network_exception_leaves_nulls",
+      "target": "tests_test_depth_enricher_make_db",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L66",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_populates_depth_fields",
+      "target": "tests_test_depth_enricher_make_db",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L84",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_thin_book_multi_level",
+      "target": "tests_test_depth_enricher_make_db",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L151",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_wrong_position_id_is_noop",
+      "target": "tests_test_depth_enricher_make_db",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L35",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_read_pos",
+      "target": "tests_test_depth_enricher_py_path",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L35",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_read_pos",
+      "target": "tests_test_depth_enricher_py_str",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L142",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_empty_bids_leaves_nulls",
+      "target": "tests_test_depth_enricher_read_pos",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L113",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_get_book_none_leaves_nulls",
+      "target": "tests_test_depth_enricher_read_pos",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L128",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_network_exception_leaves_nulls",
+      "target": "tests_test_depth_enricher_read_pos",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L70",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_populates_depth_fields",
+      "target": "tests_test_depth_enricher_read_pos",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L95",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_thin_book_multi_level",
+      "target": "tests_test_depth_enricher_read_pos",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L155",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_wrong_position_id_is_noop",
+      "target": "tests_test_depth_enricher_read_pos",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L63",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_rationale_63",
+      "target": "tests_test_depth_enricher_test_enrich_populates_depth_fields",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L68",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_populates_depth_fields",
+      "target": "data_depth_enricher_enrich_entry_depth"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L81",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_rationale_81",
+      "target": "tests_test_depth_enricher_test_enrich_thin_book_multi_level",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L93",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_thin_book_multi_level",
+      "target": "data_depth_enricher_enrich_entry_depth"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L106",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_rationale_106",
+      "target": "tests_test_depth_enricher_test_enrich_get_book_none_leaves_nulls",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L111",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_get_book_none_leaves_nulls",
+      "target": "data_depth_enricher_enrich_entry_depth"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L120",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_rationale_120",
+      "target": "tests_test_depth_enricher_test_enrich_network_exception_leaves_nulls",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L126",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_network_exception_leaves_nulls",
+      "target": "data_depth_enricher_enrich_entry_depth"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L134",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_rationale_134",
+      "target": "tests_test_depth_enricher_test_enrich_empty_bids_leaves_nulls",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L140",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_empty_bids_leaves_nulls",
+      "target": "data_depth_enricher_enrich_entry_depth"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L148",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_rationale_148",
+      "target": "tests_test_depth_enricher_test_enrich_wrong_position_id_is_noop",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "tests/test_depth_enricher.py",
+      "source_location": "L153",
+      "weight": 1.0,
+      "source": "tests_test_depth_enricher_test_enrich_wrong_position_id_is_noop",
+      "target": "data_depth_enricher_enrich_entry_depth"
+    },
+    {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tests/test_clob_client.py",
@@ -56708,9 +57499,9 @@
       "source_file": "scripts/watch_20trades.py",
       "source_location": "L15",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_watch_20trades_py",
-      "target": "monitor_notifier_send_telegram",
-      "confidence_score": 1.0
+      "target": "monitor_notifier_send_telegram"
     },
     {
       "relation": "contains",
@@ -56718,9 +57509,9 @@
       "source_file": "scripts/watch_20trades.py",
       "source_location": "L23",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_watch_20trades_py",
-      "target": "scripts_watch_20trades_epoch3_count",
-      "confidence_score": 1.0
+      "target": "scripts_watch_20trades_epoch3_count"
     },
     {
       "relation": "contains",
@@ -56728,9 +57519,9 @@
       "source_file": "scripts/watch_20trades.py",
       "source_location": "L38",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_watch_20trades_py",
-      "target": "scripts_watch_20trades_send_chunked",
-      "confidence_score": 1.0
+      "target": "scripts_watch_20trades_send_chunked"
     },
     {
       "relation": "rationale_for",
@@ -56738,9 +57529,9 @@
       "source_file": "scripts/watch_20trades.py",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_watch_20trades_rationale_1",
-      "target": "scripts_watch_20trades_py",
-      "confidence_score": 1.0
+      "target": "scripts_watch_20trades_py"
     },
     {
       "relation": "references",
@@ -56749,9 +57540,9 @@
       "source_file": "scripts/watch_20trades.py",
       "source_location": "L23",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_watch_20trades_epoch3_count",
-      "target": "scripts_watch_20trades_py_int",
-      "confidence_score": 1.0
+      "target": "scripts_watch_20trades_py_int"
     },
     {
       "relation": "references",
@@ -56760,9 +57551,9 @@
       "source_file": "scripts/watch_20trades.py",
       "source_location": "L38",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_watch_20trades_send_chunked",
-      "target": "scripts_watch_20trades_py_int",
-      "confidence_score": 1.0
+      "target": "scripts_watch_20trades_py_int"
     },
     {
       "relation": "rationale_for",
@@ -56770,9 +57561,9 @@
       "source_file": "scripts/watch_20trades.py",
       "source_location": "L39",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_watch_20trades_rationale_39",
-      "target": "scripts_watch_20trades_send_chunked",
-      "confidence_score": 1.0
+      "target": "scripts_watch_20trades_send_chunked"
     },
     {
       "relation": "calls",
@@ -56781,9 +57572,9 @@
       "source_file": "scripts/watch_20trades.py",
       "source_location": "L44",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_watch_20trades_send_chunked",
-      "target": "monitor_notifier_send_telegram",
-      "confidence_score": 1.0
+      "target": "monitor_notifier_send_telegram"
     },
     {
       "relation": "references",
@@ -56792,9 +57583,9 @@
       "source_file": "scripts/watch_20trades.py",
       "source_location": "L38",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "scripts_watch_20trades_send_chunked",
-      "target": "scripts_watch_20trades_py_str",
-      "confidence_score": 1.0
+      "target": "scripts_watch_20trades_py_str"
     },
     {
       "relation": "shares_data_with",
@@ -62983,6 +63774,91 @@
       "target": "data_clob_price_get_book"
     },
     {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "data/depth_enricher.py",
+      "source_location": "L30",
+      "weight": 1.0,
+      "source": "data_depth_enricher_enrich_entry_depth",
+      "target": "data_clob_price_get_book",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "data/depth_enricher.py",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "data_depth_enricher_py",
+      "target": "data_clob_price_get_book",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "data/depth_enricher.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "data_depth_enricher_py",
+      "target": "data_depth_enricher_enrich_entry_depth",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "data/depth_enricher.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "data_depth_enricher_rationale_1",
+      "target": "data_depth_enricher_py",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "data/depth_enricher.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "data_depth_enricher_enrich_entry_depth",
+      "target": "data_depth_enricher_py_float",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "data/depth_enricher.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "data_depth_enricher_enrich_entry_depth",
+      "target": "data_depth_enricher_py_path",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "data/depth_enricher.py",
+      "source_location": "L17",
+      "weight": 1.0,
+      "source": "data_depth_enricher_enrich_entry_depth",
+      "target": "data_depth_enricher_py_str",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "data/depth_enricher.py",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "data_depth_enricher_rationale_24",
+      "target": "data_depth_enricher_enrich_entry_depth",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "CLAUDE.md",
@@ -67814,5 +68690,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "8db12989cb22752cbc7bdd396940bb73abd1a904"
+  "built_at_commit": "0c617876e35d07da4cc0f5bb5a71d6fb50730c38"
 }
