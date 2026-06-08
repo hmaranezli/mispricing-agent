@@ -220,4 +220,34 @@ if stops:
               f"{nom_s:>7}  "
               f"{r['mae_data_quality'] or '—'}{flags}")
 
+# ── Entry depth telemetri (Faz 4A-0 Shadow Mode) ─────────────────────────────
+top_sz    = [r["entry_top_book_size"]      for r in rows if r["entry_top_book_size"]      is not None]
+depth_sz  = [r["entry_depth_for_size"]     for r in rows if r["entry_depth_for_size"]     is not None]
+slp_d     = [r["entry_depth_slippage_pct"] for r in rows if r["entry_depth_slippage_pct"] is not None]
+lvls      = [r["entry_book_levels_used"]   for r in rows if r["entry_book_levels_used"]   is not None]
+
+if top_sz:
+    print(f"\n{sep}")
+    print(f"ENTRY DEPTH TELEMETRİ  ({len(top_sz)}/{n} trade'de var)")
+    print(f"{sep}")
+    print(f"  avg top_of_book_size   : {statistics.mean(top_sz):.1f} shares")
+    print(f"  min top_of_book_size   : {min(top_sz):.1f} shares  {'← İNCE KİTAP!' if min(top_sz) < 3 else ''}")
+    if depth_sz:
+        thin = sum(1 for d, s in zip(depth_sz, [r["shares"] for r in rows if r["entry_top_book_size"] is not None])
+                   if d < s)
+        print(f"  depth < position_size  : {thin}/{len(depth_sz)}  {'← AIR POCKET RİSKİ!' if thin > 0 else '✓'}")
+    if slp_d:
+        avg_slp = statistics.mean(slp_d) * 100
+        print(f"  avg depth_slippage_pct : {avg_slp:+.1f}%  (entry anında çıkabilseydik)")
+        worst_slp = min(slp_d) * 100
+        print(f"  worst depth_slippage   : {worst_slp:+.1f}%")
+    if lvls:
+        multi = sum(1 for l in lvls if l > 1)
+        print(f"  avg book_levels_used   : {statistics.mean(lvls):.1f}")
+        print(f"  count levels > 1       : {multi}/{len(lvls)}  {'← İNCE KİTAP!' if multi > 0 else ''}")
+else:
+    print(f"\n{sep}")
+    print(f"ENTRY DEPTH TELEMETRİ  — henüz veri yok (restart sonrası dolmaya başlar)")
+    print(f"{sep}")
+
 print(f"\n{'═'*60}\n")

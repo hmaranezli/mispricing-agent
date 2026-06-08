@@ -103,6 +103,12 @@ _MIGRATIONS = [
     # Faz 3: Exit execution telemetri
     "ALTER TABLE positions ADD COLUMN sell_limit_price REAL",
     "ALTER TABLE positions ADD COLUMN first_exit_decision_ts TEXT",
+    # Faz 4A-0: Shadow Mode entry depth telemetri (fire-and-forget, trade'i bloklamaz)
+    "ALTER TABLE positions ADD COLUMN entry_top_book_size REAL",
+    "ALTER TABLE positions ADD COLUMN entry_depth_for_size REAL",
+    "ALTER TABLE positions ADD COLUMN entry_est_exit_price REAL",
+    "ALTER TABLE positions ADD COLUMN entry_depth_slippage_pct REAL",
+    "ALTER TABLE positions ADD COLUMN entry_book_levels_used INTEGER",
 ]
 
 

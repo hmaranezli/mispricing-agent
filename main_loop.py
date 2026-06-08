@@ -24,6 +24,7 @@ from position.manager import check_exit, close_position
 from data.hl_candles import current_price
 from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window
 from data.clob_price import get_clob_price
+from data.depth_enricher import enrich_entry_depth
 from monitor.notifier import notify_open, notify_close, notify_halt, notify_restart, notify_soft_stop, notify_hard_stop, notify_resolved_late, send_telegram
 from monitor.kill_switch import check as kill_switch_check
 from monitor.telegram_commands import poll_commands
@@ -228,6 +229,14 @@ async def _scan_and_execute(
             await log_position_open(conn, position)
             open_positions.append(position)
             open_slugs.add(slug)
+            # Faz 4A-0: Shadow Mode — position_id belli olduktan SONRA, fire-and-forget
+            _exit_tok = (position.get("yes_token_id") if position["action"] == "YES"
+                         else position.get("no_token_id"))
+            if _exit_tok:
+                asyncio.create_task(enrich_entry_depth(
+                    position["position_id"], _exit_tok,
+                    position["shares"], position["pm_entry_price"],
+                ))
             ws_prices.subscribe([
                 t for t in (position.get("yes_token_id"), position.get("no_token_id")) if t
             ])
