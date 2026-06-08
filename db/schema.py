@@ -95,6 +95,32 @@ CREATE TABLE IF NOT EXISTS entry_air_pocket_events (
     delayed_edge_still_passes_min_edge   INTEGER,
     delayed_would_retry_passed_shadow    INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS air_pocket_shadow (
+    id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+    seq_no                    INTEGER,
+    position_id               TEXT,
+    slug                      TEXT,
+    asset                     TEXT,
+    action                    TEXT,
+    current_exit_price        REAL,
+    current_exit_result       TEXT,
+    guarded_exit_decision     TEXT,
+    decision_reason           TEXT,
+    override_reason           TEXT,
+    depth_ratio               REAL,
+    pred_gap                  REAL,
+    actual_trigger_fill_gap   REAL,
+    post_wait_bid             REAL,
+    post_wait_depth           REAL,
+    post_wait_error           TEXT,
+    would_have_improved_fill  INTEGER,
+    false_positive_guard      INTEGER,
+    shadow_compute_ms         REAL,
+    live_exit_delay_ms        REAL,
+    error                     TEXT,
+    created_at                TEXT
+);
 """
 
 

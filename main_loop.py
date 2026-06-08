@@ -17,6 +17,7 @@ from council.gate import gate
 from execution.executor       import execute as _dry_execute
 from execution.clob_executor  import execute as _clob_execute
 from execution.position_store import sell_position
+from execution import air_pocket_shadow
 from execution.balance        import get_effective_bankroll
 from execution.reconcile      import startup_reconcile
 from execution.ghost          import detect_ghosts
@@ -685,6 +686,17 @@ async def _monitor_positions(
                         print(f"[monitor] {pos['slug']} SELL başarısız — pozisyon açık kalıyor")
                         continue
                     pm_exit, making_shares = sell_result
+                    # ── Air-Pocket Exit Guard SHADOW (Faz A) ──────────────────
+                    # SADECE gözlem. create_task fırlatır, anında döner; canlı exit
+                    # geciktirilmez. Hata olursa fail-open — exit aynen devam eder.
+                    if exit_reason == "stop_loss_hit":
+                        try:
+                            _exit_tok = (pos.get("no_token_id") if pos["action"] == "NO"
+                                         else pos.get("yes_token_id"))
+                            air_pocket_shadow.schedule(pos, current_exit_price=pm_exit,
+                                                       exit_token=_exit_tok, db_path=None)
+                        except Exception as _ape:
+                            print(f"[air_pocket_shadow] hook fail-open: {_ape}")
                     old_shares = pos.get("shares") or 0.0
                     if _apply_partial_fill(pos, pm_exit, making_shares):
                         print(f"[monitor] {pos['slug']} kısmi fill {making_shares:.4f}/{old_shares:.4f} → {pos['shares']:.4f} kalan")
