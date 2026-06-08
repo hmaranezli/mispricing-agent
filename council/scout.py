@@ -126,7 +126,35 @@ def _drift_ok(action: str, cur: float, ref_price: float) -> bool:
     return True
 
 
-def _edge_signal(fair: float, best_ask: float, best_bid: float) -> dict | None:
+PAPER_MIN_FEE_ADJ = 0.03   # paper cohort minimum fee_adj_edge (canlı MIN_EDGE'e DOKUNMAZ)
+
+
+def _edge_bucket(fee_adj: float | None) -> str | None:
+    """fee_adj_edge → paper edge bucket. < 0.03 paper evren dışı (None)."""
+    if fee_adj is None or fee_adj < 0.030:
+        return None
+    if fee_adj < 0.035:
+        return "E30"
+    if fee_adj < 0.040:
+        return "E35"
+    if fee_adj < 0.050:
+        return "E40"
+    return "E50"
+
+
+def _shadow_fee_adj(finding: dict) -> float:
+    """Paper finding için fee_adj_edge (redteam formülü, slippage 0.01)."""
+    fair = finding["fair_value"]
+    fee  = finding.get("taker_fee", 0.02)
+    slip = 0.01
+    if finding["action"] == "YES":
+        return fair * (1 - fee) - (finding["best_ask"] + slip)
+    no_ask = finding.get("no_ask") or (1 - finding["best_ask"])
+    return (1 - fair) * (1 - fee) - (no_ask + slip)
+
+
+def _edge_signal(fair: float, best_ask: float, best_bid: float,
+                 min_edge: float | None = None) -> dict | None:
     """
     fair:     fair_yes değeri [0,1]
     best_ask: YES almak için ödeyeceğimiz fiyat (CLOB YES ask)
@@ -140,16 +168,17 @@ def _edge_signal(fair: float, best_ask: float, best_bid: float) -> dict | None:
 
     Returns None (edge yok/yetersiz) veya {"action": "YES"|"NO", "edge": float}
     """
+    mn = min_edge if min_edge is not None else config.MIN_EDGE_PCT
     yes_edge = fair - best_ask
     no_edge  = best_ask - fair   # ← DÜZELTİLDİ: best_bid - fair değil (formül hatası)
 
     # Konviksiyon filtresi: aldığımız tarafın kazanma olasılığı (fair) yeterince yüksek olmalı.
     # Win-rate ≈ ortalama fair. Düşük-fair işlem +EV olsa da %40 win → kayıp serisi → almayız.
-    if yes_edge >= config.MIN_EDGE_PCT:
+    if yes_edge >= mn:
         if fair < CONVICTION_MIN:          # YES alıyoruz → kazanma olasılığı = fair
             return None
         return {"action": "YES", "edge": yes_edge}
-    if no_edge >= config.MIN_EDGE_PCT:
+    if no_edge >= mn:
         if (1 - fair) < CONVICTION_MIN:    # NO alıyoruz → kazanma olasılığı = 1 - fair
             return None
         return {"action": "NO", "edge": no_edge}
@@ -162,8 +191,12 @@ async def _process_market(
     market_state: dict[str, dict] | None = None,
     cur_prices:   dict[str, float] | None = None,
     audit:        dict | None = None,
+    min_edge:     float | None = None,
 ) -> dict | None:
-    """Tek marketi değerlendirir. Edge yoksa veya veri eksikse None."""
+    """Tek marketi değerlendirir. Edge yoksa veya veri eksikse None.
+
+    min_edge: None → config.MIN_EDGE_PCT (canlı). Shadow için düşük eşik geçilir.
+    """
     def _inc(key):
         if audit is not None:
             audit[key] = audit.get(key, 0) + 1
@@ -228,7 +261,8 @@ async def _process_market(
 
     live_vol = asset_vols.get(asset, 0.80)
     fair = fair_yes(cur, ref_price, window["seconds_remaining"], asset, live_vol)
-    signal = _edge_signal(fair, clob_ask, yes_bid)
+    _mn  = min_edge if min_edge is not None else config.MIN_EDGE_PCT
+    signal = _edge_signal(fair, clob_ask, yes_bid, min_edge=_mn)
     if signal is None:
         return None
 
@@ -255,7 +289,7 @@ async def _process_market(
             if no_ask > MAX_ENTRY_PRICE:
                 return None  # pahalı NO token → reversal riski yüksek
             real_no_edge = round((1 - fair) - no_ask, 4)
-            if real_no_edge < config.MIN_EDGE_PCT:
+            if real_no_edge < _mn:
                 return None  # YES_ask tabanlı sinyal yanlış pozitif çıktı
             signal = {"action": "NO", "edge": real_no_edge}
 
@@ -288,6 +322,65 @@ async def _process_market(
         "funding_rate":      ms.get("funding_rate"),
         "basis_pct":         ms.get("basis_pct"),
     }
+
+
+SHADOW_MAX_CANDIDATES = 40   # paper scan başına max aday (queue patlamasını önler)
+
+
+async def scan_shadow_edges(min_edge: float = PAPER_MIN_FEE_ADJ) -> list[dict]:
+    """PAPER cohort için düşük-edge tarama. Canlı scan_edges'e DOKUNMAZ.
+
+    Council/execute path'ine ASLA girmez — sadece paper_tracker beslenir.
+    Her aday için fee_adj_edge + edge_bucket eklenir; fee_adj < 0.03 elenir.
+    Max SHADOW_MAX_CANDIDATES aday döner (fail-open: hata → boş liste).
+    """
+    global _markets_cache, _markets_cache_ts
+    try:
+        now = time.time()
+        if (now - _markets_cache_ts) > MARKET_CACHE_TTL_SECS or not _markets_cache:
+            fresh = await find_shortterm(intervals=(5, 15))
+            _markets_cache = fresh or []
+            _markets_cache_ts = now
+        if not _markets_cache:
+            return []
+
+        asset_vols   = await _get_all_vols()
+        market_state = await _get_market_state()
+        _cur_results = await asyncio.gather(
+            *[current_price(a) for a in config.TRACKED_ASSETS],
+            return_exceptions=True,
+        )
+        cur_prices = {
+            a: r for a, r in zip(config.TRACKED_ASSETS, _cur_results)
+            if not isinstance(r, Exception)
+        }
+
+        # Düşük raw eşikle tara (canlı 0.05 yerine ~0.03) — _process_market(min_edge)
+        tasks = [_process_market(m, asset_vols, market_state, cur_prices, None,
+                                 min_edge=0.03)
+                 for m in _markets_cache]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        out = []
+        for r in results:
+            if not r or isinstance(r, Exception):
+                continue
+            fee_adj = round(_shadow_fee_adj(r), 4)
+            bucket  = _edge_bucket(fee_adj)
+            if bucket is None:        # fee_adj < 0.03 → paper evren dışı
+                continue
+            r["fee_adj_edge"] = fee_adj
+            r["edge_bucket"]  = bucket
+            out.append(r)
+
+        out.sort(key=lambda x: x["fee_adj_edge"], reverse=True)
+        if len(out) > SHADOW_MAX_CANDIDATES:
+            print(f"[paper_scan] {len(out)} aday → ilk {SHADOW_MAX_CANDIDATES} (cap)")
+            out = out[:SHADOW_MAX_CANDIDATES]
+        return out
+    except Exception as e:
+        print(f"[paper_scan] scan_shadow_edges fail-open: {e}")
+        return []
 
 
 async def scan_edges() -> list[dict]:

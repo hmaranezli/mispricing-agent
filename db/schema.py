@@ -152,6 +152,12 @@ CREATE TABLE IF NOT EXISTS shadow_positions (
     data_quality          TEXT,
     is_paper              INTEGER DEFAULT 1,
     dedupe_reason         TEXT,
+    edge_bucket           TEXT,
+    fee_adj_edge          REAL,
+    depth_walk_estimated_fill        REAL,
+    estimated_slippage_pct           REAL,
+    net_ev_after_estimated_slippage  REAL,
+    paper_viability       TEXT,
     created_at            TEXT
 );
 
@@ -268,6 +274,13 @@ _MIGRATIONS = [
     "ALTER TABLE shadow_candidates ADD COLUMN fee_adj_edge REAL",
     "ALTER TABLE shadow_candidates ADD COLUMN liquidity_usd REAL",
     "ALTER TABLE shadow_candidates ADD COLUMN spread REAL",
+    # Edge bucket shadow experiment — paper cohort genişletmesi
+    "ALTER TABLE shadow_positions ADD COLUMN edge_bucket TEXT",
+    "ALTER TABLE shadow_positions ADD COLUMN fee_adj_edge REAL",
+    "ALTER TABLE shadow_positions ADD COLUMN depth_walk_estimated_fill REAL",
+    "ALTER TABLE shadow_positions ADD COLUMN estimated_slippage_pct REAL",
+    "ALTER TABLE shadow_positions ADD COLUMN net_ev_after_estimated_slippage REAL",
+    "ALTER TABLE shadow_positions ADD COLUMN paper_viability TEXT",
 ]
 
 

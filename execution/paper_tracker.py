@@ -87,6 +87,21 @@ def _ask_buffer_price(best_ask):
     return round(best_ask + TAKER_BUFFER, 4), "ask_buffer", "low"
 
 
+def _net_ev_after_slippage(action, fair, est_fill, fee=0.02):
+    """Tahmini gerçek fill sonrası net EV (sabit slippage değil, depth-walk fill).
+
+    YES: fair*(1-fee) - est_fill ; NO: (1-fair)*(1-fee) - est_fill
+    Returns (net_ev, paper_viability).
+    """
+    if action == "YES":
+        net_ev = fair * (1 - fee) - est_fill
+    else:
+        net_ev = (1 - fair) * (1 - fee) - est_fill
+    net_ev = round(net_ev, 4)
+    viability = "positive_after_slippage" if net_ev > 0 else "negative_after_slippage"
+    return net_ev, viability
+
+
 # ── Model karar fonksiyonları (saf) ──────────────────────────────────────────
 
 def _wrong_direction(hl_drift, action):
@@ -230,19 +245,33 @@ async def _paper_open_worker(finding, gate_result, risk_result, db_path=None,
         paper_id = str(uuid4())
         now_iso = datetime.now(timezone.utc).isoformat()
 
+        # ── Net EV after estimated slippage + viability ──────────────────────
+        action = finding.get("action", "YES")
+        fair = finding.get("fair_value") or 0.0
+        best_ask = finding.get("best_ask") or 0.0
+        est_slip = (round((entry_price - best_ask) / best_ask, 4)
+                    if best_ask > 0 else None)
+        net_ev, viability = _net_ev_after_slippage(action, fair, entry_price)
+
         rec = {
             "paper_id":              paper_id,
             "source_event_id":      f"{finding.get('slug')}|{now_iso}",
             "ts_open":              now_iso,
             "slug":                 finding.get("slug"),
             "asset":                finding.get("asset"),
-            "action":               finding.get("action"),
+            "action":               action,
             "entry_price_estimated": entry_price,
             "entry_method":         entry_method,
             "position_usd_paper":   position_usd,
             "shares_paper":         shares,
-            "fair_value":           finding.get("fair_value"),
+            "fair_value":           fair,
             "edge":                 finding.get("edge"),
+            "fee_adj_edge":         finding.get("fee_adj_edge"),
+            "edge_bucket":          finding.get("edge_bucket"),
+            "depth_walk_estimated_fill":       depth_price,
+            "estimated_slippage_pct":          est_slip,
+            "net_ev_after_estimated_slippage": net_ev,
+            "paper_viability":      viability,
             "ref_price":            finding.get("ref_price"),
             "entry_hl_price":       finding.get("cur_price"),
             "confidence_score":     (gate_result or {}).get("confidence_score"),
@@ -489,13 +518,20 @@ async def _insert_paper_position(rec, db_path=None):
                        paper_id, source_event_id, ts_open, slug, asset, action,
                        entry_price_estimated, entry_method, position_usd_paper, shares_paper,
                        fair_value, edge, ref_price, entry_hl_price, confidence_score,
-                       status, cohort, confidence_level, data_quality, is_paper, created_at
-                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'open','paper','low',?,1,?)""",
+                       status, cohort, confidence_level, data_quality, is_paper,
+                       edge_bucket, fee_adj_edge, depth_walk_estimated_fill,
+                       estimated_slippage_pct, net_ev_after_estimated_slippage,
+                       paper_viability, created_at
+                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'open','paper','low',?,1,?,?,?,?,?,?,?)""",
                 (rec["paper_id"], rec["source_event_id"], rec["ts_open"], rec["slug"],
                  rec["asset"], rec["action"], rec["entry_price_estimated"], rec["entry_method"],
                  rec["position_usd_paper"], rec["shares_paper"], rec["fair_value"], rec["edge"],
                  rec["ref_price"], rec["entry_hl_price"], rec["confidence_score"],
-                 rec["data_quality"], rec["created_at"]),
+                 rec["data_quality"],
+                 rec.get("edge_bucket"), rec.get("fee_adj_edge"),
+                 rec.get("depth_walk_estimated_fill"), rec.get("estimated_slippage_pct"),
+                 rec.get("net_ev_after_estimated_slippage"), rec.get("paper_viability"),
+                 rec["created_at"]),
             )
             await conn.commit()
     await asyncio.wait_for(_do(), timeout=DB_TIMEOUT)

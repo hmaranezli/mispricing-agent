@@ -227,11 +227,8 @@ async def _scan_and_execute(
         # sadece gerçek position open atlanır. Monitor/exit/4h shadow ETKILENMEZ.
         if not config.NEW_ENTRIES_ENABLED:
             print(f"[entry_disabled] {slug} council GEÇTİ ama NEW_ENTRIES_ENABLED=False — yeni entry atlandı")
-            # Paper/Shadow tracker: gerçek para YOK, ayrı tablolar. Non-blocking, fail-open.
-            try:
-                paper_tracker.schedule_paper_open(finding, gate_result, risk_result, conn=conn)
-            except Exception as _pte:
-                print(f"[paper] hook fail-open: {_pte}")
+            # Paper besleme council'dan DEĞİL — ayrı _paper_shadow_scan_loop'tan
+            # (edge bucket experiment: düşük-edge adayları da kapsar). Burada sadece log.
             continue
 
         council_pass_ts = datetime.now(timezone.utc).isoformat()
@@ -450,6 +447,35 @@ async def _run_shadow_4h_scan(conn) -> None:
 
     if count:
         print(f"[4h_shadow] {count}/{len(markets)} market loglandı")
+
+
+_PAPER_SCAN_SECS = 30  # edge bucket paper scan cadence (live 7s loop'tan bağımsız)
+
+
+async def _paper_shadow_scan_loop(conn) -> None:
+    """Edge bucket paper scan — düşük-edge (fee_adj>=0.03) adayları paper'a besler.
+
+    Council/execute path'ine ASLA girmez. Ayrı cadence, live loop'u yavaşlatmaz.
+    Fail-open: hata → log, canlı sistem etkilenmez.
+    """
+    from council.scout import scan_shadow_edges
+    await asyncio.sleep(75)  # startup offset (4h/monitor sonrası)
+    while True:
+        try:
+            findings = await scan_shadow_edges()
+            for f in findings:
+                try:
+                    paper_tracker.schedule_paper_open(
+                        f, {"confidence_score": None},
+                        {"position_usd": 1.25}, conn=conn,
+                    )
+                except Exception as _pe:
+                    print(f"[paper_scan] schedule fail-open: {_pe}")
+            if findings:
+                print(f"[paper_scan] {len(findings)} düşük-edge aday paper'a gönderildi")
+        except Exception as e:
+            print(f"[paper_scan_loop] hata (fail-open): {e}")
+        await asyncio.sleep(_PAPER_SCAN_SECS)
 
 
 async def _shadow_4h_scan_loop(conn) -> None:
@@ -773,6 +799,7 @@ async def main() -> None:
     asyncio.create_task(ws_prices.run(initial_tids))
     asyncio.create_task(_shadow_4h_scan_loop(conn))  # 4h shadow — ayrı cadence, live loop'a dokunmaz
     asyncio.create_task(paper_tracker._paper_monitor_loop())  # paper monitor — ayrı cadence, live loop'a dokunmaz
+    asyncio.create_task(_paper_shadow_scan_loop(conn))  # edge bucket paper scan — düşük-edge cohort, live loop'a dokunmaz
 
     starting_bankroll = await get_effective_bankroll(BANKROLL_CONFIG)
     circuit_breaker.BUST_PROTECTION_PCT = config.BUST_PROTECTION_PCT
