@@ -126,6 +126,9 @@ def check_exit(
         if _no_bid is not None:
             current_val  = _no_bid
             _mae_quality = "exact"
+        elif position.get("_no_clob_bid") is not None:
+            current_val  = position["_no_clob_bid"]
+            _mae_quality = "clob_fallback"
         else:
             current_val  = 1 - pm_yes_price
             _mae_quality = "estimated"

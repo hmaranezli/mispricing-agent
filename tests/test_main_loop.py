@@ -1113,44 +1113,133 @@ async def test_monitor_sets_price_source_clob_rest_bid_for_yes_rest_fallback():
 
 @pytest.mark.asyncio
 async def test_monitor_sets_price_source_ws_ask_complement_for_no_ws_price():
-    """NO + WS ask mevcut → price_source='ws_ask_complement', mae_data_quality='estimated'."""
+    """NO + WS no_bid miss + WS ask mevcut → REST path: complement/estimated (3-tier son basamak)."""
     import config as _cfg
     pos = _pos_with_token("NO")
     fake_window = {"best_ask": 0.70, "best_bid": 0.68, "seconds_remaining": 900, "neg_risk": False}
+
+    async def _clob_none(token_id, side="BUY"):
+        return None
+
     with patch("main_loop.current_price",        new_callable=AsyncMock, return_value=95000.0), \
          patch("main_loop.fetch_by_slug",        new_callable=AsyncMock, return_value={}), \
          patch("main_loop.parse_market_window",  return_value=fake_window), \
          patch("main_loop.ws_prices")           as mock_ws, \
+         patch("main_loop.get_clob_price",       side_effect=_clob_none), \
          patch("main_loop.check_exit",           return_value=None), \
          patch.object(_cfg, "DRY_RUN", True):
+        mock_ws.get_bid.return_value = None   # no_bid miss → complement
         mock_ws.get_ask.return_value = 0.70
-        mock_ws.get_bid.return_value = 0.68
         await _monitor_positions([pos], [])
-    assert pos.get("price_source")     == "ws_ask_complement", \
-        f"Beklenen ws_ask_complement, alınan: {pos.get('price_source')}"
+    assert pos.get("price_source")     == "complement", \
+        f"NO no_bid miss + CLOB None → complement bekleniyor, alınan: {pos.get('price_source')}"
     assert pos.get("mae_data_quality") == "estimated", \
-        f"Beklenen estimated, alınan: {pos.get('mae_data_quality')}"
+        f"complement path → estimated bekleniyor, alınan: {pos.get('mae_data_quality')}"
 
 
 @pytest.mark.asyncio
 async def test_monitor_sets_price_source_clob_rest_ask_complement_for_no_rest_fallback():
-    """NO + WS ask None → CLOB REST fallback → price_source='clob_rest_ask_complement', mae_data_quality='estimated'."""
+    """NO + WS no_bid miss + CLOB no_bid var → price_source='clob_rest_bid', mae_data_quality='clob_fallback'."""
     import config as _cfg
     pos = _pos_with_token("NO")
     fake_window = {"best_ask": 0.70, "best_bid": 0.68, "seconds_remaining": 900, "neg_risk": False}
+
+    async def _clob_side(token_id, side="BUY"):
+        return 0.33 if side == "SELL" else 0.70  # SELL=no_bid, BUY=yes_ask fallback
+
     with patch("main_loop.current_price",        new_callable=AsyncMock, return_value=95000.0), \
          patch("main_loop.fetch_by_slug",        new_callable=AsyncMock, return_value={}), \
          patch("main_loop.parse_market_window",  return_value=fake_window), \
          patch("main_loop.ws_prices")           as mock_ws, \
-         patch("main_loop.get_clob_price",       new_callable=AsyncMock, return_value=0.71), \
+         patch("main_loop.get_clob_price",       side_effect=_clob_side), \
          patch("main_loop.check_exit",           return_value=None), \
          patch.object(_cfg, "DRY_RUN", True):
-        mock_ws.get_ask.return_value = None
+        mock_ws.get_bid.return_value = None   # WS no_bid miss → CLOB
+        mock_ws.get_ask.return_value = 0.70
         await _monitor_positions([pos], [])
-    assert pos.get("price_source")     == "clob_rest_ask_complement", \
-        f"Beklenen clob_rest_ask_complement, alınan: {pos.get('price_source')}"
+    assert pos.get("price_source")     == "clob_rest_bid", \
+        f"NO CLOB fallback → clob_rest_bid bekleniyor, alınan: {pos.get('price_source')}"
+    assert pos.get("mae_data_quality") == "clob_fallback", \
+        f"NO CLOB fallback → clob_fallback bekleniyor, alınan: {pos.get('mae_data_quality')}"
+
+
+# ── 3-tier NO MAE: WS bid → CLOB → complement ────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_monitor_no_ws_bid_sets_exact_quality():
+    """NO + WS no_bid mevcut → price_source='ws_bid', mae_data_quality='exact'."""
+    import config as _cfg
+    pos = _pos_with_token("NO")
+    fake_window = {"best_ask": 0.70, "best_bid": 0.68, "seconds_remaining": 900, "neg_risk": False}
+    with patch("main_loop.current_price",       new_callable=AsyncMock, return_value=95000.0), \
+         patch("main_loop.fetch_by_slug",       new_callable=AsyncMock, return_value={}), \
+         patch("main_loop.parse_market_window", return_value=fake_window), \
+         patch("main_loop.ws_prices")          as mock_ws, \
+         patch("main_loop.check_exit",          return_value=None), \
+         patch.object(_cfg, "DRY_RUN", True):
+        mock_ws.get_bid.return_value = 0.32   # WS no_bid mevcut (no_token için)
+        mock_ws.get_ask.return_value = 0.70
+        await _monitor_positions([pos], [])
+    assert pos.get("price_source")     == "ws_bid", \
+        f"NO WS bid mevcut → ws_bid bekleniyor, alınan: {pos.get('price_source')}"
+    assert pos.get("mae_data_quality") == "exact", \
+        f"NO WS bid → exact bekleniyor, alınan: {pos.get('mae_data_quality')}"
+
+
+@pytest.mark.asyncio
+async def test_monitor_no_clob_fallback_sets_clob_fallback_quality():
+    """NO + WS no_bid None, CLOB no_bid var → price_source='clob_rest_bid', mae_data_quality='clob_fallback'."""
+    import config as _cfg
+    pos = _pos_with_token("NO")
+    fake_window = {"best_ask": 0.70, "best_bid": 0.68, "seconds_remaining": 900, "neg_risk": False}
+
+    async def _clob_side(token_id, side="BUY"):
+        if side == "SELL":
+            return 0.33  # no_token SELL → CLOB no_bid
+        return 0.70      # yes_token BUY fallback
+
+    with patch("main_loop.current_price",       new_callable=AsyncMock, return_value=95000.0), \
+         patch("main_loop.fetch_by_slug",       new_callable=AsyncMock, return_value={}), \
+         patch("main_loop.parse_market_window", return_value=fake_window), \
+         patch("main_loop.ws_prices")          as mock_ws, \
+         patch("main_loop.get_clob_price",      side_effect=_clob_side), \
+         patch("main_loop.check_exit",          return_value=None), \
+         patch.object(_cfg, "DRY_RUN", True):
+        mock_ws.get_bid.return_value = None   # WS no_bid miss
+        mock_ws.get_ask.return_value = 0.70
+        await _monitor_positions([pos], [])
+    assert pos.get("price_source")     == "clob_rest_bid", \
+        f"NO CLOB fallback → clob_rest_bid bekleniyor, alınan: {pos.get('price_source')}"
+    assert pos.get("mae_data_quality") == "clob_fallback", \
+        f"NO CLOB fallback → clob_fallback bekleniyor, alınan: {pos.get('mae_data_quality')}"
+    assert pos.get("_no_clob_bid") == pytest.approx(0.33), \
+        f"_no_clob_bid=0.33 pos'a yazılmalı, alınan: {pos.get('_no_clob_bid')}"
+
+
+@pytest.mark.asyncio
+async def test_monitor_no_complement_when_ws_and_clob_both_fail():
+    """NO + WS no_bid None + CLOB None → complement, price_source='complement', estimated."""
+    import config as _cfg
+    pos = _pos_with_token("NO")
+    fake_window = {"best_ask": 0.70, "best_bid": 0.68, "seconds_remaining": 900, "neg_risk": False}
+
+    async def _clob_none(token_id, side="BUY"):
+        return None  # her iki CLOB isteği de None döner
+
+    with patch("main_loop.current_price",       new_callable=AsyncMock, return_value=95000.0), \
+         patch("main_loop.fetch_by_slug",       new_callable=AsyncMock, return_value={}), \
+         patch("main_loop.parse_market_window", return_value=fake_window), \
+         patch("main_loop.ws_prices")          as mock_ws, \
+         patch("main_loop.get_clob_price",      side_effect=_clob_none), \
+         patch("main_loop.check_exit",          return_value=None), \
+         patch.object(_cfg, "DRY_RUN", True):
+        mock_ws.get_bid.return_value = None
+        mock_ws.get_ask.return_value = 0.70
+        await _monitor_positions([pos], [])
+    assert pos.get("price_source")     == "complement", \
+        f"NO complement → 'complement' bekleniyor, alınan: {pos.get('price_source')}"
     assert pos.get("mae_data_quality") == "estimated", \
-        f"Beklenen estimated, alınan: {pos.get('mae_data_quality')}"
+        f"NO complement → estimated bekleniyor, alınan: {pos.get('mae_data_quality')}"
 
 
 # ── Faz 2: WS event-driven _monitor_positions ────────────────────────────────

@@ -162,3 +162,53 @@ def test_no_stop_loss_uses_exact_no_bid():
         assert result == "stop_loss_hit", (
             f"no_bid=0.29 ile -%35 kayıp → stop_loss_hit bekleniyor, '{result}' geldi"
         )
+
+
+# ── 3-tier NO MAE: WS bid → CLOB fallback → complement ───────────────────────
+
+def test_no_position_uses_clob_fallback_when_no_ws_bid():
+    """NO: WS bid miss → pos['_no_clob_bid'] CLOB fallback kullanılır, quality='clob_fallback'."""
+    from unittest.mock import patch
+    pos = _pos(action="NO", entry=0.45, fair=0.25)
+    pos["no_token_id"] = "no-tok-clob"
+    pos["_no_clob_bid"] = 0.35  # monitor tarafından pre-fetch edilmiş
+    pos["opened_at"] = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
+
+    with patch("position.manager._ws.get_bid", return_value=None):
+        check_exit(pos, hl_price=60000, pm_yes_price=0.68, time_to_expiry_secs=300)
+        assert pos["mae_data_quality"] == "clob_fallback", (
+            f"CLOB fallback → 'clob_fallback' bekleniyor, '{pos['mae_data_quality']}' geldi"
+        )
+        assert pos.get("mae_px") == pytest.approx(0.35), (
+            f"mae_px CLOB bid=0.35 olmalı, {pos.get('mae_px')} geldi"
+        )
+
+
+def test_no_stop_uses_clob_bid_when_ws_miss():
+    """NO stop kararı: WS miss, _no_clob_bid var → CLOB fiyatıyla stop tetiklenir."""
+    from unittest.mock import patch
+    pos = _pos(action="NO", entry=0.45, fair=0.25)
+    pos["no_token_id"] = "no-tok-clob-stop"
+    pos["_no_clob_bid"] = 0.29  # -35.6% kayıp → -%25 eşiğini aşar → stop
+    pos["opened_at"] = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
+
+    with patch("position.manager._ws.get_bid", return_value=None):
+        result = check_exit(pos, hl_price=60000, pm_yes_price=0.72, time_to_expiry_secs=300)
+        assert result == "stop_loss_hit", (
+            f"CLOB no_bid=0.29 → stop_loss_hit bekleniyor, '{result}' geldi"
+        )
+        assert pos["mae_data_quality"] == "clob_fallback"
+
+
+def test_no_complement_is_last_resort_quality_estimated():
+    """NO: WS miss + _no_clob_bid yok → complement, quality='estimated'."""
+    from unittest.mock import patch
+    pos = _pos(action="NO", entry=0.45, fair=0.25)
+    pos["no_token_id"] = "no-tok-comp"
+    # _no_clob_bid intentionally absent
+    pos["opened_at"] = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
+
+    with patch("position.manager._ws.get_bid", return_value=None):
+        check_exit(pos, hl_price=60000, pm_yes_price=0.68, time_to_expiry_secs=300)
+        assert pos["mae_data_quality"] == "estimated"
+        assert pos.get("mae_px") == pytest.approx(1 - 0.68)

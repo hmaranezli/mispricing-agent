@@ -450,8 +450,12 @@ async def _monitor_positions(
                     pm_yes_price = ws_prices.get_bid(yes_tid)
                     _price_source, _data_quality = "ws_bid", "exact"
                 else:
+                    # WS path NO: no_bid mevcut mu kontrol et → quality doğru etiketle
+                    _no_tid = pos.get("no_token_id")
+                    _no_bid = ws_prices.get_bid(_no_tid) if _no_tid else None
+                    _price_source = "ws_bid" if _no_bid is not None else "ws_ask_complement"
+                    _data_quality = "exact" if _no_bid is not None else "estimated"
                     pm_yes_price = ws_prices.get_ask(yes_tid)
-                    _price_source, _data_quality = "ws_ask_complement", "estimated"
                 if pm_yes_price is None:
                     continue
             else:
@@ -486,12 +490,22 @@ async def _monitor_positions(
                     else:
                         _price_source, _data_quality = "ws_bid", "exact"
                 else:
+                    # REST path NO: 3-tier → WS no_bid → CLOB no_bid → YES ask complement
+                    _no_tid = pos.get("no_token_id")
+                    _no_bid = ws_prices.get_bid(_no_tid) if _no_tid else None
+                    if _no_bid is not None:
+                        _price_source, _data_quality = "ws_bid", "exact"
+                    else:
+                        _no_clob = await get_clob_price(_no_tid, "SELL") if _no_tid else None
+                        if _no_clob is not None:
+                            pos["_no_clob_bid"] = _no_clob
+                            _price_source, _data_quality = "clob_rest_bid", "clob_fallback"
+                        else:
+                            _price_source, _data_quality = "complement", "estimated"
+                    # YES ask: check_exit complement fallback + exit price calculation
                     pm_yes_price = ws_prices.get_ask(yes_tid)
                     if pm_yes_price is None:
                         pm_yes_price = await get_clob_price(yes_tid, "BUY")
-                        _price_source, _data_quality = "clob_rest_ask_complement", "estimated"
-                    else:
-                        _price_source, _data_quality = "ws_ask_complement", "estimated"
                 if pm_yes_price is None:
                     continue  # fiyat yok → bu döngüyü atla, bir sonrakinde tekrar dene
 
