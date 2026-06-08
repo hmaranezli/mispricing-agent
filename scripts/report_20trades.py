@@ -1,9 +1,10 @@
-"""scripts/report_20trades.py — İlk N canlı trade raporu.
+"""scripts/report_20trades.py — Epoch 3 (kalibrasyon sonrası) trade raporu.
 
 Kullanım:
-  python scripts/report_20trades.py           # son 20 closed trade
-  python scripts/report_20trades.py 30        # son 30
-  python scripts/report_20trades.py --live    # dry_run=0 olanlar
+  python scripts/report_20trades.py           # Epoch 3 ilk 20 trade
+  python scripts/report_20trades.py 30        # Epoch 3 ilk 30 trade
+  python scripts/report_20trades.py --all     # tüm zamanlar (Epoch 3 filtresi yok)
+  python scripts/report_20trades.py --live    # dry_run=0 filtresi
 """
 import sqlite3
 import sys
@@ -11,9 +12,11 @@ import statistics
 from pathlib import Path
 from collections import Counter
 
-DB_PATH = Path("logs/mispricing.db")
-N       = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 20
-LIVE    = "--live" in sys.argv
+DB_PATH          = Path("logs/mispricing.db")
+EPOCH3_START_SEQ = 1336   # 2026-06-08 07:27 UTC — kalibrasyon fix sonrası ilk temiz trade
+N                = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 20
+LIVE             = "--live" in sys.argv
+EPOCH3_ONLY      = "--all" not in sys.argv   # varsayılan: Epoch 3
 
 
 def pct(val):
@@ -26,12 +29,16 @@ def fmt(val, decimals=4):
 con = sqlite3.connect(DB_PATH)
 con.row_factory = sqlite3.Row
 
-where_dry = "AND dry_run = 0" if LIVE else ""
+where_dry   = "AND dry_run = 0" if LIVE else ""
+where_epoch = f"AND seq_no >= {EPOCH3_START_SEQ}" if EPOCH3_ONLY else ""
+epoch_label = f"Epoch 3 (seq≥{EPOCH3_START_SEQ})" if EPOCH3_ONLY else "Tüm Zamanlar"
+
 rows = con.execute(f"""
     SELECT *
     FROM positions
     WHERE status = 'closed'
     {where_dry}
+    {where_epoch}
     ORDER BY ts_close DESC
     LIMIT {N}
 """).fetchall()
@@ -79,7 +86,7 @@ eth_no = [r for r in rows if r["asset"] == "ETH" and r["action"] == "NO"]
 sep = "─" * 60
 
 print(f"\n{'═'*60}")
-print(f"  İLK {n} TRADE RAPORU{'  [LIVE]' if LIVE else '  [ALL]'}")
+print(f"  İLK {n} TRADE RAPORU — {epoch_label}{'  [LIVE]' if LIVE else ''}")
 print(f"{'═'*60}")
 
 print(f"\n{'GENEL PERFORMANS':}")

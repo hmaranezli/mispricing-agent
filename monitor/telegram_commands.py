@@ -20,11 +20,12 @@ from monitor.notifier  import send_telegram
 from monitor.kill_switch import arm as ks_arm, disarm as ks_disarm
 from monitor import positions_cache
 
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID", "")
-DB_PATH            = Path("logs/mispricing.db")
-POLL_TIMEOUT       = 10   # saniye
-POLL_INTERVAL      = 2    # saniye
+TELEGRAM_BOT_TOKEN  = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID    = os.environ.get("TELEGRAM_CHAT_ID", "")
+DB_PATH             = Path("logs/mispricing.db")
+POLL_TIMEOUT        = 10   # saniye
+POLL_INTERVAL       = 2    # saniye
+EPOCH3_START_SEQ    = 1336  # kalibrasyon fix sonrası ilk temiz trade (2026-06-08 07:27 UTC)
 
 
 # ── yardimci fonksiyonlar ──────────────────────────────────────────────────────
@@ -96,6 +97,33 @@ def _query_stats(hours: int | None) -> dict:
         f"COUNT(CASE WHEN pm_exit_price IS NULL THEN 1 END), "
         f"COUNT(CASE WHEN realized_pnl=0 AND pm_exit_price IS NOT NULL THEN 1 END) "
         f"FROM positions {where}", params
+    )
+    row = c.fetchone()
+    conn.close()
+    return {
+        "total":     row[0] or 0,
+        "pnl":       row[1] or 0.0,
+        "wins":      row[2] or 0,
+        "losses":    row[3] or 0,
+        "expired":   row[4] or 0,
+        "breakeven": row[5] or 0,
+    }
+
+
+def _query_stats_epoch3() -> dict:
+    """Epoch 3 (seq_no >= EPOCH3_START_SEQ) istatistik — kalibrasyon sonrası temiz trade'ler."""
+    if not DB_PATH.exists():
+        return {"total": 0, "wins": 0, "losses": 0, "pnl": 0.0, "expired": 0, "breakeven": 0}
+    conn = sqlite3.connect(DB_PATH)
+    c    = conn.cursor()
+    c.execute(
+        "SELECT COUNT(*), SUM(realized_pnl), "
+        "COUNT(CASE WHEN realized_pnl>0 THEN 1 END), "
+        "COUNT(CASE WHEN realized_pnl<0 THEN 1 END), "
+        "COUNT(CASE WHEN pm_exit_price IS NULL THEN 1 END), "
+        "COUNT(CASE WHEN realized_pnl=0 AND pm_exit_price IS NOT NULL THEN 1 END) "
+        "FROM positions WHERE status='closed' AND dry_run=0 AND seq_no >= ?",
+        (EPOCH3_START_SEQ,)
     )
     row = c.fetchone()
     conn.close()
@@ -217,7 +245,20 @@ def handle_command(text: str) -> str:
     if text.startswith("/istatistik"):
         hours = parse_hours(text)
         s     = _query_stats(hours)
-        return build_stats_message(s["total"], s["wins"], s["losses"], s["pnl"], hours, s.get("expired", 0), s.get("breakeven", 0))
+        msg   = build_stats_message(s["total"], s["wins"], s["losses"], s["pnl"], hours,
+                                    s.get("expired", 0), s.get("breakeven", 0))
+        if hours is None:
+            e3 = _query_stats_epoch3()
+            e3_wr = e3["wins"] / (e3["wins"] + e3["losses"]) * 100 if (e3["wins"] + e3["losses"]) else 0
+            epoch3_block = (
+                f"\n\n=== Epoch 3 (ana KPI) ===\n"
+                f"Trade     : {e3['total']}\n"
+                f"Win/Loss  : {e3['wins']}/{e3['losses']}\n"
+                f"Win rate  : {e3_wr:.1f}%\n"
+                f"Net P&L   : ${e3['pnl']:+.2f}"
+            )
+            msg = epoch3_block + "\n\n--- tum zamanlar ---\n" + msg
+        return msg
 
     return f"Bilinmeyen komut: {text}\nKomutlar: /durum /istatistik /istatistik6 /durdur /baslat /hardbaslat"
 

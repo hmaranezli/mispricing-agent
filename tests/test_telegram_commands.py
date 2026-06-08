@@ -106,6 +106,46 @@ def test_build_durum_empty_positions():
     assert "0" in msg
 
 
+# ── Epoch 3 ──────────────────────────────────────────────────────────────────
+
+def test_epoch3_start_seq_constant_is_1336():
+    """EPOCH3_START_SEQ = 1336 — kalibrasyon sonrası ilk temiz trade."""
+    from monitor.telegram_commands import EPOCH3_START_SEQ
+    assert EPOCH3_START_SEQ == 1336
+
+
+def test_istatistik_response_includes_epoch3_label():
+    """/istatistik cevabı 'Epoch 3' veya 'epoch3' etiketi içermeli (ana KPI)."""
+    from unittest.mock import patch
+    from monitor.telegram_commands import handle_command
+    with patch("monitor.telegram_commands._query_stats",
+               return_value={"total": 5, "wins": 4, "losses": 1, "pnl": 1.5,
+                             "expired": 0, "breakeven": 0}), \
+         patch("monitor.telegram_commands._query_stats_epoch3",
+               return_value={"total": 2, "wins": 2, "losses": 0, "pnl": 0.6,
+                             "expired": 0, "breakeven": 0}):
+        msg = handle_command("/istatistik")
+    assert "Epoch 3" in msg or "epoch3" in msg.lower(), (
+        "/istatistik çıktısı Epoch 3 başlığı içermeli"
+    )
+
+
+def test_istatistik_response_includes_alltime_section():
+    """/istatistik cevabı all-time istatistiği de içermeli (ikincil KPI)."""
+    from unittest.mock import patch
+    from monitor.telegram_commands import handle_command
+    with patch("monitor.telegram_commands._query_stats",
+               return_value={"total": 20, "wins": 14, "losses": 6, "pnl": 3.5,
+                             "expired": 0, "breakeven": 0}), \
+         patch("monitor.telegram_commands._query_stats_epoch3",
+               return_value={"total": 2, "wins": 2, "losses": 0, "pnl": 0.6,
+                             "expired": 0, "breakeven": 0}):
+        msg = handle_command("/istatistik")
+    assert "tum" in msg.lower() or "all" in msg.lower() or "20" in msg, (
+        "/istatistik all-time sayısını da göstermeli"
+    )
+
+
 def test_hardbaslat_clears_hard_paused():
     """/hardbaslat HARD_PAUSED'u temizler."""
     import monitor.state as s
