@@ -21,8 +21,9 @@ from execution.balance        import get_effective_bankroll
 from execution.reconcile      import startup_reconcile
 from execution.ghost          import detect_ghosts
 from position.manager import check_exit, close_position
-from data.hl_candles import current_price
-from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window
+from data.hl_candles import current_price, price_at_timestamp
+from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window, find_shortterm_4h
+from data.fair_value import fair_yes, ASSET_VOL
 from data.clob_price import get_clob_price
 from data.depth_enricher import enrich_entry_depth
 from monitor.notifier import notify_open, notify_close, notify_halt, notify_restart, notify_soft_stop, notify_hard_stop, notify_resolved_late, send_telegram
@@ -348,6 +349,108 @@ async def _heal_pending_resolutions(
 
 _last_rest_ts: float = 0.0  # modül-seviye heartbeat zamanlayıcı
 
+_4H_SHADOW_INTERVAL_SECS = 120  # 4h market için 2dk cadence yeterli (7s live'a dokunmaz)
+_4H_TAKER_FEE            = 0.02
+_4H_ENTRY_SLIPPAGE        = 0.01
+_4H_MIN_SECS              = 300  # 4h market için de MIN_SECONDS eşiği
+
+
+async def _run_shadow_4h_scan(conn) -> None:
+    """4h market snapshot — shadow log, hiçbir zaman execute'a gitmez.
+
+    trade_enabled=0 ile log_shadow_candidate'e yazar.
+    BNB/DOGE dahil — TRACKED_ASSETS kısıtı yok, shadow-only.
+    """
+    import json as _json
+    from council import scout as _scout_mod
+
+    markets = await find_shortterm_4h()
+    if not markets:
+        return
+
+    count = 0
+    for m in markets:
+        try:
+            slug  = m.get("slug", "")
+            asset = slug.split("-")[0].upper() if slug else None
+            if not asset:
+                continue
+
+            window = parse_market_window(m)
+            if window is None or window["seconds_remaining"] < _4H_MIN_SECS:
+                continue
+
+            # Likidite ve spread ham marketten
+            liq = m.get("liquidityNum") or m.get("liquidity") or 0
+            try:
+                prices = _json.loads(m.get("outcomePrices", "[]"))
+                spread = round(1 - float(prices[0]) - float(prices[1]), 4) if len(prices) >= 2 else None
+            except Exception:
+                spread = None
+
+            best_ask = window["best_ask"]
+
+            # HL fiyat: ref (pencere başı) ve anlık
+            ref_price = await price_at_timestamp(asset, window["start_ms"])
+            cur       = await current_price(asset)
+            if not cur or not ref_price:
+                continue
+
+            # Vol: scout cache varsa kullan, yoksa ASSET_VOL default
+            live_vol = _scout_mod._vol_cache.get(asset, ASSET_VOL.get(asset, 0.80))
+            fair     = fair_yes(cur, ref_price, window["seconds_remaining"], asset, live_vol)
+
+            # Edge yönü
+            yes_edge = fair - best_ask
+            no_edge  = best_ask - fair
+            if yes_edge >= no_edge:
+                action, raw_edge = "YES", yes_edge
+                fee_adj = fair * (1 - _4H_TAKER_FEE) - (best_ask + _4H_ENTRY_SLIPPAGE)
+            else:
+                action, raw_edge = "NO", no_edge
+                fee_adj = (1 - fair) * (1 - _4H_TAKER_FEE) - (best_ask + _4H_ENTRY_SLIPPAGE)
+
+            finding = {
+                "slug":              slug,
+                "asset":             asset,
+                "action":            action,
+                "fair_value":        round(fair, 4),
+                "best_ask":          best_ask,
+                "edge":              round(raw_edge, 4),
+                "seconds_remaining": window["seconds_remaining"],
+            }
+
+            await log_shadow_candidate(
+                conn, finding,
+                passed=False,
+                timeframe="4h",
+                trade_enabled=0,
+                fee_adj_edge=round(fee_adj, 4),
+                liquidity_usd=float(liq) if liq else None,
+                spread=spread,
+            )
+            count += 1
+        except Exception as e:
+            print(f"[4h_shadow] {m.get('slug', '?')} hata: {e}")
+
+    if count:
+        print(f"[4h_shadow] {count}/{len(markets)} market loglandı")
+
+
+async def _shadow_4h_scan_loop(conn) -> None:
+    """4h shadow scan background task — 15m canlı event loop'unu yavaşlatmaz.
+
+    KRITIK: Bu fonksiyon hiçbir zaman execute() veya _clob_execute()'a çağırmaz.
+    asyncio.create_task() ile başlatılır, fire-and-forget.
+    """
+    await asyncio.sleep(60)  # startup offset: bot hazır olsun
+    while True:
+        try:
+            await _run_shadow_4h_scan(conn)
+        except Exception as e:
+            print(f"[4h_shadow_loop] hata: {e}")
+        await asyncio.sleep(_4H_SHADOW_INTERVAL_SECS)
+
 
 def _apply_partial_fill(pos: dict, pm_exit: float, making_shares: float) -> bool:
     """Kısmi fill kontrolü + pos güncelleme.
@@ -642,6 +745,7 @@ async def main() -> None:
         if tid
     ]
     asyncio.create_task(ws_prices.run(initial_tids))
+    asyncio.create_task(_shadow_4h_scan_loop(conn))  # 4h shadow — ayrı cadence, live loop'a dokunmaz
 
     starting_bankroll = await get_effective_bankroll(BANKROLL_CONFIG)
     circuit_breaker.BUST_PROTECTION_PCT = config.BUST_PROTECTION_PCT

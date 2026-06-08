@@ -298,7 +298,7 @@ async def scan_edges() -> list[dict]:
     global _markets_cache, _markets_cache_ts
     now = time.time()
     if (now - _markets_cache_ts) > MARKET_CACHE_TTL_SECS or not _markets_cache:
-        fresh = await find_shortterm()
+        fresh = await find_shortterm(intervals=(5, 15))
         _markets_cache = fresh or []
         _markets_cache_ts = now
 

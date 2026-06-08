@@ -151,6 +151,12 @@ _MIGRATIONS = [
     "ALTER TABLE positions ADD COLUMN entry_est_exit_price REAL",
     "ALTER TABLE positions ADD COLUMN entry_depth_slippage_pct REAL",
     "ALTER TABLE positions ADD COLUMN entry_book_levels_used INTEGER",
+    # 4h shadow universe + fee telemetri
+    "ALTER TABLE shadow_candidates ADD COLUMN timeframe TEXT",
+    "ALTER TABLE shadow_candidates ADD COLUMN trade_enabled INTEGER DEFAULT 1",
+    "ALTER TABLE shadow_candidates ADD COLUMN fee_adj_edge REAL",
+    "ALTER TABLE shadow_candidates ADD COLUMN liquidity_usd REAL",
+    "ALTER TABLE shadow_candidates ADD COLUMN spread REAL",
 ]
 
 

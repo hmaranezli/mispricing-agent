@@ -27,16 +27,29 @@ async def log_shadow_candidate(
     veto_reason:      str | None = None,
     confidence_score: float | None = None,
     kelly_f:          float | None = None,
+    timeframe:        str | None = None,
+    trade_enabled:    int = 1,
+    fee_adj_edge:     float | None = None,
+    liquidity_usd:    float | None = None,
+    spread:           float | None = None,
 ) -> None:
-    """Konsey kararı noktasında shadow_candidates tablosuna yazar (ayrı tablo, live P&L'e karışmaz)."""
+    """Konsey kararı noktasında shadow_candidates tablosuna yazar (ayrı tablo, live P&L'e karışmaz).
+
+    timeframe:     "5m", "15m", "4h" — None ise eski çağrılar için NULL
+    trade_enabled: 0 = shadow-only (4h), 1 = canlı execution için aday (15m)
+    fee_adj_edge:  redteam fee_adj hesabı
+    liquidity_usd: market likiditesi
+    spread:        yes+no price spread
+    """
     if conn is None:
         return
     await conn.execute(
         """INSERT INTO shadow_candidates
                (ts, slug, asset, action, fair_value, best_ask, edge,
                 passed, veto_layer, veto_reason, dry_run,
-                confidence_score, kelly_f, seconds_remaining)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                confidence_score, kelly_f, seconds_remaining,
+                timeframe, trade_enabled, fee_adj_edge, liquidity_usd, spread)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             datetime.now(timezone.utc).isoformat(),
             finding.get("slug", ""),
@@ -52,6 +65,11 @@ async def log_shadow_candidate(
             confidence_score,
             kelly_f,
             finding.get("seconds_remaining"),
+            timeframe,
+            trade_enabled,
+            fee_adj_edge,
+            liquidity_usd,
+            spread,
         ),
     )
     await conn.commit()

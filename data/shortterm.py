@@ -137,6 +137,38 @@ async def fetch_resolved(slug: str) -> dict | None:
     return _parse_resolution(arr[0])
 
 
+def slugs_for_now_4h(
+    assets=("btc", "eth", "sol", "xrp", "bnb", "doge"),
+    lookback=3,
+):
+    """4h pencere slug'ları üretir. Format: {asset}-updown-4h-{unix_ts}"""
+    now  = int(time.time())
+    step = 4 * 3600  # 14400s
+    base = (now // step) * step
+    out  = []
+    for asset in assets:
+        for i in range(lookback):
+            ts = base - i * step
+            out.append(f"{asset}-updown-4h-{ts}")
+    return out
+
+
+async def find_shortterm_4h(
+    assets=("btc", "eth", "sol", "xrp", "bnb", "doge"),
+    lookback=3,
+):
+    """4h Up/Down marketleri çeker. Shadow scan içindir — canlı trade'e gitmez."""
+    found   = []
+    timeout = aiohttp.ClientTimeout(total=20)
+    async with aiohttp.ClientSession(timeout=timeout) as s:
+        tasks   = [_fetch_slug(s, slug) for slug in slugs_for_now_4h(assets, lookback)]
+        results = await asyncio.gather(*tasks)
+    for m in results:
+        if m:
+            found.append(m)
+    return found
+
+
 async def find_shortterm(intervals=(5, 15, 60)):
     found = []
     timeout = aiohttp.ClientTimeout(total=20)
