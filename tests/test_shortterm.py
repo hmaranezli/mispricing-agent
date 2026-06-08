@@ -216,3 +216,26 @@ def test_parse_resolution_missing_prices_returns_none():
     """outcomePrices alanı yoksa None döner."""
     from data.shortterm import _parse_resolution
     assert _parse_resolution({"closed": True}) is None
+
+
+@pytest.mark.asyncio
+async def test_find_shortterm_5m_uses_lookback_2():
+    """interval=5 için en fazla 4 asset × 2 lookback = 8 slug denenmeli (gereksiz 404 azaltma)."""
+    from data.shortterm import find_shortterm
+    from unittest.mock import AsyncMock, patch, call
+    import aiohttp
+
+    fetch_calls = []
+
+    async def _fake_fetch(session, slug):
+        fetch_calls.append(slug)
+        return None  # hepsi 404
+
+    with patch("data.shortterm._fetch_slug", side_effect=_fake_fetch):
+        await find_shortterm(intervals=(5,))
+
+    five_m_calls = [s for s in fetch_calls if "-5m-" in s]
+    unique_assets = {s.split("-updown-")[0] for s in five_m_calls}
+    assert len(five_m_calls) <= 8, \
+        f"5m için en fazla 8 slug (4 asset × 2 lookback) beklendi, {len(five_m_calls)} geldi"
+    assert len(unique_assets) == 4, "BTC/ETH/SOL/XRP hepsi taranmalı"

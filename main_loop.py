@@ -236,8 +236,8 @@ async def _scan_and_execute(
 
     t_total = time.time() - t0
     print(
-        f"[scan_perf] total={t_total:.1f}s scan_edges={t_scan_edges:.1f}s "
-        f"council={t_council_total:.1f}s execute={t_execute_total:.1f}s "
+        f"[scan_perf] total_ms={t_total*1000:.0f} scan_edges_ms={t_scan_edges*1000:.0f} "
+        f"council_ms={t_council_total*1000:.0f} execute_ms={t_execute_total*1000:.0f} "
         f"candidates={len(findings)}"
     )
 

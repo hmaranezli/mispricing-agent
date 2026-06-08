@@ -1641,8 +1641,8 @@ async def test_scan_and_execute_prints_scan_perf(capsys):
 
     captured = capsys.readouterr()
     assert "[scan_perf]" in captured.out, "[scan_perf] log satırı olmalı"
-    assert "total=" in captured.out
-    assert "scan_edges=" in captured.out
+    assert "total_ms=" in captured.out
+    assert "scan_edges_ms=" in captured.out
     assert "candidates=0" in captured.out
 
 
@@ -1654,8 +1654,8 @@ async def test_scan_perf_includes_council_and_execute_timing(capsys):
         await _scan_and_execute([], [], bankroll_usd=100.0, conn=None)
 
     captured = capsys.readouterr()
-    assert "council=" in captured.out
-    assert "execute=" in captured.out
+    assert "council_ms=" in captured.out
+    assert "execute_ms=" in captured.out
 
 
 # ── Task 3: ask_at_decision + slippage_pct ───────────────────────────────────

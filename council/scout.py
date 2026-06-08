@@ -156,26 +156,40 @@ def _edge_signal(fair: float, best_ask: float, best_bid: float) -> dict | None:
     return None
 
 
-async def _process_market(m: dict, asset_vols: dict[str, float],
-                           market_state: dict[str, dict] | None = None) -> dict | None:
+async def _process_market(
+    m:            dict,
+    asset_vols:   dict[str, float],
+    market_state: dict[str, dict] | None = None,
+    cur_prices:   dict[str, float] | None = None,
+    audit:        dict | None = None,
+) -> dict | None:
     """Tek marketi değerlendirir. Edge yoksa veya veri eksikse None."""
+    def _inc(key):
+        if audit is not None:
+            audit[key] = audit.get(key, 0) + 1
+
     asset = _asset_of(m.get("question", ""))
     if asset is None:
+        _inc("skipped_no_asset")
         return None
 
     if asset not in config.TRACKED_ASSETS:
+        _inc("skipped_no_asset")
         return None
 
     ms = (market_state or {}).get(asset, {})
 
     window = parse_market_window(m)
     if window is None:
+        _inc("skipped_no_window")
         return None
 
     if window["neg_risk"]:
+        _inc("skipped_neg_risk")
         return None
 
     if window["seconds_remaining"] < MIN_SECONDS:
+        _inc("skipped_min_seconds")
         return None
 
     _tids = _parse_token_ids(m.get("clobTokenIds"))
@@ -186,7 +200,13 @@ async def _process_market(m: dict, asset_vols: dict[str, float],
     clob_ask = _ws_prices.get_ask(yes_token) if yes_token else None
     if clob_ask is None:
         clob_ask = await get_clob_price(yes_token) if yes_token else None
+        if audit is not None:
+            audit["pm_rest"] = audit.get("pm_rest", 0) + 1
+    else:
+        if audit is not None:
+            audit["ws_hit"] = audit.get("ws_hit", 0) + 1
     if clob_ask is None:
+        _inc("skipped_no_price")
         return None  # Likidite yok → atla
 
     # YES bid: WS'den gerçek değer; yoksa /price?side=SELL; son çare ask
@@ -196,9 +216,13 @@ async def _process_market(m: dict, asset_vols: dict[str, float],
     else:
         yes_bid = await get_clob_price(yes_token, "SELL") or clob_ask
 
+    _inc("api_reached")
     try:
         ref_price = await price_at_timestamp(asset, window["start_ms"])
-        cur       = await current_price(asset)
+        # Pre-fetch'ten al; yoksa canlı çek (geriye dönük uyumluluk)
+        cur = cur_prices.get(asset) if cur_prices and asset in cur_prices else await current_price(asset)
+        if cur is None:
+            raise ValueError(f"{asset} cur_price=None")
     except (ValueError, Exception):
         return None
 
@@ -277,11 +301,41 @@ async def scan_edges() -> list[dict]:
 
     asset_vols   = await _get_all_vols()
     market_state = await _get_market_state()
-    tasks = [_process_market(m, asset_vols, market_state) for m in _markets_cache]
+
+    # ── current_price pre-fetch: 4 çağrı (N market × 4 asset yerine) ──────────
+    _cur_results = await asyncio.gather(
+        *[current_price(a) for a in config.TRACKED_ASSETS],
+        return_exceptions=True,
+    )
+    cur_prices = {
+        a: r for a, r in zip(config.TRACKED_ASSETS, _cur_results)
+        if not isinstance(r, Exception)
+    }
+    # ─────────────────────────────────────────────────────────────────────────
+
+    _audit: dict = {
+        "skipped_no_asset": 0, "skipped_no_window": 0, "skipped_neg_risk": 0,
+        "skipped_min_seconds": 0, "skipped_no_price": 0,
+        "api_reached": 0, "ws_hit": 0, "pm_rest": 0,
+    }
+    tasks = [_process_market(m, asset_vols, market_state, cur_prices, _audit)
+             for m in _markets_cache]
     results = await asyncio.gather(*tasks)
 
     findings = [r for r in results if r is not None]
     findings.sort(key=lambda x: x["edge"], reverse=True)
+
+    print(
+        f"[scan_audit] found={len(_markets_cache)} "
+        f"skip_asset={_audit['skipped_no_asset']} "
+        f"skip_window={_audit['skipped_no_window']} "
+        f"skip_neg={_audit['skipped_neg_risk']} "
+        f"skip_time={_audit['skipped_min_seconds']} "
+        f"skip_price={_audit['skipped_no_price']} "
+        f"api={_audit['api_reached']} "
+        f"ws={_audit['ws_hit']} pm_rest={_audit['pm_rest']} "
+        f"candidates={len(findings)}"
+    )
     return findings
 
 

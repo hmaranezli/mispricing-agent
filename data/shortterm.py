@@ -143,7 +143,8 @@ async def find_shortterm(intervals=(5, 15, 60)):
     async with aiohttp.ClientSession(timeout=timeout) as s:
         tasks = []
         for iv in intervals:
-            for slug in slugs_for_now(interval=iv):
+            lb = 2 if iv == 5 else 7  # 5dk: yalnızca 2 pencere geriye bak (MIN_SECONDS=300 nedeniyle çoğu zaten filtrelenir)
+            for slug in slugs_for_now(interval=iv, lookback=lb):
                 tasks.append(_fetch_slug(s, slug))
         results = await asyncio.gather(*tasks)
     for m in results:

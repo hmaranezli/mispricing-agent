@@ -849,3 +849,97 @@ async def test_get_market_state_returns_oracle_funding_basis():
     assert btc["oracle_px"] == 60_938.0
     assert btc["funding_rate"] == 4.8e-6
     assert abs(btc["basis_pct"] - abs(61_000.0 - 60_938.0) / 60_938.0) < 1e-9
+
+
+# ── Faz 3: scan_audit + current_price prefetch ────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_process_market_increments_skipped_min_seconds():
+    """seconds_remaining < MIN_SECONDS → audit['skipped_min_seconds'] artar, API çağrısı olmaz."""
+    from council.scout import _process_market
+    from unittest.mock import AsyncMock, patch
+
+    market = _make_market(seconds_remaining=60)  # MIN_SECONDS=300'den az
+    audit = {"skipped_no_asset": 0, "skipped_no_window": 0, "skipped_neg_risk": 0,
+             "skipped_min_seconds": 0, "skipped_no_price": 0, "api_reached": 0,
+             "ws_hit": 0, "pm_rest": 0}
+    mock_cur = AsyncMock(return_value=61_000.0)
+    with patch("council.scout.current_price", mock_cur):
+        result = await _process_market(market, {}, audit=audit)
+
+    assert result is None
+    assert audit["skipped_min_seconds"] == 1
+    mock_cur.assert_not_called()  # API'ye gitmeden düşmeli
+
+
+@pytest.mark.asyncio
+async def test_process_market_uses_prefetched_cur_price():
+    """cur_prices sözlüğü verildiğinde current_price() çağrılmamalı."""
+    from council.scout import _process_market
+    from unittest.mock import AsyncMock, patch
+
+    mock_cur = AsyncMock(return_value=99_999.0)
+    with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+         patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=60_000.0), \
+         patch("council.scout.current_price", mock_cur), \
+         patch("council.scout.fair_yes", return_value=0.70), \
+         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02), \
+         patch("council.scout._ws_prices.get_ask", return_value=None), \
+         patch("council.scout._ws_prices.get_bid", return_value=None):
+        await _process_market(_make_market(), {}, cur_prices={"BTC": 61_000.0})
+
+    mock_cur.assert_not_called()  # prefetch verildi → current_price çağrılmamalı
+
+
+@pytest.mark.asyncio
+async def test_scan_edges_prefetches_current_price_once_per_asset(capsys):
+    """scan_edges tüm market listesi için current_price'ı N kez değil, 4 kez çağırmalı."""
+    from council.scout import scan_edges
+    from unittest.mock import AsyncMock, patch
+    import council.scout as _mod
+
+    fake_markets = [_make_market(600), _make_market(700), _make_market(800)]
+    mock_cur = AsyncMock(return_value=61_000.0)
+
+    with patch.object(_mod, "_markets_cache", fake_markets), \
+         patch.object(_mod, "_markets_cache_ts", 1e18), \
+         patch("council.scout.current_price", mock_cur), \
+         patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+         patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=60_000.0), \
+         patch("council.scout.fair_yes", return_value=0.55), \
+         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02), \
+         patch("council.scout._ws_prices.get_ask", return_value=None), \
+         patch("council.scout._ws_prices.get_bid", return_value=None), \
+         patch("council.scout._get_all_vols", new_callable=AsyncMock, return_value={}), \
+         patch("council.scout._get_market_state", new_callable=AsyncMock, return_value={}):
+        await scan_edges()
+
+    # 4 tracked asset için 4 çağrı — 3 market×4 asset = 12 çağrı değil
+    assert mock_cur.call_count == len(config.TRACKED_ASSETS), \
+        f"current_price {mock_cur.call_count} kez çağrıldı, {len(config.TRACKED_ASSETS)} beklendi"
+
+
+@pytest.mark.asyncio
+async def test_scan_edges_prints_scan_audit(capsys):
+    """scan_edges her taramada [scan_audit] satırı basmalı."""
+    from council.scout import scan_edges
+    from unittest.mock import AsyncMock, patch
+    import council.scout as _mod
+
+    with patch.object(_mod, "_markets_cache", [_make_market(600)]), \
+         patch.object(_mod, "_markets_cache_ts", 1e18), \
+         patch("council.scout.current_price", new_callable=AsyncMock, return_value=61_000.0), \
+         patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+         patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=60_000.0), \
+         patch("council.scout.fair_yes", return_value=0.55), \
+         patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02), \
+         patch("council.scout._ws_prices.get_ask", return_value=None), \
+         patch("council.scout._ws_prices.get_bid", return_value=None), \
+         patch("council.scout._get_all_vols", new_callable=AsyncMock, return_value={}), \
+         patch("council.scout._get_market_state", new_callable=AsyncMock, return_value={}):
+        await scan_edges()
+
+    out = capsys.readouterr().out
+    assert "[scan_audit]" in out, f"[scan_audit] satırı beklendi, çıktı: {out!r}"
+    assert "skip_time=" in out
+    assert "api=" in out
