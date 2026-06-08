@@ -35,3 +35,6 @@ HALT_ON_API_MISMATCH   = True  # API ile ajan celisirse islem durur
 
 # ── Izlenecek varliklar ──
 TRACKED_ASSETS = ["BTC", "ETH", "SOL", "XRP"]
+
+# ── Geçici quarantine (NO exact pricing fix sonrası yeniden değerlendirilecek) ──
+BLOCKED_COMBOS = [("ETH", "NO")]  # ETH-NO: 1W/4L WR=%20 P&L=-$1.17 (2026-06-08, 24h sample)

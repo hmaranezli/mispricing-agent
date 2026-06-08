@@ -200,27 +200,29 @@ def test_check_exit_no_stop_loss_before_min_hold():
 
 
 def test_check_exit_stop_loss_fires_at_45s():
-    """45s sonra stop_loss çalışır — MIN_HOLD_SECS=30'dan büyük.
+    """45s sonra stop_loss çalışır — MIN_HOLD_SECS=15'den büyük.
 
-    45s tutulmuş, 900s kaldı → dinamik stop ~%29.1 → eşik=0.35×0.709=0.248.
-    pm=0.20 < 0.248 → stop_loss_hit (42.9% kayıp, max stop'tan bile büyük).
+    Kalibrasyon: MIN_HOLD_SECS=15 (eski 30), STOP_LOSS_MAX=0.25 (eski 0.30).
+    45s tutulmuş, 900s kaldı → dinamik stop ≈ %24.4 → eşik=0.35×(1-0.244)=0.265.
+    pm=0.20 < 0.265 → stop_loss_hit (42.9% kayıp, max stop'tan bile büyük).
     """
     from position.manager import MIN_HOLD_SECS
-    assert MIN_HOLD_SECS == 30, f"MIN_HOLD_SECS 30 olmalı, şu an: {MIN_HOLD_SECS}"
+    assert MIN_HOLD_SECS == 15, f"MIN_HOLD_SECS 15 olmalı, şu an: {MIN_HOLD_SECS}"
     opened_at = (datetime.now(timezone.utc) - timedelta(seconds=45)).isoformat()
     pos = _position(action="YES", held_minutes=0)
     pos["opened_at"] = opened_at
     result = check_exit(pos, hl_price=95000, pm_yes_price=0.20, time_to_expiry_secs=900)
-    assert result == "stop_loss_hit", f"45s > 30s MIN_HOLD → stop_loss tetiklenmeli, got: {result}"
+    assert result == "stop_loss_hit", f"45s > 15s MIN_HOLD → stop_loss tetiklenmeli, got: {result}"
 
 
 
 # ── Task: Dinamik stop-loss ───────────────────────────────────────────────────
 
 def test_dynamic_stop_wider_early():
-    """Erken tutuşta stop geniş — STOP_LOSS_MAX'a yakın (%30)."""
+    """Erken tutuşta stop geniş — STOP_LOSS_MAX'a yakın (%25, kalibrasyon: eski %30)."""
     sl = _dynamic_stop(held_secs=60, time_to_expiry_secs=900)
-    assert sl > 0.28, f"Erken stop geniş olmalı (>%28), gelen: {sl:.3f}"
+    assert sl > 0.22, f"Erken stop geniş olmalı (>%22), gelen: {sl:.3f}"
+    assert sl <= 0.25, f"Erken stop STOP_LOSS_MAX=0.25'i aşmamalı, gelen: {sl:.3f}"
 
 
 def test_dynamic_stop_tighter_near_expiry():
@@ -343,11 +345,11 @@ def test_check_exit_no_position_mae_data_quality_estimated():
     assert pos.get("price_source") == "rest"
 
 
-def test_check_exit_yes_position_mae_data_quality_rest():
-    """YES pozisyon: mae_data_quality='rest'."""
+def test_check_exit_yes_position_mae_data_quality_exact():
+    """YES pozisyon: mae_data_quality='exact' (Task 3: YES her zaman tam fiyat)."""
     pos = _position("YES", held_minutes=5)
     check_exit(pos, hl_price=95000, pm_yes_price=0.40, time_to_expiry_secs=500)
-    assert pos.get("mae_data_quality") == "rest"
+    assert pos.get("mae_data_quality") == "exact"
     assert pos.get("price_source") == "rest"
 
 

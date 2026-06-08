@@ -10,7 +10,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
-from council.scout import scan_edges, _asset_of, _edge_signal, _drift_ok, MIN_SECONDS
+from council.scout import scan_edges, _asset_of, _edge_signal, _drift_ok, _process_market, MIN_SECONDS
 
 # ── Unit testler ──────────────────────────────────────────────────────────────
 
@@ -943,3 +943,74 @@ async def test_scan_edges_prints_scan_audit(capsys):
     assert "[scan_audit]" in out, f"[scan_audit] satırı beklendi, çıktı: {out!r}"
     assert "skip_time=" in out
     assert "api=" in out
+
+
+# ── Task 2: ETH-NO Quarantine ─────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_process_market_eth_no_quarantined(monkeypatch):
+    """config.BLOCKED_COMBOS=[('ETH','NO')] olduğunda ETH-NO sinyali None döner."""
+    from unittest.mock import AsyncMock, MagicMock
+    import council.scout as scout
+
+    monkeypatch.setattr(config, "BLOCKED_COMBOS", [("ETH", "NO")])
+
+    m = {
+        "question": "Ethereum Up or Down",
+        "slug": "eth-updown-15m-9999999999",
+        "clobTokenIds": '["yes-eth-tok", "no-eth-tok"]',
+    }
+
+    monkeypatch.setattr(scout, "parse_market_window", lambda _: {
+        "start_ms": 0, "end_ms": 10**12, "seconds_remaining": 600,
+        "best_bid": 0.44, "best_ask": 0.56, "neg_risk": False,
+    })
+    mock_ws = MagicMock()
+    mock_ws.get_ask.return_value = 0.56
+    mock_ws.get_bid.return_value = 0.44
+    monkeypatch.setattr(scout, "_ws_prices", mock_ws)
+    monkeypatch.setattr(scout, "_parse_token_ids", lambda _: ["yes-eth-tok", "no-eth-tok"])
+    monkeypatch.setattr(scout, "price_at_timestamp", AsyncMock(return_value=3000.0))
+    monkeypatch.setattr(scout, "current_price", AsyncMock(return_value=3000.0))
+    # fair=0.35 → no_edge=0.56-0.35=0.21>MIN_EDGE, (1-fair)=0.65>CONVICTION_MIN → NO sinyal
+    monkeypatch.setattr(scout, "fair_yes", lambda *a, **kw: 0.35)
+    monkeypatch.setattr(scout, "fetch_fee_rate", AsyncMock(return_value=0.02))
+    monkeypatch.setattr(scout, "get_clob_price", AsyncMock(return_value=0.41))
+
+    result = await scout._process_market(m, {"ETH": 0.80})
+    assert result is None, f"ETH-NO quarantine: None bekleniyor, {result!r} geldi"
+
+
+@pytest.mark.asyncio
+async def test_process_market_eth_yes_not_quarantined(monkeypatch):
+    """ETH-YES quarantine dışında — YES sinyali engellenmemeli."""
+    from unittest.mock import AsyncMock, MagicMock
+    import council.scout as scout
+
+    monkeypatch.setattr(config, "BLOCKED_COMBOS", [("ETH", "NO")])
+
+    m = {
+        "question": "Ethereum Up or Down",
+        "slug": "eth-updown-15m-9999999998",
+        "clobTokenIds": '["yes-eth-tok2", "no-eth-tok2"]',
+    }
+
+    monkeypatch.setattr(scout, "parse_market_window", lambda _: {
+        "start_ms": 0, "end_ms": 10**12, "seconds_remaining": 600,
+        "best_bid": 0.54, "best_ask": 0.56, "neg_risk": False,
+    })
+    mock_ws = MagicMock()
+    mock_ws.get_ask.return_value = 0.56
+    mock_ws.get_bid.return_value = 0.54
+    monkeypatch.setattr(scout, "_ws_prices", mock_ws)
+    monkeypatch.setattr(scout, "_parse_token_ids", lambda _: ["yes-eth-tok2", "no-eth-tok2"])
+    monkeypatch.setattr(scout, "price_at_timestamp", AsyncMock(return_value=3000.0))
+    monkeypatch.setattr(scout, "current_price", AsyncMock(return_value=3000.0))
+    # fair=0.72 → yes_edge=0.72-0.56=0.16>MIN_EDGE → YES sinyal (quarantine dışı)
+    monkeypatch.setattr(scout, "fair_yes", lambda *a, **kw: 0.72)
+    monkeypatch.setattr(scout, "fetch_fee_rate", AsyncMock(return_value=0.02))
+    monkeypatch.setattr(scout, "get_clob_price", AsyncMock(return_value=0.56))
+
+    result = await scout._process_market(m, {"ETH": 0.80})
+    assert result is not None, "ETH-YES quarantine dışında — sinyal bekleniyor"
+    assert result["action"] == "YES"

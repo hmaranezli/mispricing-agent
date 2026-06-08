@@ -232,6 +232,12 @@ async def _process_market(
     if signal is None:
         return None
 
+    # Quarantine: geçici blok — config.BLOCKED_COMBOS tarafından engellenen asset/action çiftleri
+    _blocked = {tuple(c) for c in getattr(config, "BLOCKED_COMBOS", [])}
+    if _blocked and (asset, signal["action"]) in _blocked:
+        _inc("skipped_quarantine")
+        return None
+
     # Max entry fiyatı filtresi: pahalı tokenlar reversal'da çok zararlı
     entry_price = clob_ask if signal["action"] == "YES" else None
     if signal["action"] == "NO" and no_token:
