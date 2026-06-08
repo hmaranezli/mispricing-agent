@@ -438,6 +438,7 @@ async def _monitor_positions(
     for pos in list(open_positions):
         if pos.get("_closing"):
             continue
+        pos.pop("_no_clob_bid", None)  # stale CLOB bid temizle — her REST cycle'da yeniden set edilir
         try:
             if ws_triggered:
                 # ── WS hızlı path: REST yok, cached context ───────────────
@@ -456,6 +457,10 @@ async def _monitor_positions(
                     _price_source = "ws_bid" if _no_bid is not None else "ws_ask_complement"
                     _data_quality = "exact" if _no_bid is not None else "estimated"
                     pm_yes_price = ws_prices.get_ask(yes_tid)
+                    # Synthetic fallback: no_bid varsa YES ask'tan türet — gerçek fiyat
+                    # elimizdeyken YES ask yok diye monitor'ı körleştirme
+                    if pm_yes_price is None and _no_bid is not None:
+                        pm_yes_price = round(1 - _no_bid, 4)
                 if pm_yes_price is None:
                     continue
             else:
@@ -506,6 +511,12 @@ async def _monitor_positions(
                     pm_yes_price = ws_prices.get_ask(yes_tid)
                     if pm_yes_price is None:
                         pm_yes_price = await get_clob_price(yes_tid, "BUY")
+                    # Synthetic fallback: no_bid/clob varsa YES ask'ı türet — gerçek fiyat
+                    # elimizdeyken YES ask yok diye monitor'ı körleştirme
+                    if pm_yes_price is None:
+                        _eff_no = _no_bid if _no_bid is not None else pos.get("_no_clob_bid")
+                        if _eff_no is not None:
+                            pm_yes_price = round(1 - _eff_no, 4)
                 if pm_yes_price is None:
                     continue  # fiyat yok → bu döngüyü atla, bir sonrakinde tekrar dene
 

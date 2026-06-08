@@ -1242,6 +1242,89 @@ async def test_monitor_no_complement_when_ws_and_clob_both_fail():
         f"NO complement → estimated bekleniyor, alınan: {pos.get('mae_data_quality')}"
 
 
+# ── Critical 1: NO bid var + YES ask None → monitor skip etmemeli ─────────────
+
+@pytest.mark.asyncio
+async def test_monitor_no_ws_bid_yes_ask_none_calls_check_exit():
+    """NO + WS no_bid var + YES ask None → check_exit çağrılmalı, skip edilmemeli.
+
+    Gerçek no_bid elimizdeyken YES ask yok diye döngüyü atlamak, gerçek fiyat
+    varken körleşmek demektir. pm_yes_price = 1-no_bid synthetic set edilmeli.
+    """
+    import config as _cfg
+    pos = _pos_with_token("NO")
+    pos["_cached_hl_price"]          = 95000.0
+    pos["_cached_seconds_remaining"] = 900
+
+    mock_check = MagicMock(return_value=None)
+    with patch("main_loop.check_exit",        mock_check), \
+         patch("main_loop.asyncio.wait_for",  new_callable=AsyncMock, return_value=None), \
+         patch("main_loop.ws_prices")        as mock_ws, \
+         patch.object(_cfg, "DRY_RUN", True):
+        mock_ws.get_bid.return_value = 0.32   # no_bid mevcut
+        mock_ws.get_ask.return_value = None   # YES ask yok
+        await _monitor_positions([pos], [])
+    assert mock_check.called, (
+        "NO WS no_bid=0.32 var, YES ask=None → check_exit yine de çağrılmalı"
+    )
+
+
+@pytest.mark.asyncio
+async def test_monitor_no_clob_bid_yes_ask_none_calls_check_exit():
+    """NO + CLOB no_bid var + YES ask None (REST+CLOB) → check_exit çağrılmalı."""
+    import config as _cfg
+    pos = _pos_with_token("NO")
+    fake_window = {"best_ask": 0.70, "best_bid": 0.68, "seconds_remaining": 900, "neg_risk": False}
+
+    async def _clob_side(token_id, side="BUY"):
+        if side == "SELL":
+            return 0.33  # CLOB no_bid
+        return None      # YES ask CLOB da yok
+
+    mock_check = MagicMock(return_value=None)
+    with patch("main_loop.current_price",       new_callable=AsyncMock, return_value=95000.0), \
+         patch("main_loop.fetch_by_slug",       new_callable=AsyncMock, return_value={}), \
+         patch("main_loop.parse_market_window", return_value=fake_window), \
+         patch("main_loop.ws_prices")          as mock_ws, \
+         patch("main_loop.get_clob_price",      side_effect=_clob_side), \
+         patch("main_loop.check_exit",          mock_check), \
+         patch.object(_cfg, "DRY_RUN", True):
+        mock_ws.get_bid.return_value = None
+        mock_ws.get_ask.return_value = None  # YES ask yokluğu
+        await _monitor_positions([pos], [])
+    assert mock_check.called, (
+        "CLOB no_bid=0.33 var, YES ask tamamen yok → check_exit yine de çağrılmalı"
+    )
+
+
+# ── Critical 3: _no_clob_bid her cycle'da temizlenmeli (stale önleme) ─────────
+
+@pytest.mark.asyncio
+async def test_monitor_clears_stale_no_clob_bid_before_ws_cycle():
+    """WS cycle başında _no_clob_bid temizlenmeli — önceki REST cycle stale kalmaz.
+
+    Senaryo: REST cycle'da _no_clob_bid=0.35 set edildi. Sonraki WS cycle'da
+    no_bid=None, CLOB çağrısı yok. Eski _no_clob_bid kullanılmamalı.
+    """
+    import config as _cfg
+    pos = _pos_with_token("NO")
+    pos["_cached_hl_price"]          = 95000.0
+    pos["_cached_seconds_remaining"] = 900
+    pos["_no_clob_bid"]              = 0.35  # stale REST bid
+
+    with patch("main_loop.check_exit",        return_value=None), \
+         patch("main_loop.asyncio.wait_for",  new_callable=AsyncMock, return_value=None), \
+         patch("main_loop.ws_prices")        as mock_ws, \
+         patch.object(_cfg, "DRY_RUN", True):
+        mock_ws.get_bid.return_value = None   # WS no_bid yok
+        mock_ws.get_ask.return_value = 0.70   # YES ask var (complement)
+        await _monitor_positions([pos], [])
+    assert pos.get("_no_clob_bid") is None, (
+        f"Cycle başında stale _no_clob_bid=0.35 temizlenmeli, "
+        f"hâlâ {pos.get('_no_clob_bid')} var"
+    )
+
+
 # ── Faz 2: WS event-driven _monitor_positions ────────────────────────────────
 
 @pytest.mark.asyncio

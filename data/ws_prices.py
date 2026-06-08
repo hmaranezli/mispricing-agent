@@ -210,7 +210,11 @@ async def _flush_pending(ws, *, initial_connect: bool = True) -> None:
         })
         print(f"[ws] Subscribe (initial): {len(batch)} token, ilk: {batch[:3]}")
     else:
-        msg = json.dumps({"operation": "subscribe", "assets_ids": batch})
+        msg = json.dumps({
+            "operation":              "subscribe",
+            "assets_ids":             batch,
+            "custom_feature_enabled": True,
+        })
         print(f"[ws] Subscribe (update): {len(batch)} token, ilk: {batch[:3]}")
     await ws.send(msg)
     _subscribed.update(batch)

@@ -355,6 +355,29 @@ async def test_flush_pending_sends_unsubscribe_message():
     assert "tok_unsub" in payload.get("assets_ids", [])
 
 
+# ── Critical 2: custom_feature_enabled update subscribe'da zorunlu ───────────
+
+@pytest.mark.asyncio
+async def test_flush_pending_update_includes_custom_feature_enabled():
+    """_flush_pending(initial_connect=False): custom_feature_enabled=True içermeli.
+
+    Polymarket docs: best_bid_ask, new_market, market_resolved eventleri için
+    custom_feature_enabled=True zorunlu. Initial subscribe'da var, update'de eksikti.
+    Yeni tokenlar dynamic subscribe ile eklenirse bu eventleri kaçırır.
+    """
+    import json
+    _reset()
+    ws.subscribe(["tok_dynamic_1", "tok_dynamic_2"])
+    ws_mock = AsyncMock()
+    await ws._flush_pending(ws_mock, initial_connect=False)
+    assert ws_mock.send.called
+    payload = json.loads(ws_mock.send.call_args[0][0])
+    assert payload.get("custom_feature_enabled") is True, (
+        "update subscribe: custom_feature_enabled=True zorunlu "
+        "(best_bid_ask eventi için Polymarket docs gereği)"
+    )
+
+
 # ── Faz 2.5: Explicit Clean Close ─────────────────────────────────────────────
 
 @pytest.mark.asyncio
