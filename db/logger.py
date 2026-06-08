@@ -255,6 +255,104 @@ async def patch_position_resolution(
     await conn.commit()
 
 
+async def log_entry_air_pocket(conn, event: dict) -> int:
+    """Entry-side FAK_NO_MATCH event'ını entry_air_pocket_events tablosuna yazar.
+
+    Returns: event_id (int) — delayed snapshot update için kullanılır.
+    """
+    if conn is None:
+        return 0
+    cursor = await conn.execute(
+        """INSERT INTO entry_air_pocket_events (
+               slug, asset, action, market_id, token_id,
+               event_ts, council_pass_ts, order_submit_ts, error_ts,
+               council_to_submit_ms, submit_to_error_ms,
+               fair, expected_ask, original_worst_price, original_fee_adj, min_edge,
+               reported_liquidity, top_of_book_size, book_levels_used, book_source, book_age_ms,
+               order_id, error_type, position_created,
+               fresh_ask_after_fail, fresh_no_ask_after_fail, fresh_book_age_ms,
+               fresh_fee_adj_after_fail, fresh_price_delta_cents,
+               fresh_edge_still_passes_min_edge, would_retry_passed_shadow,
+               delayed_ask_after_fail, delayed_no_ask_after_fail, delayed_book_age_ms,
+               delayed_fee_adj_after_fail, delayed_price_delta_cents,
+               delayed_edge_still_passes_min_edge, delayed_would_retry_passed_shadow
+           ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            event.get("slug"),
+            event.get("asset"),
+            event.get("action"),
+            event.get("market_id"),
+            event.get("token_id"),
+            event.get("event_ts"),
+            event.get("council_pass_ts"),
+            event.get("order_submit_ts"),
+            event.get("error_ts"),
+            event.get("council_to_submit_ms"),
+            event.get("submit_to_error_ms"),
+            event.get("fair"),
+            event.get("expected_ask"),
+            event.get("original_worst_price"),
+            event.get("original_fee_adj"),
+            event.get("min_edge"),
+            event.get("reported_liquidity"),
+            event.get("top_of_book_size"),
+            event.get("book_levels_used"),
+            event.get("book_source"),
+            event.get("book_age_ms"),
+            event.get("order_id"),
+            event.get("error_type"),
+            event.get("position_created", 0),
+            event.get("fresh_ask_after_fail"),
+            event.get("fresh_no_ask_after_fail"),
+            event.get("fresh_book_age_ms"),
+            event.get("fresh_fee_adj_after_fail"),
+            event.get("fresh_price_delta_cents"),
+            event.get("fresh_edge_still_passes_min_edge"),
+            event.get("would_retry_passed_shadow"),
+            event.get("delayed_ask_after_fail"),
+            event.get("delayed_no_ask_after_fail"),
+            event.get("delayed_book_age_ms"),
+            event.get("delayed_fee_adj_after_fail"),
+            event.get("delayed_price_delta_cents"),
+            event.get("delayed_edge_still_passes_min_edge"),
+            event.get("delayed_would_retry_passed_shadow"),
+        ),
+    )
+    await conn.commit()
+    return cursor.lastrowid
+
+
+async def update_entry_air_pocket_delayed(conn, event_id: int, delayed: dict) -> None:
+    """Delayed shadow snapshot alanlarını mevcut air_pocket event'a yazar.
+
+    Background task'tan çağrılır — ana execution path'i bloklamaz.
+    """
+    if conn is None or not event_id:
+        return
+    await conn.execute(
+        """UPDATE entry_air_pocket_events SET
+               delayed_ask_after_fail=?,
+               delayed_no_ask_after_fail=?,
+               delayed_book_age_ms=?,
+               delayed_fee_adj_after_fail=?,
+               delayed_price_delta_cents=?,
+               delayed_edge_still_passes_min_edge=?,
+               delayed_would_retry_passed_shadow=?
+           WHERE id=?""",
+        (
+            delayed.get("delayed_ask_after_fail"),
+            delayed.get("delayed_no_ask_after_fail"),
+            delayed.get("delayed_book_age_ms"),
+            delayed.get("delayed_fee_adj_after_fail"),
+            delayed.get("delayed_price_delta_cents"),
+            delayed.get("delayed_edge_still_passes_min_edge"),
+            delayed.get("delayed_would_retry_passed_shadow"),
+            event_id,
+        ),
+    )
+    await conn.commit()
+
+
 async def log_partial_fill_update(conn, position: dict) -> None:
     """Kısmi fill sonrası açık pozisyonun shares ve partial_* alanlarını DB'ye yazar.
 

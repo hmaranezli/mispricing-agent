@@ -37,11 +37,13 @@ SCAN_INTERVAL_SECS = 7
 BANKROLL_CONFIG = float(os.getenv("BANKROLL_USD", "1000.0"))
 
 
-async def execute(finding, gate_result, risk_result, open_positions):
+async def execute(finding, gate_result, risk_result, open_positions,
+                  conn=None, council_pass_ts=None):
     """DRY_RUN flag'ine göre executor seç. Runtime'da değerlendirilir."""
     if config.DRY_RUN:
         return await _dry_execute(finding, gate_result, risk_result, open_positions)
-    return await _clob_execute(finding, gate_result, risk_result, open_positions)
+    return await _clob_execute(finding, gate_result, risk_result, open_positions,
+                               conn=conn, council_pass_ts=council_pass_ts)
 
 
 async def _load_open_positions(conn) -> list[dict]:
@@ -216,8 +218,10 @@ async def _scan_and_execute(
             continue
 
         gate_result, risk_result = result
+        council_pass_ts = datetime.now(timezone.utc).isoformat()
         t2 = time.time()
-        position = await execute(finding, gate_result, risk_result, open_positions)
+        position = await execute(finding, gate_result, risk_result, open_positions,
+                                 conn=conn, council_pass_ts=council_pass_ts)
         t_execute_total += time.time() - t2
         if position:
             # Entry execution telemetri: karar anındaki ask vs gerçek fill

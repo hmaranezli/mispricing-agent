@@ -53,6 +53,48 @@ CREATE TABLE IF NOT EXISTS positions (
     exit_reason      TEXT,
     dry_run          INTEGER NOT NULL DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS entry_air_pocket_events (
+    id                                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug                                 TEXT,
+    asset                                TEXT,
+    action                               TEXT,
+    market_id                            TEXT,
+    token_id                             TEXT,
+    event_ts                             TEXT,
+    council_pass_ts                      TEXT,
+    order_submit_ts                      TEXT,
+    error_ts                             TEXT,
+    council_to_submit_ms                 REAL,
+    submit_to_error_ms                   REAL,
+    fair                                 REAL,
+    expected_ask                         REAL,
+    original_worst_price                 REAL,
+    original_fee_adj                     REAL,
+    min_edge                             REAL,
+    reported_liquidity                   REAL,
+    top_of_book_size                     REAL,
+    book_levels_used                     INTEGER,
+    book_source                          TEXT,
+    book_age_ms                          REAL,
+    order_id                             TEXT,
+    error_type                           TEXT,
+    position_created                     INTEGER DEFAULT 0,
+    fresh_ask_after_fail                 REAL,
+    fresh_no_ask_after_fail              REAL,
+    fresh_book_age_ms                    REAL,
+    fresh_fee_adj_after_fail             REAL,
+    fresh_price_delta_cents              REAL,
+    fresh_edge_still_passes_min_edge     INTEGER,
+    would_retry_passed_shadow            INTEGER,
+    delayed_ask_after_fail               REAL,
+    delayed_no_ask_after_fail            REAL,
+    delayed_book_age_ms                  REAL,
+    delayed_fee_adj_after_fail           REAL,
+    delayed_price_delta_cents            REAL,
+    delayed_edge_still_passes_min_edge   INTEGER,
+    delayed_would_retry_passed_shadow    INTEGER
+);
 """
 
 

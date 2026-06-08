@@ -96,6 +96,9 @@ async def gate(finding: dict, verification: dict,
         {pass, confidence_score, action_taken, reason}
     """
     decision = _gate_decide(finding, verification, redteam, risk_result)
+    # Downstream telemetri için redteam metriklerini taşı
+    decision["fee_adj_edge"]  = redteam.get("fee_adj_edge")
+    decision["liquidity_usd"] = redteam.get("liquidity_usd")
 
     if not decision["pass"]:
         _log(finding, verification, redteam, decision, risk_result)
