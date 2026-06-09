@@ -462,8 +462,11 @@ async def _paper_shadow_scan_loop(conn) -> None:
     await asyncio.sleep(75)  # startup offset (4h/monitor sonrası)
     while True:
         try:
+            # 15m clean evren (canlı MIN_SECONDS=300 doğal filtre; 5m elenmiş olur)
             findings = await scan_shadow_edges()
-            for f in findings:
+            # 5m AYRI deney evreni: dinamik min_seconds=60, tf_filter='-5m-' → cohort='paper_5m'
+            findings_5m = await scan_shadow_edges(min_seconds=60, tf_filter="-5m-")
+            for f in findings + findings_5m:
                 try:
                     # T=0 snapshot: entry fiyatını sinyal anında dondur (temporal sync)
                     snapshot = await paper_tracker.build_entry_snapshot(f, position_usd=1.25)
@@ -473,8 +476,8 @@ async def _paper_shadow_scan_loop(conn) -> None:
                     )
                 except Exception as _pe:
                     print(f"[paper_scan] schedule fail-open: {_pe}")
-            if findings:
-                print(f"[paper_scan] {len(findings)} düşük-edge aday paper'a gönderildi")
+            if findings or findings_5m:
+                print(f"[paper_scan] {len(findings)} (15m) + {len(findings_5m)} (5m) düşük-edge aday paper'a gönderildi")
         except Exception as e:
             print(f"[paper_scan_loop] hata (fail-open): {e}")
         await asyncio.sleep(_PAPER_SCAN_SECS)

@@ -192,10 +192,12 @@ async def _process_market(
     cur_prices:   dict[str, float] | None = None,
     audit:        dict | None = None,
     min_edge:     float | None = None,
+    min_seconds:  float | None = None,
 ) -> dict | None:
     """Tek marketi değerlendirir. Edge yoksa veya veri eksikse None.
 
-    min_edge: None → config.MIN_EDGE_PCT (canlı). Shadow için düşük eşik geçilir.
+    min_edge:    None → config.MIN_EDGE_PCT (canlı). Shadow için düşük eşik geçilir.
+    min_seconds: None → MIN_SECONDS (canlı 300). 5m shadow için 60 geçilir.
     """
     def _inc(key):
         if audit is not None:
@@ -221,7 +223,8 @@ async def _process_market(
         _inc("skipped_neg_risk")
         return None
 
-    if window["seconds_remaining"] < MIN_SECONDS:
+    _msec = min_seconds if min_seconds is not None else MIN_SECONDS
+    if window["seconds_remaining"] < _msec:
         _inc("skipped_min_seconds")
         return None
 
@@ -327,11 +330,15 @@ async def _process_market(
 SHADOW_MAX_CANDIDATES = 40   # paper scan başına max aday (queue patlamasını önler)
 
 
-async def scan_shadow_edges(min_edge: float = PAPER_MIN_FEE_ADJ) -> list[dict]:
+async def scan_shadow_edges(min_edge: float = PAPER_MIN_FEE_ADJ,
+                            min_seconds: float | None = None,
+                            tf_filter: str | None = None) -> list[dict]:
     """PAPER cohort için düşük-edge tarama. Canlı scan_edges'e DOKUNMAZ.
 
     Council/execute path'ine ASLA girmez — sadece paper_tracker beslenir.
     Her aday için fee_adj_edge + edge_bucket eklenir; fee_adj < 0.03 elenir.
+    min_seconds: None → MIN_SECONDS (15m). 5m deney için 60 geçilir.
+    tf_filter: slug substring filtresi (örn '-5m-') — sadece o timeframe taranır.
     Max SHADOW_MAX_CANDIDATES aday döner (fail-open: hata → boş liste).
     """
     global _markets_cache, _markets_cache_ts
@@ -356,9 +363,12 @@ async def scan_shadow_edges(min_edge: float = PAPER_MIN_FEE_ADJ) -> list[dict]:
         }
 
         # Düşük raw eşikle tara (canlı 0.05 yerine ~0.03) — _process_market(min_edge)
+        markets = _markets_cache
+        if tf_filter:
+            markets = [m for m in markets if tf_filter in (m.get("slug", "") or "")]
         tasks = [_process_market(m, asset_vols, market_state, cur_prices, None,
-                                 min_edge=0.03)
-                 for m in _markets_cache]
+                                 min_edge=0.03, min_seconds=min_seconds)
+                 for m in markets]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         out = []

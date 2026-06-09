@@ -21,7 +21,9 @@ from datetime import datetime, timezone
 from uuid import uuid4
 from pathlib import Path
 
-from data.clob_price import get_book, sorted_asks
+from data.clob_price import get_book, sorted_asks, sorted_bids
+
+TP_LEVELS = (15, 20, 30)   # MFE take-profit eşikleri (%) — peak-time depth-walk ölçümü
 
 DB_FILE = Path("logs/mispricing.db")
 
@@ -98,6 +100,53 @@ def _slippage_baseline(finding):
     if finding.get("action") == "YES":
         return finding.get("best_ask")
     return finding.get("no_ask") or finding.get("best_ask")
+
+
+def _depth_walk_sell(book, shares):
+    """Aggressive taker SELL: bids'i pahalıdan ucuza ez, shares kadar ağırlıklı ort fiyat.
+    Returns (avg_sell_price, levels_used). Boş → (None, 0)."""
+    bids = sorted_bids(book)  # pahalı→ucuz (best satış önce)
+    if not bids:
+        return None, 0
+    remaining, proceeds, levels = shares, 0.0, 0
+    for px, sz in bids:
+        take = min(remaining, sz)
+        proceeds += take * px
+        remaining -= take
+        levels += 1
+        if remaining <= 0:
+            break
+    filled = shares - remaining
+    if filled <= 0:
+        return None, 0
+    return round(proceeds / filled, 6), levels
+
+
+async def _measure_tp_exit(paper_id, exit_token, tp_level, slug, asset, action,
+                           entry_price, shares, pos_usd, db_path=None):
+    """TP eşiği geçildiğinde gerçek SELL depth-walk → tradable TP P&L (fire-and-forget).
+
+    Sadece paper/shadow gözlem. Live execute'a bağlanmaz. Hata → fail-open (log)."""
+    from datetime import datetime, timezone
+    try:
+        book = await asyncio.wait_for(get_book(exit_token), timeout=GET_BOOK_TIMEOUT)
+        avg_sell, levels = _depth_walk_sell(book, shares)
+        if avg_sell is None:
+            return
+        real_pnl = round((avg_sell - entry_price) / entry_price * pos_usd, 6) if entry_price > 0 else None
+        nominal_tp = entry_price * (1 + tp_level / 100.0)
+        slip = round((nominal_tp - avg_sell) / nominal_tp, 4) if nominal_tp > 0 else None
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await _write_tp_measurement({
+            "paper_id": paper_id, "slug": slug, "asset": asset, "action": action,
+            "tp_level": tp_level, "entry_price": entry_price, "shares": shares,
+            "real_tradable_tp_pnl": real_pnl, "sell_avg_price": avg_sell,
+            "exit_slippage_pct": slip, "exit_levels_used": levels,
+            "exit_book_age_ms": 0.0, "tp_hit_ts": now_iso,
+            "exit_depth_walk_source": "rest_book", "created_at": now_iso,
+        }, db_path)
+    except Exception as e:
+        print(f"[paper_tp] {slug} tp{tp_level} ölçüm fail-open: {e}")
 
 
 def _net_ev_after_slippage(action, fair, est_fill, fee=0.02):
@@ -340,10 +389,14 @@ async def _paper_open_worker(finding, gate_result, risk_result, db_path=None,
         now_iso = datetime.now(timezone.utc).isoformat()
         secs_at_open = finding.get("seconds_remaining")
 
-        # ── Collapse/late timing filtresi → ayrı cohort (clean'e karışmaz) ───
+        # ── Cohort tasnifi ────────────────────────────────────────────────────
+        # 5m AYRI deney evreni (paper_5m) — 15m clean cohort'una ASLA karışmaz.
         collapse_flag = 1 if (sig_secs is not None and sig_secs < COLLAPSE_SECS) else 0
         late_flag = 1 if (snapshot_age_ms is not None and snapshot_age_ms > LATE_SNAPSHOT_MS) else 0
-        if collapse_flag or late_flag:
+        is_5m = "-5m-" in (finding.get("slug", "") or "")
+        if is_5m:
+            cohort, dq = "paper_5m", (data_quality or "estimated")  # 5m komple ayrı
+        elif collapse_flag or late_flag:
             cohort, dq = "paper_late", "late_collapse_entry"
         else:
             cohort, dq = "paper", (data_quality or "estimated")
@@ -423,6 +476,7 @@ async def _paper_open_worker(finding, gate_result, risk_result, db_path=None,
             "_stale_count":      0,
             "_last_secs":        finding.get("seconds_remaining"),
             "_model_exits":      {},  # model → (price, reason, ts)
+            "_tp_hits":          set(),  # ölçülen TP eşikleri (first-hit idempotency)
             "db_path":           db_path,
         }
         print(f"[paper] AÇILDI {finding.get('slug')} {finding.get('action')} "
@@ -464,6 +518,21 @@ async def update_paper_position(state, pm_price, hl_price, secs, db_path=None):
     for model, (action, reason) in decisions.items():
         if action in ("EXIT", "CATASTROPHE_EXIT") and model not in state["_model_exits"]:
             state["_model_exits"][model] = (pm_price, reason, now_iso)
+
+    # ── TP first-hit depth-walk ölçümü (peak-time tradable MFE) ──────────────
+    # dd bir TP eşiğini İLK kez geçtiyse → fire-and-forget gerçek SELL depth-walk.
+    # İdempotent: state["_tp_hits"] + DB UNIQUE(paper_id,tp_level). Live'a bağlanmaz.
+    tp_hits = state.setdefault("_tp_hits", set())
+    exit_tok = (state.get("yes_token_id") if state["action"] == "YES"
+                else state.get("no_token_id"))
+    for tp in TP_LEVELS:
+        if dd >= tp / 100.0 and tp not in tp_hits:
+            tp_hits.add(tp)
+            asyncio.create_task(_measure_tp_exit(
+                state["paper_id"], exit_tok, tp, state["slug"], state["asset"],
+                state["action"], entry, state.get("shares") or 0.0,
+                state.get("position_usd") or 1.25, state.get("db_path"),
+            ))
 
     state["_last_secs"] = secs
     compute_ms = round((time.perf_counter() - t0) * 1000, 2)
@@ -644,6 +713,29 @@ async def _insert_paper_position(rec, db_path=None):
                  rec.get("seconds_remaining_at_signal"), rec.get("seconds_remaining_at_open"),
                  rec.get("late_entry_flag"), rec.get("collapse_timing_flag"),
                  rec.get("signal_timestamp_ms"), rec["created_at"]),
+            )
+            await conn.commit()
+    await asyncio.wait_for(_do(), timeout=DB_TIMEOUT)
+
+
+async def _write_tp_measurement(rec, db_path=None):
+    """TP exit ölçümünü yazar (INSERT OR IGNORE — UNIQUE(paper_id,tp_level) idempotent)."""
+    path = db_path or DB_FILE
+    async def _do():
+        async with aiosqlite.connect(str(path)) as conn:
+            await conn.execute(
+                """INSERT OR IGNORE INTO tp_exit_measurements (
+                       paper_id, slug, asset, action, tp_level, entry_price, shares,
+                       real_tradable_tp_pnl, sell_avg_price, exit_slippage_pct,
+                       exit_levels_used, exit_book_age_ms, tp_hit_ts,
+                       exit_depth_walk_source, created_at
+                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (rec["paper_id"], rec.get("slug"), rec.get("asset"), rec.get("action"),
+                 rec["tp_level"], rec.get("entry_price"), rec.get("shares"),
+                 rec.get("real_tradable_tp_pnl"), rec.get("sell_avg_price"),
+                 rec.get("exit_slippage_pct"), rec.get("exit_levels_used"),
+                 rec.get("exit_book_age_ms"), rec.get("tp_hit_ts"),
+                 rec.get("exit_depth_walk_source"), rec.get("created_at")),
             )
             await conn.commit()
     await asyncio.wait_for(_do(), timeout=DB_TIMEOUT)

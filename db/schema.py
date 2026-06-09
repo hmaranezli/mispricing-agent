@@ -207,6 +207,26 @@ CREATE TABLE IF NOT EXISTS shadow_model_pnl (
     created_at        TEXT
 );
 
+CREATE TABLE IF NOT EXISTS tp_exit_measurements (
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    paper_id               TEXT,
+    slug                   TEXT,
+    asset                  TEXT,
+    action                 TEXT,
+    tp_level               INTEGER,
+    entry_price            REAL,
+    shares                 REAL,
+    real_tradable_tp_pnl   REAL,
+    sell_avg_price         REAL,
+    exit_slippage_pct      REAL,
+    exit_levels_used       INTEGER,
+    exit_book_age_ms       REAL,
+    tp_hit_ts              TEXT,
+    exit_depth_walk_source TEXT,
+    created_at             TEXT,
+    UNIQUE(paper_id, tp_level)
+);
+
 CREATE TABLE IF NOT EXISTS paper_entry_events (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     paper_id         TEXT,
