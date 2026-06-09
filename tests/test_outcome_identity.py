@@ -17,9 +17,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def test_make_tracking_key_v2_unique():
     from data.model_telemetry import make_tracking_key_v2
     # EVENT-LEVEL UNIQUE: signal_ts_ms içerir; slug|asset|tf|action YASAK
-    k1 = make_tracking_key_v2("btc-updown-15m-1", 12345)
-    assert k1 == "btc-updown-15m-1|12345"
-    assert make_tracking_key_v2("btc-updown-15m-1", 67890) != k1  # farklı ts → farklı key
+    k1 = make_tracking_key_v2("btc-updown-15m-1", 12345, "YES", "u1")
+    assert k1 == "btc-updown-15m-1|12345|YES|u1"
+    assert make_tracking_key_v2("btc-updown-15m-1", 12345, "NO", "u2") != k1  # farklı action
 
 
 def test_v2_telemetry_carries_paper_id():

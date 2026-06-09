@@ -137,7 +137,7 @@ async def test_tracking_key_collision_detectable():
 # format helper
 def test_make_tracking_key_v2_format():
     from data.model_telemetry import make_tracking_key_v2
-    tk = make_tracking_key_v2("btc-updown-15m-1", 12345)
-    assert tk == "btc-updown-15m-1|12345"
-    # signal_ts farklı → farklı key
-    assert make_tracking_key_v2("btc-updown-15m-1", 99999) != tk
+    tk = make_tracking_key_v2("btc-updown-15m-1", 12345, "YES", "u1")
+    assert tk == "btc-updown-15m-1|12345|YES|u1"
+    # action farklı → farklı key
+    assert make_tracking_key_v2("btc-updown-15m-1", 12345, "NO", "u1") != tk

@@ -465,18 +465,20 @@ async def _paper_shadow_scan_loop(conn) -> None:
     while True:
         try:
             # 15m clean evren (canlı MIN_SECONDS=300 doğal filtre; 5m elenmiş olur)
-            findings = await scan_shadow_edges()
+            findings, rejected = await scan_shadow_edges(return_rejected=True)
             # 5m AYRI deney evreni: dinamik min_seconds=60, tf_filter='-5m-' → cohort='paper_5m'
-            findings_5m = await scan_shadow_edges(min_seconds=60, tf_filter="-5m-")
+            findings_5m, rejected_5m = await scan_shadow_edges(min_seconds=60, tf_filter="-5m-",
+                                                              return_rejected=True)
             for f in findings + findings_5m:
                 try:
                     # T=0 snapshot: entry fiyatını sinyal anında dondur (temporal sync)
                     snapshot = await paper_tracker.build_entry_snapshot(f, position_usd=1.25)
                     # Outcome-link: deterministik paper_id + EVENT-LEVEL UNIQUE tracking_key
-                    # (snapshot_id = slug|signal_ts_ms). Hem paper'a hem telemetri'ye AYNI değer.
+                    # = slug|signal_ts_ms|action|uuid (action ayrıştırıcı, uuid %100 unique).
+                    # Hem paper'a hem telemetri'ye AYNI değer.
                     _paper_id = str(_uuid4())
                     _sig_ms = snapshot.get("signal_timestamp_ms") if snapshot else None
-                    _tracking_key = f"{f.get('slug')}|{_sig_ms}" if _sig_ms else None
+                    _tracking_key = f"{f.get('slug')}|{_sig_ms}|{f.get('action')}|{_uuid4().hex[:12]}"
                     paper_tracker.schedule_paper_open(
                         f, {"confidence_score": None},
                         {"position_usd": 1.25}, conn=conn, snapshot=snapshot,
@@ -508,8 +510,36 @@ async def _paper_shadow_scan_loop(conn) -> None:
                         print(f"[model_telemetry] hook error (devam): {_te}")
                 except Exception as _pe:
                     print(f"[paper_scan] schedule fail-open: {_pe}")
+            # would_enter=False COVERAGE: below_threshold adaylar (paper AÇILMAZ, sadece decision event)
+            for rf in (rejected + rejected_5m):
+                try:
+                    _rraw = await model_telemetry.get_raw_vol(rf.get("asset"))
+                    _rtf = "5m" if "-5m-" in (rf.get("slug") or "") else "15m"
+                    _rsig = int(time.time() * 1000)
+                    _rtk = f"{rf.get('slug')}|{_rsig}|{rf.get('action')}|{_uuid4().hex[:12]}"
+                    _rw = rf.get("_window") or {}
+                    _rrec = model_telemetry.compute_legacy_telemetry_v2(
+                        asset=rf.get("asset"), action=rf.get("action"),
+                        slug=rf.get("slug"), timeframe=_rtf,
+                        p_now=rf.get("cur_price"), p_ref=rf.get("ref_price"),
+                        tte_seconds=rf.get("seconds_remaining"), raw_vol=_rraw,
+                        yes_bid=rf.get("best_bid"), yes_ask=rf.get("best_ask"),
+                        no_ask_observed=rf.get("no_ask"),
+                        fair_yes_val=rf.get("fair_value"), net_ev=rf.get("fee_adj_edge"),
+                        fair_gap=rf.get("edge"), edge_bin=None, would_enter=False,
+                        snapshot_id=_rtk, fee_adjustment=0.02,
+                        decision_threshold=config.MIN_EDGE_PCT,
+                        window_open_ts=str(_rw.get("start_ms")) if _rw.get("start_ms") else None,
+                        window_close_ts=str(_rw.get("end_ms")) if _rw.get("end_ms") else None,
+                        paper_id=None, tracking_key=_rtk,
+                        skip_reason=rf.get("reject_reason", "below_threshold"),
+                    )
+                    model_telemetry.schedule_telemetry(_rrec, db_path=None)
+                except Exception as _re:
+                    print(f"[model_telemetry] rejected hook error (devam): {_re}")
             if findings or findings_5m:
-                print(f"[paper_scan] {len(findings)} (15m) + {len(findings_5m)} (5m) düşük-edge aday paper'a gönderildi")
+                print(f"[paper_scan] {len(findings)} (15m) + {len(findings_5m)} (5m) aday + "
+                      f"{len(rejected)+len(rejected_5m)} would_enter=False loglandı")
         except Exception as e:
             print(f"[paper_scan_loop] hata (fail-open): {e}")
         await asyncio.sleep(_PAPER_SCAN_SECS)

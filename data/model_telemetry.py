@@ -25,6 +25,11 @@ _SECONDS_PER_YEAR = 31_557_600.0
 DB_TIMEOUT     = 3.0
 MAX_CONCURRENT = 16
 _active = 0
+_collision_count = 0  # tracking_key UNIQUE collision sayacı (sessiz veri kaybı ÖLÇÜLÜR)
+
+
+def get_collision_count():
+    return _collision_count
 
 
 _raw_vol_cache: dict = {}
@@ -122,10 +127,11 @@ TAKER_FEE = 0.02
 ENTRY_SLIPPAGE = 0.01
 
 
-def make_tracking_key_v2(slug, signal_timestamp_ms):
-    """EVENT-LEVEL UNIQUE tracking_key = slug|signal_timestamp_ms (snapshot_id).
-    slug|asset|tf|action YASAK (unique değil). signal_ts_ms her event'te farklı → unique."""
-    return f"{slug}|{signal_timestamp_ms}"
+def make_tracking_key_v2(slug, signal_timestamp_ms, action, event_uid):
+    """EVENT-LEVEL UNIQUE tracking_key = slug|signal_ts_ms|action|event_uid.
+    action AYRIŞTIRICI (aynı slug+ms+farklı action → farklı key). event_uid (uuid) %100 unique.
+    slug|asset|tf|action ve slug|signal_ts_ms (action'sız) YASAK."""
+    return f"{slug}|{signal_timestamp_ms}|{action}|{event_uid}"
 
 
 def resolve_join_method(event_paper_id, paper_paper_id, event_tk, paper_tk):
@@ -195,10 +201,10 @@ def compute_legacy_telemetry_v2(asset, action, slug, timeframe, p_now, p_ref,
         cf_reason = "missing_raw_vol"
     cf_supported = cf_reason is None
 
-    # EVENT-LEVEL UNIQUE tracking_key: dışarıdan (main_loop snapshot_id-bazlı).
-    # Yoksa snapshot_id'den türet (unique). slug|asset|tf|action ASLA kullanılmaz.
+    # EVENT-LEVEL UNIQUE tracking_key: dışarıdan (main_loop, slug|ts|action|uuid).
+    # Yoksa event_id'ye düş (unique). slug|signal_ts_ms (action'sız) ASLA kullanılmaz.
     if tracking_key is None:
-        tracking_key = snapshot_id  # snapshot_id = slug|signal_ts_ms (unique)
+        tracking_key = base["event_id"]
 
     base.update({
         "telemetry_schema_version": 2,
@@ -296,12 +302,14 @@ async def _telemetry_worker(rec, db_path=None):
 
 
 async def _write_telemetry_v2(rec, db_path=None):
-    """V2 INSERT OR IGNORE (V1 kolonları + V2 alanları), idempotent, timeout'lu."""
+    """V2 INSERT (OR IGNORE KALDIRILDI) — tracking_key UNIQUE collision IntegrityError ile
+    YAKALANIR + _collision_count++ + log. Sessiz veri kaybı YOK. timeout'lu."""
+    global _collision_count
     path = db_path or DB_FILE
     async def _do():
         async with aiosqlite.connect(str(path)) as conn:
             await conn.execute(
-                """INSERT OR IGNORE INTO model_decision_events (
+                """INSERT INTO model_decision_events (
                        event_id, snapshot_id, timestamp, slug, asset, timeframe, action,
                        model_version, ref_price, p_now, best_bid, best_ask, spread,
                        snapshot_age_ms, raw_realized_vol, clamped_model_vol, vol_was_clamped,
@@ -317,8 +325,8 @@ async def _write_telemetry_v2(rec, db_path=None):
                        counterfactual_supported, counterfactual_missing_reason,
                        outcome_link_supported, tracking_key, paper_id, shadow_candidate_id
                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (rec["event_id"], rec["snapshot_id"], rec["timestamp"], rec.get("slug"),
-                 rec.get("asset"), rec.get("timeframe"), rec.get("action"), rec["model_version"],
+                (rec["event_id"], rec.get("snapshot_id"), rec.get("timestamp"), rec.get("slug"),
+                 rec.get("asset"), rec.get("timeframe"), rec.get("action"), rec.get("model_version"),
                  rec.get("ref_price"), rec.get("p_now"), rec.get("best_bid"), rec.get("best_ask"),
                  rec.get("spread"), rec.get("snapshot_age_ms"), rec.get("raw_realized_vol"),
                  rec.get("clamped_model_vol"), 1 if rec.get("vol_was_clamped") else 0,
@@ -342,7 +350,13 @@ async def _write_telemetry_v2(rec, db_path=None):
                  rec.get("paper_id"), rec.get("shadow_candidate_id")),
             )
             await conn.commit()
-    await asyncio.wait_for(_do(), timeout=DB_TIMEOUT)
+    import sqlite3
+    try:
+        await asyncio.wait_for(_do(), timeout=DB_TIMEOUT)
+    except sqlite3.IntegrityError as ie:
+        _collision_count += 1
+        print(f"[model_telemetry] COLLISION tracking_key={rec.get('tracking_key')} "
+              f"event_id={rec.get('event_id')} count={_collision_count} ({ie})")
 
 
 async def _write_telemetry(rec, db_path=None):
@@ -361,8 +375,8 @@ async def _write_telemetry(rec, db_path=None):
                        action_fair, fee_adjustment, net_ev, fair_gap, edge_bin,
                        decision_threshold, would_enter, skip_reason, created_at
                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (rec["event_id"], rec["snapshot_id"], rec["timestamp"], rec.get("slug"),
-                 rec.get("asset"), rec.get("timeframe"), rec.get("action"), rec["model_version"],
+                (rec["event_id"], rec.get("snapshot_id"), rec.get("timestamp"), rec.get("slug"),
+                 rec.get("asset"), rec.get("timeframe"), rec.get("action"), rec.get("model_version"),
                  rec.get("ref_price"), rec.get("p_now"), rec.get("best_bid"), rec.get("best_ask"),
                  rec.get("spread"), rec.get("snapshot_age_ms"), rec.get("raw_realized_vol"),
                  rec.get("clamped_model_vol"), 1 if rec.get("vol_was_clamped") else 0,

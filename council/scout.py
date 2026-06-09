@@ -332,7 +332,8 @@ SHADOW_MAX_CANDIDATES = 40   # paper scan başına max aday (queue patlamasını
 
 async def scan_shadow_edges(min_edge: float = PAPER_MIN_FEE_ADJ,
                             min_seconds: float | None = None,
-                            tf_filter: str | None = None) -> list[dict]:
+                            tf_filter: str | None = None,
+                            return_rejected: bool = False):
     """PAPER cohort için düşük-edge tarama. Canlı scan_edges'e DOKUNMAZ.
 
     Council/execute path'ine ASLA girmez — sadece paper_tracker beslenir.
@@ -372,14 +373,18 @@ async def scan_shadow_edges(min_edge: float = PAPER_MIN_FEE_ADJ,
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         out = []
+        rejected = []
         for r in results:
             if not r or isinstance(r, Exception):
                 continue
             fee_adj = round(_shadow_fee_adj(r), 4)
             bucket  = _edge_bucket(fee_adj)
-            if bucket is None:        # fee_adj < 0.03 → paper evren dışı
-                continue
             r["fee_adj_edge"] = fee_adj
+            if bucket is None:        # fee_adj < 0.03 → paper evren dışı (would_enter=False)
+                r["edge_bucket"]  = None
+                r["reject_reason"] = "below_threshold"
+                rejected.append(r)
+                continue
             r["edge_bucket"]  = bucket
             out.append(r)
 
@@ -387,10 +392,12 @@ async def scan_shadow_edges(min_edge: float = PAPER_MIN_FEE_ADJ,
         if len(out) > SHADOW_MAX_CANDIDATES:
             print(f"[paper_scan] {len(out)} aday → ilk {SHADOW_MAX_CANDIDATES} (cap)")
             out = out[:SHADOW_MAX_CANDIDATES]
+        if return_rejected:
+            return out, rejected[:SHADOW_MAX_CANDIDATES]
         return out
     except Exception as e:
         print(f"[paper_scan] scan_shadow_edges fail-open: {e}")
-        return []
+        return ([], []) if return_rejected else []
 
 
 async def scan_edges() -> list[dict]:

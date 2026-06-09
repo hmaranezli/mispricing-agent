@@ -68,7 +68,7 @@ def test_v2_tracking_key():
         no_ask_observed=None, fair_yes_val=0.55, net_ev=0.05, fair_gap=0.05,
         edge_bin="x", would_enter=True, snapshot_id="btc-updown-15m-1|9876",
         fee_adjustment=0.02, decision_threshold=0.05)
-    assert rec["tracking_key"] == "btc-updown-15m-1|9876"  # snapshot_id (unique), 4-parça DEĞİL
+    assert rec["tracking_key"] == rec["event_id"]  # tracking_key None → event_id fallback (unique)
     assert rec["outcome_link_supported"] is True
 
 
