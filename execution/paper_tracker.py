@@ -81,6 +81,25 @@ def _ask_buffer_price(best_ask):
     return round(best_ask + TAKER_BUFFER, 4), "ask_buffer", "low"
 
 
+COLLAPSE_SECS = 180   # signal_seconds_remaining bunun altı → collapse riski, paper_late cohort
+LATE_SNAPSHOT_MS = 90_000  # snapshot bu kadar eskiyse late_entry (T=0 sync bozuldu)
+
+
+def _action_fair(action, yes_fair):
+    """Aldığımız tarafın fair olasılığı. YES→yes_fair, NO→1-yes_fair."""
+    if yes_fair is None:
+        return None
+    return yes_fair if action == "YES" else round(1 - yes_fair, 4)
+
+
+def _slippage_baseline(finding):
+    """Slippage baseline = ALDIĞIMIZ token'ın ask'ı. YES→best_ask, NO→no_ask.
+    NO-fill'i YES-best_ask ile karşılaştırma artefaktını önler."""
+    if finding.get("action") == "YES":
+        return finding.get("best_ask")
+    return finding.get("no_ask") or finding.get("best_ask")
+
+
 def _net_ev_after_slippage(action, fair, est_fill, fee=0.02):
     """Tahmini gerçek fill sonrası net EV (sabit slippage değil, depth-walk fill).
 
@@ -174,11 +193,63 @@ def _dedupe_key(finding):
     return (finding.get("slug"), finding.get("asset"), finding.get("action"))
 
 
+async def build_entry_snapshot(finding: dict, position_usd: float = 1.25) -> dict | None:
+    """T=0 entry snapshot — sinyal görüldüğü anda fiyat/EV dondurur (temporal sync).
+
+    get_book burada (T=0) çağrılır; paper_open_worker bunu kullanır, T+60s'de YENİDEN ÇEKMEZ.
+    action-side fair + slippage baseline (NO artefaktı yok). Hata → None (fail-open).
+    """
+    try:
+        action = finding.get("action", "YES")
+        token = (finding.get("yes_token_id") if action == "YES"
+                 else finding.get("no_token_id"))
+        depth_price = depth_method = depth_quality = None
+        try:
+            book = await asyncio.wait_for(get_book(token), timeout=GET_BOOK_TIMEOUT)
+            depth_price, depth_method, depth_quality, _ = _estimate_entry_price(book, position_usd)
+        except Exception:
+            pass
+        if depth_price is None:
+            ba = finding.get("best_ask")
+            if not ba or ba <= 0:
+                return None
+            depth_price, depth_method, depth_quality = _ask_buffer_price(ba)
+
+        yes_fair  = finding.get("fair_value")
+        act_fair  = _action_fair(action, yes_fair)
+        baseline  = _slippage_baseline(finding)
+        slip      = round((depth_price - baseline) / baseline, 4) if baseline else None
+        net_ev, viab = _net_ev_after_slippage(action, yes_fair, depth_price)
+
+        return {
+            "entry_price":             depth_price,
+            "entry_method":            depth_method,
+            "data_quality":            depth_quality,
+            "signal_best_ask":         finding.get("best_ask"),
+            "signal_best_bid":         finding.get("best_bid"),
+            "signal_depth_walk_entry": depth_price if depth_method == "depth_walk" else None,
+            "signal_fee_adj_edge":     finding.get("fee_adj_edge"),
+            "signal_net_ev":           net_ev,
+            "signal_slippage":         slip,
+            "signal_seconds_remaining": finding.get("seconds_remaining"),
+            "signal_timestamp_ms":     int(time.time() * 1000),
+            "yes_fair":                yes_fair,
+            "no_fair":                 round(1 - yes_fair, 4) if yes_fair is not None else None,
+            "action_fair":             act_fair,
+            "paper_viability":         viab,
+        }
+    except Exception as e:
+        print(f"[paper] build_entry_snapshot fail-open: {e}")
+        return None
+
+
 # ── schedule: non-blocking giriş noktası ─────────────────────────────────────
 
-def schedule_paper_open(finding, gate_result, risk_result, conn=None, db_path=None):
+def schedule_paper_open(finding, gate_result, risk_result, conn=None, db_path=None,
+                        snapshot=None):
     """SENKRON + non-blocking. Paper-open worker fırlatır, anında döner.
 
+    snapshot: build_entry_snapshot(T=0) çıktısı — worker get_book çağırmaz (temporal sync).
     Live loop'u ASLA bloklamaz (içinde await/get_book/DB yok).
     Returns: live_loop_delay_ms (kanıt için ölçülür).
     """
@@ -196,7 +267,7 @@ def schedule_paper_open(finding, gate_result, risk_result, conn=None, db_path=No
         _active[key] = {"status": "reserving"}
         delay = round((time.perf_counter() - t0) * 1000, 3)
         asyncio.create_task(
-            _paper_open_worker(finding, gate_result, risk_result, db_path, delay)
+            _paper_open_worker(finding, gate_result, risk_result, db_path, delay, snapshot)
         )
         return delay
     except Exception as e:
@@ -205,7 +276,7 @@ def schedule_paper_open(finding, gate_result, risk_result, conn=None, db_path=No
 
 
 async def _paper_open_worker(finding, gate_result, risk_result, db_path=None,
-                             live_delay_ms=0.0):
+                             live_delay_ms=0.0, snapshot=None):
     """Background: depth-walk entry estimate + shadow_positions insert.
 
     Live loop'u bekletmez. Hata → fail-open (memory map temizlenir, log)."""
@@ -215,37 +286,67 @@ async def _paper_open_worker(finding, gate_result, risk_result, db_path=None,
         token_id = (finding.get("yes_token_id") if finding.get("action") == "YES"
                     else finding.get("no_token_id"))
 
-        # ── Entry estimate: depth-walk → ask+buffer fallback ─────────────────
-        depth_price = depth_method = depth_quality = None
+        action = finding.get("action", "YES")
+        fair = finding.get("fair_value") or 0.0
         depth_levels = 0
-        try:
-            book = await asyncio.wait_for(get_book(token_id), timeout=GET_BOOK_TIMEOUT)
-            depth_price, depth_method, depth_quality, depth_levels = \
-                _estimate_entry_price(book, position_usd)
-        except Exception as be:
-            print(f"[paper] {finding.get('slug')} book hatası, fallback: {be}")
+        now_ms = int(time.time() * 1000)
 
-        if depth_price is not None:
-            entry_price, entry_method, data_quality = depth_price, depth_method, depth_quality
+        # ── TEMPORAL SYNC: snapshot varsa T=0 entry, get_book ÇAĞIRMA ─────────
+        if snapshot is not None:
+            entry_price  = snapshot["entry_price"]
+            entry_method = snapshot.get("entry_method")
+            data_quality = snapshot.get("data_quality")
+            depth_price  = snapshot.get("signal_depth_walk_entry")
+            est_slip     = snapshot.get("signal_slippage")
+            net_ev       = snapshot.get("signal_net_ev")
+            viability    = snapshot.get("paper_viability")
+            yes_fair     = snapshot.get("yes_fair")
+            no_fair      = snapshot.get("no_fair")
+            action_fair  = snapshot.get("action_fair")
+            sig_secs     = snapshot.get("signal_seconds_remaining")
+            sig_ts       = snapshot.get("signal_timestamp_ms")
+            entry_source = "scout_snapshot"
+            snapshot_age_ms = round(now_ms - sig_ts, 1) if sig_ts else None
         else:
-            best_ask = finding.get("best_ask")
-            if not best_ask or best_ask <= 0:
-                print(f"[paper] {finding.get('slug')} fiyat yok — paper açılamadı")
-                _active.pop(key, None)
-                return
-            entry_price, entry_method, data_quality = _ask_buffer_price(best_ask)
+            depth_price = depth_method = depth_quality = None
+            try:
+                book = await asyncio.wait_for(get_book(token_id), timeout=GET_BOOK_TIMEOUT)
+                depth_price, depth_method, depth_quality, depth_levels = \
+                    _estimate_entry_price(book, position_usd)
+            except Exception as be:
+                print(f"[paper] {finding.get('slug')} book hatası, fallback: {be}")
+            if depth_price is not None:
+                entry_price, entry_method, data_quality = depth_price, depth_method, depth_quality
+                entry_source = "immediate_depth_walk"
+            else:
+                ba = finding.get("best_ask")
+                if not ba or ba <= 0:
+                    print(f"[paper] {finding.get('slug')} fiyat yok — paper açılamadı")
+                    _active.pop(key, None)
+                    return
+                entry_price, entry_method, data_quality = _ask_buffer_price(ba)
+                entry_source = "fallback_late_book"
+            baseline = _slippage_baseline(finding)
+            est_slip = round((entry_price - baseline) / baseline, 4) if baseline else None
+            net_ev, viability = _net_ev_after_slippage(action, fair, entry_price)
+            yes_fair    = fair
+            no_fair     = round(1 - fair, 4) if fair else None
+            action_fair = _action_fair(action, fair)
+            sig_secs    = finding.get("seconds_remaining")
+            snapshot_age_ms = None
 
         shares = round(position_usd / entry_price, 6) if entry_price > 0 else 0.0
         paper_id = str(uuid4())
         now_iso = datetime.now(timezone.utc).isoformat()
+        secs_at_open = finding.get("seconds_remaining")
 
-        # ── Net EV after estimated slippage + viability ──────────────────────
-        action = finding.get("action", "YES")
-        fair = finding.get("fair_value") or 0.0
-        best_ask = finding.get("best_ask") or 0.0
-        est_slip = (round((entry_price - best_ask) / best_ask, 4)
-                    if best_ask > 0 else None)
-        net_ev, viability = _net_ev_after_slippage(action, fair, entry_price)
+        # ── Collapse/late timing filtresi → ayrı cohort (clean'e karışmaz) ───
+        collapse_flag = 1 if (sig_secs is not None and sig_secs < COLLAPSE_SECS) else 0
+        late_flag = 1 if (snapshot_age_ms is not None and snapshot_age_ms > LATE_SNAPSHOT_MS) else 0
+        if collapse_flag or late_flag:
+            cohort, dq = "paper_late", "late_collapse_entry"
+        else:
+            cohort, dq = "paper", (data_quality or "estimated")
 
         rec = {
             "paper_id":              paper_id,
@@ -266,10 +367,21 @@ async def _paper_open_worker(finding, gate_result, risk_result, db_path=None,
             "estimated_slippage_pct":          est_slip,
             "net_ev_after_estimated_slippage": net_ev,
             "paper_viability":      viability,
+            "yes_fair":             yes_fair,
+            "no_fair":              no_fair,
+            "action_fair":          action_fair,
+            "entry_source":         entry_source,
+            "snapshot_age_ms":      snapshot_age_ms,
+            "seconds_remaining_at_signal": sig_secs,
+            "seconds_remaining_at_open":   secs_at_open,
+            "late_entry_flag":      late_flag,
+            "collapse_timing_flag": collapse_flag,
+            "signal_timestamp_ms":  (snapshot.get("signal_timestamp_ms") if snapshot else None),
+            "cohort":               cohort,
             "ref_price":            finding.get("ref_price"),
             "entry_hl_price":       finding.get("cur_price"),
             "confidence_score":     (gate_result or {}).get("confidence_score"),
-            "data_quality":         data_quality,
+            "data_quality":         dq,
             "created_at":           now_iso,
         }
         await _insert_paper_position(rec, db_path)
@@ -515,17 +627,23 @@ async def _insert_paper_position(rec, db_path=None):
                        status, cohort, confidence_level, data_quality, is_paper,
                        edge_bucket, fee_adj_edge, depth_walk_estimated_fill,
                        estimated_slippage_pct, net_ev_after_estimated_slippage,
-                       paper_viability, created_at
-                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'open','paper','low',?,1,?,?,?,?,?,?,?)""",
+                       paper_viability, yes_fair, no_fair, action_fair, entry_source,
+                       snapshot_age_ms, seconds_remaining_at_signal, seconds_remaining_at_open,
+                       late_entry_flag, collapse_timing_flag, signal_timestamp_ms, created_at
+                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'open',?,'low',?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (rec["paper_id"], rec["source_event_id"], rec["ts_open"], rec["slug"],
                  rec["asset"], rec["action"], rec["entry_price_estimated"], rec["entry_method"],
                  rec["position_usd_paper"], rec["shares_paper"], rec["fair_value"], rec["edge"],
                  rec["ref_price"], rec["entry_hl_price"], rec["confidence_score"],
-                 rec["data_quality"],
+                 rec.get("cohort", "paper"), rec["data_quality"],
                  rec.get("edge_bucket"), rec.get("fee_adj_edge"),
                  rec.get("depth_walk_estimated_fill"), rec.get("estimated_slippage_pct"),
                  rec.get("net_ev_after_estimated_slippage"), rec.get("paper_viability"),
-                 rec["created_at"]),
+                 rec.get("yes_fair"), rec.get("no_fair"), rec.get("action_fair"),
+                 rec.get("entry_source"), rec.get("snapshot_age_ms"),
+                 rec.get("seconds_remaining_at_signal"), rec.get("seconds_remaining_at_open"),
+                 rec.get("late_entry_flag"), rec.get("collapse_timing_flag"),
+                 rec.get("signal_timestamp_ms"), rec["created_at"]),
             )
             await conn.commit()
     await asyncio.wait_for(_do(), timeout=DB_TIMEOUT)

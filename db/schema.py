@@ -158,6 +158,16 @@ CREATE TABLE IF NOT EXISTS shadow_positions (
     estimated_slippage_pct           REAL,
     net_ev_after_estimated_slippage  REAL,
     paper_viability       TEXT,
+    yes_fair              REAL,
+    no_fair               REAL,
+    action_fair           REAL,
+    entry_source          TEXT,
+    snapshot_age_ms       REAL,
+    seconds_remaining_at_signal  REAL,
+    seconds_remaining_at_open    REAL,
+    late_entry_flag       INTEGER,
+    collapse_timing_flag  INTEGER,
+    signal_timestamp_ms   INTEGER,
     created_at            TEXT
 );
 
@@ -281,6 +291,17 @@ _MIGRATIONS = [
     "ALTER TABLE shadow_positions ADD COLUMN estimated_slippage_pct REAL",
     "ALTER TABLE shadow_positions ADD COLUMN net_ev_after_estimated_slippage REAL",
     "ALTER TABLE shadow_positions ADD COLUMN paper_viability TEXT",
+    # NO baseline + temporal snapshot handoff
+    "ALTER TABLE shadow_positions ADD COLUMN yes_fair REAL",
+    "ALTER TABLE shadow_positions ADD COLUMN no_fair REAL",
+    "ALTER TABLE shadow_positions ADD COLUMN action_fair REAL",
+    "ALTER TABLE shadow_positions ADD COLUMN entry_source TEXT",
+    "ALTER TABLE shadow_positions ADD COLUMN snapshot_age_ms REAL",
+    "ALTER TABLE shadow_positions ADD COLUMN seconds_remaining_at_signal REAL",
+    "ALTER TABLE shadow_positions ADD COLUMN seconds_remaining_at_open REAL",
+    "ALTER TABLE shadow_positions ADD COLUMN late_entry_flag INTEGER",
+    "ALTER TABLE shadow_positions ADD COLUMN collapse_timing_flag INTEGER",
+    "ALTER TABLE shadow_positions ADD COLUMN signal_timestamp_ms INTEGER",
 ]
 
 

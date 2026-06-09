@@ -465,9 +465,11 @@ async def _paper_shadow_scan_loop(conn) -> None:
             findings = await scan_shadow_edges()
             for f in findings:
                 try:
+                    # T=0 snapshot: entry fiyatını sinyal anında dondur (temporal sync)
+                    snapshot = await paper_tracker.build_entry_snapshot(f, position_usd=1.25)
                     paper_tracker.schedule_paper_open(
                         f, {"confidence_score": None},
-                        {"position_usd": 1.25}, conn=conn,
+                        {"position_usd": 1.25}, conn=conn, snapshot=snapshot,
                     )
                 except Exception as _pe:
                     print(f"[paper_scan] schedule fail-open: {_pe}")
