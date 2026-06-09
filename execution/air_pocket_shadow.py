@@ -22,7 +22,7 @@ import aiosqlite
 from datetime import datetime, timezone
 from pathlib import Path
 
-from data.clob_price import get_book
+from data.clob_price import get_book, sorted_bids
 
 DB_FILE = Path("logs/mispricing.db")
 
@@ -148,16 +148,15 @@ async def _worker(snap: dict, current_exit_price: float, exit_token: str,
         # ── Post-wait book snapshot (GERÇEK veri, timeout'lu) ────────────────
         try:
             book = await asyncio.wait_for(get_book(exit_token), timeout=GET_BOOK_TIMEOUT)
-            bids = (book or {}).get("bids", []) if book else []
+            bids = sorted_bids(book)  # pahalı→ucuz (best=ilk); bids[0]'ı best sanma
             if bids:
-                post_bid = float(bids[0].get("price", 0) or 0)
+                post_bid = bids[0][0]  # en yüksek bid (best)
                 rec["post_wait_bid"] = post_bid if post_bid > 0 else None
 
-                # depth-walk: position kadar fill için derinlik
+                # depth-walk: position kadar fill için derinlik (en iyi bid'ten başla)
                 shares = snap.get("shares") or 0.0
                 remaining, filled = shares, 0.0
-                for b in bids:
-                    sz = float(b.get("size", 0) or 0)
+                for px, sz in bids:
                     take = min(remaining, sz)
                     filled += take
                     remaining -= take

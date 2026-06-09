@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 from pathlib import Path
 
-from data.clob_price import get_book
+from data.clob_price import get_book, sorted_asks
 
 DB_FILE = Path("logs/mispricing.db")
 
@@ -49,24 +49,18 @@ _active: dict = {}
 # ── Entry price estimate (mid ASLA) ──────────────────────────────────────────
 
 def _estimate_entry_price(book, position_usd):
-    """Ask tarafı depth-walk: position_usd ile alınabilecek ağırlıklı ort fiyat.
+    """Ask tarafı depth-walk EN UCUZDAN: position_usd ile ağırlıklı ort fill.
 
+    sorted_asks (ucuz→pahalı) kullanır — asks[0]'ı best sanmaz (book sorting bug fix).
     Returns (price, method, quality, levels). Boş kitap → (None,'none','low',0).
     """
-    asks = (book or {}).get("asks", []) if book else []
+    asks = sorted_asks(book)  # ucuzdan pahalıya
     if not asks:
         return None, "none", "low", 0
     remaining_usd = position_usd
     shares = 0.0
     levels = 0
-    for a in asks:
-        try:
-            px = float(a.get("price", 0) or 0)
-            sz = float(a.get("size", 0) or 0)
-        except (TypeError, ValueError):
-            continue
-        if px <= 0 or sz <= 0:
-            continue
+    for px, sz in asks:
         cost = px * sz
         take_usd = min(remaining_usd, cost)
         shares += take_usd / px

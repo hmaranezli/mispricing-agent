@@ -9,7 +9,7 @@ import asyncio
 import aiosqlite
 from pathlib import Path
 
-from data.clob_price import get_book
+from data.clob_price import get_book, sorted_bids
 
 DB_FILE = Path("logs/mispricing.db")
 
@@ -31,11 +31,11 @@ async def enrich_entry_depth(
         if not book:
             return
 
-        bids = book.get("bids", [])
+        bids = sorted_bids(book)  # pahalı→ucuz (best=ilk); bids[0]'ı best sanma
         if not bids:
             return
 
-        top_size = float(bids[0].get("size", 0) or 0)
+        top_size = bids[0][1]  # en yüksek bid'in size'ı
         if top_size <= 0:
             return
 
@@ -43,11 +43,7 @@ async def enrich_entry_depth(
         remaining = shares
         levels    = 0
         w_price   = 0.0
-        for bid in bids:
-            px = float(bid.get("price", 0) or 0)
-            sz = float(bid.get("size",  0) or 0)
-            if px <= 0 or sz <= 0:
-                continue
+        for px, sz in bids:
             take       = min(remaining, sz)
             w_price   += take * px
             remaining -= take

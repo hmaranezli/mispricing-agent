@@ -30,11 +30,50 @@ async def get_clob_price(token_id: str, side: str = "BUY") -> float | None:
     return None
 
 
+def _book_levels(raw) -> list[tuple[float, float]]:
+    """Ham book seviyelerini [(price, size)] güvenli parse eder (string/float).
+    Geçersiz/sıfır seviyeler atlanır. Sıralama varsayımı YOK."""
+    out = []
+    for x in raw or []:
+        try:
+            p = float(x.get("price", 0) or 0)
+            s = float(x.get("size", 0) or 0)
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if p > 0 and s > 0:
+            out.append((p, s))
+    return out
+
+
+def sorted_asks(book: dict | None) -> list[tuple[float, float]]:
+    """Ask seviyeleri ucuzdan pahalıya (best=ilk). Polymarket /book asks AZALAN gelir
+    — sıralamaya güvenme, fiyata göre yeniden sırala."""
+    return sorted(_book_levels((book or {}).get("asks")), key=lambda x: x[0])
+
+
+def sorted_bids(book: dict | None) -> list[tuple[float, float]]:
+    """Bid seviyeleri pahalıdan ucuza (best=ilk). Polymarket /book bids ARTAN gelir."""
+    return sorted(_book_levels((book or {}).get("bids")), key=lambda x: x[0], reverse=True)
+
+
+def best_ask_from_book(book: dict | None) -> float | None:
+    """En iyi (en düşük) ask. Boş → None (fail-open)."""
+    lv = _book_levels((book or {}).get("asks"))
+    return min(lv, key=lambda x: x[0])[0] if lv else None
+
+
+def best_bid_from_book(book: dict | None) -> float | None:
+    """En iyi (en yüksek) bid. Boş → None (fail-open)."""
+    lv = _book_levels((book or {}).get("bids"))
+    return max(lv, key=lambda x: x[0])[0] if lv else None
+
+
 async def get_book(token_id: str) -> dict | None:
     """CLOB GET /book?token_id=<id> → tam OrderBookSummary.
 
-    bids: fiyata göre azalan (bids[0] = en iyi bid)
-    asks: fiyata göre artan (asks[0] = en iyi ask)
+    DİKKAT: Polymarket asks'ı AZALAN ([0]=en yüksek), bids'i ARTAN ([0]=en düşük)
+    döndürür — yani [0] HER İKİSİNDE EN KÖTÜ. best_ask_from_book/best_bid_from_book
+    veya sorted_asks/sorted_bids kullan; asks[0]/bids[0]'ı best sanma.
     Her level: {"price": "0.46", "size": "150"}
     Returns: dict veya None (hata / token yok).
     """

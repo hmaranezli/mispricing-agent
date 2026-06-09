@@ -264,22 +264,26 @@ async def test_shadow_4h_scan_writes_trade_enabled_false():
     conn = await aiosqlite.connect(":memory:")
     await init_schema(conn)
 
+    from datetime import datetime, timezone, timedelta
+    _now = datetime.now(timezone.utc)
     fake_market = {
         "slug": "eth-updown-4h-1780934400",
         "question": "Will ETH go up?",
         "bestAsk": "0.51", "bestBid": "0.49",
-        "eventStartTime": "2026-06-08T16:00:00Z",
-        "endDate": "2026-06-08T20:00:00Z",
+        # Dinamik: pencere şu an açık (zaman-bağımsız test) — _4H_MIN_SECS geçer
+        "eventStartTime": (_now - timedelta(hours=1)).isoformat(),
+        "endDate": (_now + timedelta(hours=3)).isoformat(),
         "negRisk": False,
         "outcomePrices": '["0.51","0.49"]',
         "liquidityNum": 4900,
         "clobTokenIds": '["tok3","tok4"]',
     }
 
-    with patch("data.shortterm.find_shortterm_4h", return_value=[fake_market]), \
-         patch("data.hl_candles.price_at_timestamp", return_value=3000.0), \
-         patch("data.hl_candles.current_price", return_value=3020.0), \
-         patch("data.fair_value.fair_yes", return_value=0.56):
+    with patch("data.shortterm.find_shortterm_4h", new_callable=AsyncMock, return_value=[fake_market]), \
+         patch("main_loop.find_shortterm_4h", new_callable=AsyncMock, return_value=[fake_market]), \
+         patch("main_loop.price_at_timestamp", new_callable=AsyncMock, return_value=3000.0), \
+         patch("main_loop.current_price", new_callable=AsyncMock, return_value=3020.0), \
+         patch("main_loop.fair_yes", return_value=0.56):
         from main_loop import _run_shadow_4h_scan
         await _run_shadow_4h_scan(conn)
 

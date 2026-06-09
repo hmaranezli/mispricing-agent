@@ -8,7 +8,7 @@ import asyncio
 import time
 
 from data import ws_prices
-from data.clob_price import get_book
+from data.clob_price import get_book, sorted_asks
 
 TAKER_FEE      = 0.02   # Polymarket %2 taker fee (conservative default)
 ENTRY_SLIPPAGE = 0.01   # clob_executor.PRICE_PREMIUM ile eşleşiyor
@@ -39,11 +39,11 @@ async def _read_book(token_id: str) -> tuple:
     # 2. REST fallback
     try:
         book = await asyncio.wait_for(get_book(token_id), timeout=REST_TIMEOUT)
-        if book and book.get("asks"):
-            asks = book["asks"]
-            ask = float(asks[0]["price"])
+        asks = sorted_asks(book)  # ucuz→pahalı (best=ilk); asks[0]'ı best sanma
+        if asks:
+            ask, sz = asks[0]  # en düşük ask (best)
             if ask > 0:
-                top_size = round(float(asks[0].get("size", 0)) * ask, 2)
+                top_size = round(sz * ask, 2)
                 levels   = len(asks)
                 return ask, 0.0, "rest", top_size, levels
     except Exception:
