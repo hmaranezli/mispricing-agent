@@ -118,6 +118,133 @@ def compute_legacy_telemetry(asset, action, p_now, p_ref, secs, best_bid, best_a
     }
 
 
+TAKER_FEE = 0.02
+ENTRY_SLIPPAGE = 0.01
+
+
+def make_tracking_key(slug, asset, timeframe, action):
+    """Deterministik outcome-link anahtarı (V2 telemetri ↔ paper join)."""
+    return f"{slug}|{asset}|{timeframe}|{action}"
+
+
+def compute_legacy_telemetry_v2(asset, action, slug, timeframe, p_now, p_ref,
+                                tte_seconds, raw_vol, yes_bid, yes_ask, no_ask_observed,
+                                fair_yes_val, net_ev, fair_gap, edge_bin, would_enter,
+                                snapshot_id, fee_adjustment, decision_threshold,
+                                window_open_ts=None, window_close_ts=None,
+                                snapshot_age_ms=None, skip_reason=None,
+                                vol_source="realized_1m_60m", vol_window="60m"):
+    """V2 telemetri: NO türetim + TTE izolasyonu + counterfactual_supported + tracking_key.
+
+    Model davranışını DEĞİŞTİRMEZ — sadece input/output loglar.
+    """
+    # base (V1) hesap — clamp/sigma_t/z
+    base = compute_legacy_telemetry(
+        asset=asset, action=action, p_now=p_now, p_ref=p_ref, secs=tte_seconds,
+        best_bid=yes_bid, best_ask=yes_ask, raw_vol=raw_vol, fair_yes_val=fair_yes_val,
+        net_ev=net_ev, fair_gap=fair_gap, edge_bin=edge_bin, would_enter=would_enter,
+        snapshot_id=snapshot_id, slug=slug, timeframe=timeframe,
+        snapshot_age_ms=snapshot_age_ms, fee_adjustment=fee_adjustment,
+        decision_threshold=decision_threshold, skip_reason=skip_reason,
+        vol_source=vol_source, vol_window=vol_window)
+
+    # NO bid/ask türetimi
+    if no_ask_observed is not None:
+        no_ask, src = round(no_ask_observed, 4), "observed_no_ask"
+    elif yes_bid is not None:
+        no_ask, src = round(1 - yes_bid, 4), "derived_from_yes_book"
+    else:
+        no_ask, src = None, "unavailable"
+    no_bid = round(1 - yes_ask, 4) if yes_ask is not None else None
+
+    if action == "YES":
+        action_bid, action_ask = yes_bid, yes_ask
+    else:
+        action_bid, action_ask = no_bid, no_ask
+    action_spread = (action_ask - action_bid) if (action_ask is not None and action_bid is not None) else None
+
+    # TTE izolasyonu
+    tte_years = (tte_seconds / _SECONDS_PER_YEAR) if (tte_seconds and tte_seconds > 0) else None
+
+    # counterfactual_supported: action_ask + tte + threshold + raw_vol gerekli
+    cf_reason = None
+    if action_ask is None:
+        cf_reason = "missing_action_ask"
+    elif tte_years is None or tte_years <= 0:
+        cf_reason = "missing_or_zero_tte"
+    elif decision_threshold is None:
+        cf_reason = "missing_threshold"
+    elif raw_vol is None:
+        cf_reason = "missing_raw_vol"
+    cf_supported = cf_reason is None
+
+    tracking_key = make_tracking_key(slug, asset, timeframe, action)
+
+    base.update({
+        "telemetry_schema_version": 2,
+        "yes_bid": yes_bid, "yes_ask": yes_ask, "no_bid": no_bid, "no_ask": no_ask,
+        "bid_ask_source": src, "action_bid": action_bid, "action_ask": action_ask,
+        "action_spread": round(action_spread, 4) if action_spread is not None else None,
+        "time_to_expiry_seconds": tte_seconds,
+        "time_to_expiry_ms": tte_seconds * 1000 if tte_seconds is not None else None,
+        "pricing_tte_years": tte_years,
+        "pricing_model_tte_input": tte_years,
+        "window_open_ts": window_open_ts, "window_close_ts": window_close_ts,
+        "counterfactual_supported": cf_supported,
+        "counterfactual_missing_reason": cf_reason,
+        "outcome_link_supported": True,
+        "tracking_key": tracking_key,
+        "paper_id": None, "shadow_candidate_id": None,
+    })
+    return base
+
+
+def compute_counterfactual(ev):
+    """OFFLINE counterfactual: clamped yerine raw_vol ile fair/net_ev. SADECE aynı event verisi.
+    Math-safe (div0/NaN/Inf/TTE→0 → supported=False). Başka parametre değişmez."""
+    out = {"counterfactual_supported": False, "counterfactual_missing_reason": None}
+    try:
+        raw = ev.get("raw_realized_vol")
+        years = ev.get("pricing_tte_years")
+        p_now = ev.get("p_now"); p_ref = ev.get("ref_price")
+        action = ev.get("action"); action_ask = ev.get("action_ask")
+        fee = ev.get("fee_adjustment"); thr = ev.get("decision_threshold")
+        if raw is None: out["counterfactual_missing_reason"] = "missing_raw_vol"; return out
+        if action_ask is None: out["counterfactual_missing_reason"] = "missing_action_ask"; return out
+        if not years or years <= 0: out["counterfactual_missing_reason"] = "math_error_near_expiry_tte_zero"; return out
+        if not p_now or not p_ref or p_now <= 0 or p_ref <= 0:
+            out["counterfactual_missing_reason"] = "math_error_invalid_price"; return out
+        fee = 0.02 if fee is None else fee
+        thr = 0.05 if thr is None else thr
+
+        sigma_t_raw = raw * math.sqrt(years)
+        if sigma_t_raw < 1e-12:
+            out["counterfactual_missing_reason"] = "math_error_sigma_zero"; return out
+        z_raw = math.log(p_now / p_ref) / sigma_t_raw
+        if not math.isfinite(z_raw):
+            out["counterfactual_missing_reason"] = "math_error_z_nonfinite"; return out
+        fair_yes_raw = 0.5 * (1 + math.erf(z_raw / math.sqrt(2)))
+        action_fair_raw = fair_yes_raw if action == "YES" else (1 - fair_yes_raw)
+        net_ev_raw = action_fair_raw * (1 - fee) - (action_ask + ENTRY_SLIPPAGE)
+        would_enter_unclamped = net_ev_raw >= thr
+
+        out.update({
+            "counterfactual_supported": True,
+            "raw_vol_counterfactual_fair_yes": round(fair_yes_raw, 6),
+            "raw_vol_counterfactual_fair_no": round(1 - fair_yes_raw, 6),
+            "raw_vol_counterfactual_action_fair": round(action_fair_raw, 6),
+            "raw_vol_counterfactual_net_ev": round(net_ev_raw, 6),
+            "would_enter_unclamped": bool(would_enter_unclamped),
+            "lower_clamp_suppressed_entry": bool(
+                would_enter_unclamped and not ev.get("would_enter", 0)),
+            "sigma_t_raw": round(sigma_t_raw, 8), "z_raw": round(z_raw, 6),
+        })
+        return out
+    except Exception as e:
+        out["counterfactual_missing_reason"] = f"math_error_{type(e).__name__}"
+        return out
+
+
 def schedule_telemetry(rec, db_path=None):
     """SENKRON + non-blocking. Telemetri yazımını background'a fırlatır, anında döner.
     Live/scout loop'u ASLA bloklamaz (içinde await/DB yok). Returns delay_ms."""
@@ -138,11 +265,64 @@ async def _telemetry_worker(rec, db_path=None):
     """Background: telemetri DB yazımı. Hata → log error + devam (crash YOK)."""
     global _active
     try:
-        await _write_telemetry(rec, db_path)
+        if rec.get("telemetry_schema_version") == 2:
+            await _write_telemetry_v2(rec, db_path)
+        else:
+            await _write_telemetry(rec, db_path)
     except Exception as e:
         print(f"[model_telemetry] write error (devam): {e}")
     finally:
         _active = max(0, _active - 1)
+
+
+async def _write_telemetry_v2(rec, db_path=None):
+    """V2 INSERT OR IGNORE (V1 kolonları + V2 alanları), idempotent, timeout'lu."""
+    path = db_path or DB_FILE
+    async def _do():
+        async with aiosqlite.connect(str(path)) as conn:
+            await conn.execute(
+                """INSERT OR IGNORE INTO model_decision_events (
+                       event_id, snapshot_id, timestamp, slug, asset, timeframe, action,
+                       model_version, ref_price, p_now, best_bid, best_ask, spread,
+                       snapshot_age_ms, raw_realized_vol, clamped_model_vol, vol_was_clamped,
+                       vol_clamp_min, vol_clamp_max, vol_source, vol_window, sigma_t,
+                       z_score, z_abs, z_overconfidence_flag, z_overconfidence_threshold,
+                       vol_clamp_and_high_z, drift_term, momentum_term, fair_yes, fair_no,
+                       action_fair, fee_adjustment, net_ev, fair_gap, edge_bin,
+                       decision_threshold, would_enter, skip_reason, created_at,
+                       telemetry_schema_version, yes_bid, yes_ask, no_bid, no_ask,
+                       bid_ask_source, action_bid, action_ask, action_spread,
+                       time_to_expiry_seconds, time_to_expiry_ms, pricing_tte_years,
+                       pricing_model_tte_input, window_open_ts, window_close_ts,
+                       counterfactual_supported, counterfactual_missing_reason,
+                       outcome_link_supported, tracking_key, paper_id, shadow_candidate_id
+                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (rec["event_id"], rec["snapshot_id"], rec["timestamp"], rec.get("slug"),
+                 rec.get("asset"), rec.get("timeframe"), rec.get("action"), rec["model_version"],
+                 rec.get("ref_price"), rec.get("p_now"), rec.get("best_bid"), rec.get("best_ask"),
+                 rec.get("spread"), rec.get("snapshot_age_ms"), rec.get("raw_realized_vol"),
+                 rec.get("clamped_model_vol"), 1 if rec.get("vol_was_clamped") else 0,
+                 rec.get("vol_clamp_min"), rec.get("vol_clamp_max"), rec.get("vol_source"),
+                 rec.get("vol_window"), rec.get("sigma_t"), rec.get("z_score"), rec.get("z_abs"),
+                 1 if rec.get("z_overconfidence_flag") else 0, rec.get("z_overconfidence_threshold"),
+                 1 if rec.get("vol_clamp_and_high_z") else 0, rec.get("drift_term"),
+                 rec.get("momentum_term"), rec.get("fair_yes"), rec.get("fair_no"),
+                 rec.get("action_fair"), rec.get("fee_adjustment"), rec.get("net_ev"),
+                 rec.get("fair_gap"), rec.get("edge_bin"), rec.get("decision_threshold"),
+                 rec.get("would_enter"), rec.get("skip_reason"), rec.get("created_at"),
+                 rec.get("telemetry_schema_version"), rec.get("yes_bid"), rec.get("yes_ask"),
+                 rec.get("no_bid"), rec.get("no_ask"), rec.get("bid_ask_source"),
+                 rec.get("action_bid"), rec.get("action_ask"), rec.get("action_spread"),
+                 rec.get("time_to_expiry_seconds"), rec.get("time_to_expiry_ms"),
+                 rec.get("pricing_tte_years"), rec.get("pricing_model_tte_input"),
+                 rec.get("window_open_ts"), rec.get("window_close_ts"),
+                 1 if rec.get("counterfactual_supported") else 0,
+                 rec.get("counterfactual_missing_reason"),
+                 1 if rec.get("outcome_link_supported") else 0, rec.get("tracking_key"),
+                 rec.get("paper_id"), rec.get("shadow_candidate_id")),
+            )
+            await conn.commit()
+    await asyncio.wait_for(_do(), timeout=DB_TIMEOUT)
 
 
 async def _write_telemetry(rec, db_path=None):

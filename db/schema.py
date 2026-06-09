@@ -396,6 +396,30 @@ _MIGRATIONS = [
     "ALTER TABLE shadow_positions ADD COLUMN signal_timestamp_ms INTEGER",
     # TP size-ladder: eski küçük-size ölçümleri karantina
     "ALTER TABLE tp_exit_measurements ADD COLUMN measurement_cohort TEXT DEFAULT 'legacy_small_size'",
+    # Telemetry V2: NO bid/ask + TTE + counterfactual + outcome link
+    "ALTER TABLE model_decision_events ADD COLUMN telemetry_schema_version INTEGER DEFAULT 1",
+    "ALTER TABLE model_decision_events ADD COLUMN yes_bid REAL",
+    "ALTER TABLE model_decision_events ADD COLUMN yes_ask REAL",
+    "ALTER TABLE model_decision_events ADD COLUMN no_bid REAL",
+    "ALTER TABLE model_decision_events ADD COLUMN no_ask REAL",
+    "ALTER TABLE model_decision_events ADD COLUMN bid_ask_source TEXT",
+    "ALTER TABLE model_decision_events ADD COLUMN action_bid REAL",
+    "ALTER TABLE model_decision_events ADD COLUMN action_ask REAL",
+    "ALTER TABLE model_decision_events ADD COLUMN action_spread REAL",
+    "ALTER TABLE model_decision_events ADD COLUMN time_to_expiry_seconds REAL",
+    "ALTER TABLE model_decision_events ADD COLUMN time_to_expiry_ms REAL",
+    "ALTER TABLE model_decision_events ADD COLUMN pricing_tte_years REAL",
+    "ALTER TABLE model_decision_events ADD COLUMN pricing_model_tte_input REAL",
+    "ALTER TABLE model_decision_events ADD COLUMN window_open_ts TEXT",
+    "ALTER TABLE model_decision_events ADD COLUMN window_close_ts TEXT",
+    "ALTER TABLE model_decision_events ADD COLUMN counterfactual_supported INTEGER",
+    "ALTER TABLE model_decision_events ADD COLUMN counterfactual_missing_reason TEXT",
+    "ALTER TABLE model_decision_events ADD COLUMN outcome_link_supported INTEGER",
+    "ALTER TABLE model_decision_events ADD COLUMN tracking_key TEXT",
+    "ALTER TABLE model_decision_events ADD COLUMN paper_id TEXT",
+    "ALTER TABLE model_decision_events ADD COLUMN shadow_candidate_id TEXT",
+    # Outcome link: paper'lara tracking_key (V2 telemetri ↔ shadow_positions join)
+    "ALTER TABLE shadow_positions ADD COLUMN tracking_key TEXT",
 ]
 
 

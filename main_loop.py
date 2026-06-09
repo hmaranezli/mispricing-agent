@@ -475,21 +475,25 @@ async def _paper_shadow_scan_loop(conn) -> None:
                         f, {"confidence_score": None},
                         {"position_usd": 1.25}, conn=conn, snapshot=snapshot,
                     )
-                    # Legacy model telemetri (VOL CLAMP hipotezi) — non-blocking, log+devam
+                    # Legacy model telemetri V2 (VOL CLAMP + counterfactual altyapısı) — non-blocking
                     try:
                         _raw = await model_telemetry.get_raw_vol(f.get("asset"))
                         _tf = "5m" if "-5m-" in (f.get("slug") or "") else "15m"
-                        _rec = model_telemetry.compute_legacy_telemetry(
+                        _w = f.get("_window") or {}
+                        _rec = model_telemetry.compute_legacy_telemetry_v2(
                             asset=f.get("asset"), action=f.get("action"),
-                            p_now=f.get("cur_price"), p_ref=f.get("ref_price"),
-                            secs=f.get("seconds_remaining"),
-                            best_bid=f.get("best_bid"), best_ask=f.get("best_ask"),
-                            raw_vol=_raw, fair_yes_val=f.get("fair_value"),
-                            net_ev=f.get("fee_adj_edge"), fair_gap=f.get("edge"),
-                            edge_bin=f.get("edge_bucket"), would_enter=True,
-                            snapshot_id=f"{f.get('slug')}|{snapshot.get('signal_timestamp_ms') if snapshot else ''}",
                             slug=f.get("slug"), timeframe=_tf,
-                            decision_threshold=config.MIN_EDGE_PCT,
+                            p_now=f.get("cur_price"), p_ref=f.get("ref_price"),
+                            tte_seconds=f.get("seconds_remaining"), raw_vol=_raw,
+                            yes_bid=f.get("best_bid"), yes_ask=f.get("best_ask"),
+                            no_ask_observed=f.get("no_ask"),
+                            fair_yes_val=f.get("fair_value"), net_ev=f.get("fee_adj_edge"),
+                            fair_gap=f.get("edge"), edge_bin=f.get("edge_bucket"),
+                            would_enter=True,
+                            snapshot_id=f"{f.get('slug')}|{snapshot.get('signal_timestamp_ms') if snapshot else ''}",
+                            fee_adjustment=0.02, decision_threshold=config.MIN_EDGE_PCT,
+                            window_open_ts=str(_w.get("start_ms")) if _w.get("start_ms") else None,
+                            window_close_ts=str(_w.get("end_ms")) if _w.get("end_ms") else None,
                         )
                         model_telemetry.schedule_telemetry(_rec, db_path=None)
                     except Exception as _te:
