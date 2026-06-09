@@ -9,6 +9,7 @@ import aiohttp
 from datetime import datetime, timezone
 
 GAMMA = "https://gamma-api.polymarket.com/markets"
+REST_TIMEOUT = 3.0  # market discovery — agresif timeout (20s→3s, 22s outlier guard)
 
 
 def _parse(raw):
@@ -102,7 +103,7 @@ async def _fetch_slug(session, slug):
 
 async def fetch_by_slug(slug):
     """Tek slug için bağımsız sorgu — main_loop._monitor_positions kullanır."""
-    timeout = aiohttp.ClientTimeout(total=10)
+    timeout = aiohttp.ClientTimeout(total=REST_TIMEOUT)
     async with aiohttp.ClientSession(timeout=timeout) as s:
         return await _fetch_slug(s, slug)
 
@@ -122,7 +123,7 @@ async def fetch_resolved(slug: str) -> dict | None:
 
     Returns: {"yes_exit": float, "no_exit": float} veya None
     """
-    timeout = aiohttp.ClientTimeout(total=10)
+    timeout = aiohttp.ClientTimeout(total=REST_TIMEOUT)
     async with aiohttp.ClientSession(timeout=timeout) as s:
         try:
             async with s.get(GAMMA, params={"slug": slug, "closed": "true"}) as r:
@@ -159,7 +160,7 @@ async def find_shortterm_4h(
 ):
     """4h Up/Down marketleri çeker. Shadow scan içindir — canlı trade'e gitmez."""
     found   = []
-    timeout = aiohttp.ClientTimeout(total=20)
+    timeout = aiohttp.ClientTimeout(total=REST_TIMEOUT)
     async with aiohttp.ClientSession(timeout=timeout) as s:
         tasks   = [_fetch_slug(s, slug) for slug in slugs_for_now_4h(assets, lookback)]
         results = await asyncio.gather(*tasks)
@@ -171,7 +172,7 @@ async def find_shortterm_4h(
 
 async def find_shortterm(intervals=(5, 15, 60)):
     found = []
-    timeout = aiohttp.ClientTimeout(total=20)
+    timeout = aiohttp.ClientTimeout(total=REST_TIMEOUT)
     async with aiohttp.ClientSession(timeout=timeout) as s:
         tasks = []
         for iv in intervals:

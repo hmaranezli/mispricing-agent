@@ -14,8 +14,10 @@ async def _post(session, payload):
         return await r.json()
 
 
+MARKET_STATE_TIMEOUT = 3.0  # market state — agresif timeout (20s→3s)
+
 async def fetch_market_state(assets=("BTC", "ETH")):
-    timeout = aiohttp.ClientTimeout(total=20)
+    timeout = aiohttp.ClientTimeout(total=MARKET_STATE_TIMEOUT)
     async with aiohttp.ClientSession(timeout=timeout) as s:
         # Tum perp'lerin anlik durumu (fiyat, funding, mark, oracle)
         meta = await _post(s, {"type": "metaAndAssetCtxs"})

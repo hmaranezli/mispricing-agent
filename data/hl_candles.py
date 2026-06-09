@@ -8,6 +8,8 @@ import time
 import aiohttp
 
 INFO_URL = "https://api.hyperliquid.xyz/info"
+CANDLE_TIMEOUT = 2.0  # fetch_candles (current_price) — hızlı çağrı, agresif timeout (20s→2s)
+RANGE_TIMEOUT  = 3.0  # fetch_candles_range (price_at_timestamp) — ağır çağrı (20s→3s)
 
 
 async def fetch_candles(asset, interval="1m", minutes_back=20):
@@ -18,7 +20,7 @@ async def fetch_candles(asset, interval="1m", minutes_back=20):
         "req": {"coin": asset, "interval": interval,
                 "startTime": start, "endTime": end},
     }
-    timeout = aiohttp.ClientTimeout(total=20)
+    timeout = aiohttp.ClientTimeout(total=CANDLE_TIMEOUT)
     async with aiohttp.ClientSession(timeout=timeout) as s:
         async with s.post(INFO_URL, json=payload) as r:
             r.raise_for_status()
@@ -71,7 +73,7 @@ async def fetch_candles_range(asset: str, interval: str, start_ms: int, end_ms: 
         "req": {"coin": asset, "interval": interval,
                 "startTime": start_ms, "endTime": end_ms},
     }
-    timeout = aiohttp.ClientTimeout(total=20)
+    timeout = aiohttp.ClientTimeout(total=RANGE_TIMEOUT)
     async with aiohttp.ClientSession(timeout=timeout) as s:
         async with s.post(INFO_URL, json=payload) as r:
             r.raise_for_status()

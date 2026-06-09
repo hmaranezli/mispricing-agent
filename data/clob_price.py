@@ -2,6 +2,7 @@
 import aiohttp
 
 CLOB_HOST = "https://clob.polymarket.com"
+PRICE_TIMEOUT = 2.0  # price/book hızlı çağrı — agresif timeout (22s outlier guard)
 
 
 async def get_clob_price(token_id: str, side: str = "BUY") -> float | None:
@@ -14,7 +15,7 @@ async def get_clob_price(token_id: str, side: str = "BUY") -> float | None:
     if not token_id:
         return None
     try:
-        timeout = aiohttp.ClientTimeout(total=3)
+        timeout = aiohttp.ClientTimeout(total=PRICE_TIMEOUT)
         async with aiohttp.ClientSession(timeout=timeout) as s:
             async with s.get(
                 f"{CLOB_HOST}/price",
@@ -40,7 +41,7 @@ async def get_book(token_id: str) -> dict | None:
     if not token_id:
         return None
     try:
-        timeout = aiohttp.ClientTimeout(total=3)
+        timeout = aiohttp.ClientTimeout(total=PRICE_TIMEOUT)
         async with aiohttp.ClientSession(timeout=timeout) as s:
             async with s.get(
                 f"{CLOB_HOST}/book",
