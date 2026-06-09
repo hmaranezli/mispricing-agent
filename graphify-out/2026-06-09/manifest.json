@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/.claude/settings.local.json": {
-    "mtime": 1780949268.9645457,
-    "ast_hash": "801e50ec48aec8f926f26091f3b40093",
+    "mtime": 1780957146.2182395,
+    "ast_hash": "27da779d2b09f0b08d20ab739d2aebb2",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/execution/__init__.py": {
@@ -75,14 +75,14 @@
     "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "/root/mispricing_agent/data/hl_candles.py": {
-    "mtime": 1780752717.8654675,
-    "ast_hash": "cdec9a18cc595e19767150a1e54058e1",
+    "mtime": 1780969967.2747176,
+    "ast_hash": "6003cf5ab3078de219f9ded0dca401cf",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/data/hyperliquid.py": {
-    "mtime": 1780112476.5387685,
-    "ast_hash": "341b1a17972496b2dfcdcf42ee9d3074",
-    "semantic_hash": "341b1a17972496b2dfcdcf42ee9d3074"
+    "mtime": 1780969942.3255196,
+    "ast_hash": "ea49d716c3a03abe4d7f794d70911836",
+    "semantic_hash": ""
   },
   "/root/mispricing_agent/data/fair_value.py": {
     "mtime": 1780752778.7979293,
@@ -95,13 +95,13 @@
     "semantic_hash": "e5ae5fe697d2c62f173666f12bd520c9"
   },
   "/root/mispricing_agent/data/shortterm.py": {
-    "mtime": 1780943539.3934116,
-    "ast_hash": "71a6e9817bca586ad442831d6649d03b",
+    "mtime": 1780969942.3255196,
+    "ast_hash": "9e43e05e619b234e70b56ec04559dd6b",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/main_loop.py": {
-    "mtime": 1780956591.0644112,
-    "ast_hash": "5313c50ff386badc1d08a5dfde7a43e1",
+    "mtime": 1780959372.9510622,
+    "ast_hash": "e21236ad3d3fec6cf647448dd1c1df1e",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/tests/test_monitor.py": {
@@ -485,8 +485,8 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/data/clob_price.py": {
-    "mtime": 1780666180.0392675,
-    "ast_hash": "fce8b14b89bf9e432fa46f6b06a9ffa1",
+    "mtime": 1780969925.6353877,
+    "ast_hash": "6bd0796671e6610707c1d6d3311e6bf2",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/docs/superpowers/plans/2026-06-05-verifier-clob-monitor-fix.md": {
@@ -652,6 +652,16 @@
   "/root/mispricing_agent/docs/shadow_stop_design.md": {
     "mtime": 1780954966.2311883,
     "ast_hash": "6b74144d200e3bc3eb730c978102e052",
+    "semantic_hash": ""
+  },
+  "/root/mispricing_agent/tests/test_rest_timeout_guard.py": {
+    "mtime": 1780969903.2012105,
+    "ast_hash": "9713f2ccaf8ac3fe31ae9bd35070a501",
+    "semantic_hash": ""
+  },
+  "/root/mispricing_agent/docs/ws_warm_cache_design.md": {
+    "mtime": 1780970029.9962175,
+    "ast_hash": "a1982ed1e055765ee6b90e288bd3b6e3",
     "semantic_hash": ""
   }
 }
