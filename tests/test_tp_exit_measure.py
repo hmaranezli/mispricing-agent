@@ -56,21 +56,19 @@ async def test_tp_measurement_idempotent_unique():
 # ── depth-walk sell hesabı ───────────────────────────────────────────────────
 
 def test_tp_sell_depth_walk_aggressive():
-    """Bids ezerek (pahalı→ucuz) ağırlıklı satış fiyatı."""
+    """Bids ezerek (pahalı→ucuz) ağırlıklı satış fiyatı (4-tuple)."""
     from execution.paper_tracker import _depth_walk_sell
-    # bids azalan değil — sorted_bids pahalı→ucuz yapar; best 0.60
     book = {"bids": [{"price": "0.40", "size": "1"}, {"price": "0.60", "size": "1"},
                      {"price": "0.50", "size": "1"}]}
-    # 2 share sat: 0.60×1 + 0.50×1 = 1.10 / 2 = 0.55
-    avg, levels = _depth_walk_sell(book, shares=2.0)
+    avg, levels, filled, unfilled = _depth_walk_sell(book, shares=2.0)
     assert abs(avg - 0.55) < 1e-6
-    assert levels == 2
+    assert levels == 2 and unfilled == 0.0
 
 
 def test_tp_sell_empty_book():
     from execution.paper_tracker import _depth_walk_sell
-    avg, levels = _depth_walk_sell({"bids": []}, shares=2.0)
-    assert avg is None
+    avg, levels, filled, unfilled = _depth_walk_sell({"bids": []}, shares=2.0)
+    assert avg is None and unfilled == 2.0
 
 
 # ── update_paper_position TP first-hit tetikleme ────────────────────────────
@@ -129,31 +127,14 @@ async def test_tp_below_threshold_no_trigger():
     assert not created
 
 
-# ── _measure_tp_exit fail-open ───────────────────────────────────────────────
+# (Not: _measure_tp_exit → _measure_tp_ladder oldu; ladder testleri test_tp_size_ladder.py'de)
 
 @pytest.mark.asyncio
-async def test_measure_tp_exit_records(monkeypatch):
-    import execution.paper_tracker as pt
-    written = {}
-    async def fake_write(rec, db_path): written.update(rec)
-    book = {"bids": [{"price": "0.58", "size": "1000"}]}
-    with patch("execution.paper_tracker.get_book", new_callable=AsyncMock, return_value=book), \
-         patch("execution.paper_tracker._write_tp_measurement", side_effect=fake_write):
-        await pt._measure_tp_exit("p1", "tok", 15, "s", "BTC", "YES",
-                                  entry_price=0.50, shares=2.0, pos_usd=1.25, db_path=":memory:")
-    assert written.get("tp_level") == 15
-    assert written.get("real_tradable_tp_pnl") is not None
-    assert written.get("exit_slippage_pct") is not None
-    # sell 0.58, entry 0.50 → pnl = (0.58-0.50)/0.50*1.25 = 0.20
-    assert abs(written["real_tradable_tp_pnl"] - 0.20) < 1e-6
-
-
-@pytest.mark.asyncio
-async def test_measure_tp_exit_book_error_fail_open():
+async def test_measure_tp_ladder_book_error_fail_open():
     import execution.paper_tracker as pt
     async def boom(*a, **k): raise asyncio.TimeoutError("book")
     with patch("execution.paper_tracker.get_book", side_effect=boom), \
-         patch("execution.paper_tracker._write_tp_measurement", new_callable=AsyncMock):
-        # exception fırlatmamalı
-        await pt._measure_tp_exit("p1", "tok", 15, "s", "BTC", "YES",
-                                  entry_price=0.50, shares=2.0, pos_usd=1.25, db_path=":memory:")
+         patch("execution.paper_tracker._write_tp_ladder", new_callable=AsyncMock):
+        # exception fırlatmamalı (fail-open)
+        await pt._measure_tp_ladder("p1", "tok", 15, "s", "BTC", "YES",
+                                    entry_price=0.50, observed_return=0.20, db_path=":memory:")

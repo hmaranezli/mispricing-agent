@@ -227,6 +227,34 @@ CREATE TABLE IF NOT EXISTS tp_exit_measurements (
     UNIQUE(paper_id, tp_level)
 );
 
+CREATE TABLE IF NOT EXISTS tp_size_ladder (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    paper_id                    TEXT,
+    slug                        TEXT,
+    asset                       TEXT,
+    action                      TEXT,
+    timeframe                   TEXT,
+    tp_level                    INTEGER,
+    entry_price                 REAL,
+    observed_return_pct         REAL,
+    overshoot_pct               REAL,
+    cadence_artifact_flag       INTEGER,
+    simulated_exit_notional_usd REAL,
+    shares_to_sell              REAL,
+    avg_exit_price              REAL,
+    exit_levels_used            INTEGER,
+    exit_fill_complete          INTEGER,
+    exit_unfilled_shares        REAL,
+    real_tradable_tp_pnl        REAL,
+    ideal_tp_pnl                REAL,
+    conservative_tp_pnl         REAL,
+    exit_slippage_pct           REAL,
+    tradable_capacity_usd       REAL,
+    tp_hit_ts                   TEXT,
+    created_at                  TEXT,
+    UNIQUE(paper_id, tp_level, simulated_exit_notional_usd)
+);
+
 CREATE TABLE IF NOT EXISTS paper_entry_events (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     paper_id         TEXT,
@@ -322,6 +350,8 @@ _MIGRATIONS = [
     "ALTER TABLE shadow_positions ADD COLUMN late_entry_flag INTEGER",
     "ALTER TABLE shadow_positions ADD COLUMN collapse_timing_flag INTEGER",
     "ALTER TABLE shadow_positions ADD COLUMN signal_timestamp_ms INTEGER",
+    # TP size-ladder: eski küçük-size ölçümleri karantina
+    "ALTER TABLE tp_exit_measurements ADD COLUMN measurement_cohort TEXT DEFAULT 'legacy_small_size'",
 ]
 
 

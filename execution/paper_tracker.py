@@ -102,12 +102,16 @@ def _slippage_baseline(finding):
     return finding.get("no_ask") or finding.get("best_ask")
 
 
+SIZE_LADDER = (1.25, 10, 25, 50, 100)  # simüle exit notional ($) — tradable capacity ölçümü
+
+
 def _depth_walk_sell(book, shares):
-    """Aggressive taker SELL: bids'i pahalıdan ucuza ez, shares kadar ağırlıklı ort fiyat.
-    Returns (avg_sell_price, levels_used). Boş → (None, 0)."""
+    """Aggressive taker SELL: bids'i pahalıdan ucuza ez, shares kadar.
+    Returns (avg_sell_price, levels_used, filled_shares, unfilled_shares).
+    Boş kitap → (None, 0, 0.0, shares)."""
     bids = sorted_bids(book)  # pahalı→ucuz (best satış önce)
     if not bids:
-        return None, 0
+        return None, 0, 0.0, round(shares, 6)
     remaining, proceeds, levels = shares, 0.0, 0
     for px, sz in bids:
         take = min(remaining, sz)
@@ -117,36 +121,84 @@ def _depth_walk_sell(book, shares):
         if remaining <= 0:
             break
     filled = shares - remaining
-    if filled <= 0:
-        return None, 0
-    return round(proceeds / filled, 6), levels
+    avg = round(proceeds / filled, 6) if filled > 0 else None
+    return avg, levels, round(filled, 6), round(max(remaining, 0.0), 6)
 
 
-async def _measure_tp_exit(paper_id, exit_token, tp_level, slug, asset, action,
-                           entry_price, shares, pos_usd, db_path=None):
-    """TP eşiği geçildiğinde gerçek SELL depth-walk → tradable TP P&L (fire-and-forget).
+def _tradable_capacity(book, ideal_tp_price):
+    """avg fiyatı ideal_tp_price altına düşürmeden absorbe edilebilen max notional ($).
+    bids price >= ideal_tp_price olan seviyelerin toplam (size*price)."""
+    cap = 0.0
+    for px, sz in sorted_bids(book):  # azalan
+        if px >= ideal_tp_price:
+            cap += px * sz
+        else:
+            break
+    return round(cap, 2)
 
-    Sadece paper/shadow gözlem. Live execute'a bağlanmaz. Hata → fail-open (log)."""
+
+def _cadence_flag(observed_return_pct, tp_level, real_pnl, ideal_pnl):
+    """Cadence overshoot: observed-target > 5pp VEYA real %20+ > ideal → True."""
+    overshoot = observed_return_pct * 100 - tp_level
+    if overshoot > 5:
+        return True
+    if real_pnl is not None and ideal_pnl and real_pnl > ideal_pnl * 1.2:
+        return True
+    return False
+
+
+def _conservative_pnl(real_pnl, ideal_pnl, complete):
+    """conservative = min(real, ideal); partial fill → None (fail)."""
+    if not complete or real_pnl is None:
+        return None
+    return min(real_pnl, ideal_pnl)
+
+
+async def _measure_tp_ladder(paper_id, exit_token, tp_level, slug, asset, action,
+                             entry_price, observed_return, shares_unused=0,
+                             pos_usd_unused=0, db_path=None):
+    """TP eşiği geçildiğinde SIZE-LADDER ($1.25-$100) SELL depth-walk (fire-and-forget).
+
+    TEK get_book → 5 size aynı book üzerinde simüle. Partial fill → P&L NULL (fail).
+    conservative=min(real,ideal). cadence_artifact_flag. Sadece paper/shadow; live'a bağlanmaz.
+    """
     from datetime import datetime, timezone
     try:
         book = await asyncio.wait_for(get_book(exit_token), timeout=GET_BOOK_TIMEOUT)
-        avg_sell, levels = _depth_walk_sell(book, shares)
-        if avg_sell is None:
+        if not book or entry_price <= 0:
             return
-        real_pnl = round((avg_sell - entry_price) / entry_price * pos_usd, 6) if entry_price > 0 else None
-        nominal_tp = entry_price * (1 + tp_level / 100.0)
-        slip = round((nominal_tp - avg_sell) / nominal_tp, 4) if nominal_tp > 0 else None
+        timeframe = "5m" if "-5m-" in (slug or "") else "15m"
+        ideal_tp_price = entry_price * (1 + tp_level / 100.0)
+        capacity = _tradable_capacity(book, ideal_tp_price)
+        overshoot_pp = round(observed_return * 100 - tp_level, 2)
         now_iso = datetime.now(timezone.utc).isoformat()
-        await _write_tp_measurement({
-            "paper_id": paper_id, "slug": slug, "asset": asset, "action": action,
-            "tp_level": tp_level, "entry_price": entry_price, "shares": shares,
-            "real_tradable_tp_pnl": real_pnl, "sell_avg_price": avg_sell,
-            "exit_slippage_pct": slip, "exit_levels_used": levels,
-            "exit_book_age_ms": 0.0, "tp_hit_ts": now_iso,
-            "exit_depth_walk_source": "rest_book", "created_at": now_iso,
-        }, db_path)
+
+        for notional in SIZE_LADDER:
+            shares = notional / entry_price
+            avg, levels, filled, unfilled = _depth_walk_sell(book, shares)
+            complete = (unfilled <= 1e-9 and avg is not None)
+            ideal_pnl = round((tp_level / 100.0) * notional, 6)
+            if complete:
+                real_pnl = round((avg - entry_price) / entry_price * notional, 6)
+                slip = round((ideal_tp_price - avg) / ideal_tp_price, 4) if ideal_tp_price > 0 else None
+            else:
+                real_pnl, slip = None, None  # partial → fail
+            cad = 1 if _cadence_flag(observed_return, tp_level, real_pnl, ideal_pnl) else 0
+            cons = _conservative_pnl(real_pnl, ideal_pnl, complete)
+            await _write_tp_ladder({
+                "paper_id": paper_id, "slug": slug, "asset": asset, "action": action,
+                "timeframe": timeframe, "tp_level": tp_level, "entry_price": entry_price,
+                "observed_return_pct": round(observed_return, 4), "overshoot_pct": overshoot_pp,
+                "cadence_artifact_flag": cad,
+                "simulated_exit_notional_usd": notional, "shares_to_sell": round(shares, 6),
+                "avg_exit_price": avg, "exit_levels_used": levels,
+                "exit_fill_complete": 1 if complete else 0, "exit_unfilled_shares": unfilled,
+                "real_tradable_tp_pnl": real_pnl, "ideal_tp_pnl": ideal_pnl,
+                "conservative_tp_pnl": cons, "exit_slippage_pct": slip,
+                "tradable_capacity_usd": capacity, "tp_hit_ts": now_iso, "created_at": now_iso,
+            }, db_path)
     except Exception as e:
-        print(f"[paper_tp] {slug} tp{tp_level} ölçüm fail-open: {e}")
+        print(f"[paper_tp] {slug} tp{tp_level} ladder fail-open: {e}")
 
 
 def _net_ev_after_slippage(action, fair, est_fill, fee=0.02):
@@ -528,10 +580,9 @@ async def update_paper_position(state, pm_price, hl_price, secs, db_path=None):
     for tp in TP_LEVELS:
         if dd >= tp / 100.0 and tp not in tp_hits:
             tp_hits.add(tp)
-            asyncio.create_task(_measure_tp_exit(
+            asyncio.create_task(_measure_tp_ladder(
                 state["paper_id"], exit_tok, tp, state["slug"], state["asset"],
-                state["action"], entry, state.get("shares") or 0.0,
-                state.get("position_usd") or 1.25, state.get("db_path"),
+                state["action"], entry, dd, 0, 0, state.get("db_path"),
             ))
 
     state["_last_secs"] = secs
@@ -736,6 +787,34 @@ async def _write_tp_measurement(rec, db_path=None):
                  rec.get("exit_slippage_pct"), rec.get("exit_levels_used"),
                  rec.get("exit_book_age_ms"), rec.get("tp_hit_ts"),
                  rec.get("exit_depth_walk_source"), rec.get("created_at")),
+            )
+            await conn.commit()
+    await asyncio.wait_for(_do(), timeout=DB_TIMEOUT)
+
+
+async def _write_tp_ladder(rec, db_path=None):
+    """TP size-ladder ölçümü (INSERT OR IGNORE — UNIQUE(paper_id,tp_level,notional) idempotent)."""
+    path = db_path or DB_FILE
+    async def _do():
+        async with aiosqlite.connect(str(path)) as conn:
+            await conn.execute(
+                """INSERT OR IGNORE INTO tp_size_ladder (
+                       paper_id, slug, asset, action, timeframe, tp_level, entry_price,
+                       observed_return_pct, overshoot_pct, cadence_artifact_flag,
+                       simulated_exit_notional_usd, shares_to_sell, avg_exit_price,
+                       exit_levels_used, exit_fill_complete, exit_unfilled_shares,
+                       real_tradable_tp_pnl, ideal_tp_pnl, conservative_tp_pnl,
+                       exit_slippage_pct, tradable_capacity_usd, tp_hit_ts, created_at
+                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (rec["paper_id"], rec.get("slug"), rec.get("asset"), rec.get("action"),
+                 rec.get("timeframe"), rec["tp_level"], rec.get("entry_price"),
+                 rec.get("observed_return_pct"), rec.get("overshoot_pct"),
+                 rec.get("cadence_artifact_flag"), rec["simulated_exit_notional_usd"],
+                 rec.get("shares_to_sell"), rec.get("avg_exit_price"), rec.get("exit_levels_used"),
+                 rec.get("exit_fill_complete"), rec.get("exit_unfilled_shares"),
+                 rec.get("real_tradable_tp_pnl"), rec.get("ideal_tp_pnl"),
+                 rec.get("conservative_tp_pnl"), rec.get("exit_slippage_pct"),
+                 rec.get("tradable_capacity_usd"), rec.get("tp_hit_ts"), rec.get("created_at")),
             )
             await conn.commit()
     await asyncio.wait_for(_do(), timeout=DB_TIMEOUT)
