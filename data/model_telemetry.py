@@ -127,12 +127,22 @@ def make_tracking_key(slug, asset, timeframe, action):
     return f"{slug}|{asset}|{timeframe}|{action}"
 
 
+def resolve_join_method(event_paper_id, paper_paper_id, event_tk, paper_tk):
+    """Calibration join standardı. Öncelik: paper_id > tracking_key > slug_action_fallback.
+    slug_action_fallback → PROVISIONAL/LOW_CONFIDENCE (final hükümde kullanılmaz)."""
+    if event_paper_id and paper_paper_id and event_paper_id == paper_paper_id:
+        return "paper_id"
+    if event_tk and paper_tk and event_tk == paper_tk:
+        return "tracking_key"
+    return "slug_action_fallback"
+
+
 def compute_legacy_telemetry_v2(asset, action, slug, timeframe, p_now, p_ref,
                                 tte_seconds, raw_vol, yes_bid, yes_ask, no_ask_observed,
                                 fair_yes_val, net_ev, fair_gap, edge_bin, would_enter,
                                 snapshot_id, fee_adjustment, decision_threshold,
                                 window_open_ts=None, window_close_ts=None,
-                                snapshot_age_ms=None, skip_reason=None,
+                                snapshot_age_ms=None, skip_reason=None, paper_id=None,
                                 vol_source="realized_1m_60m", vol_window="60m"):
     """V2 telemetri: NO türetim + TTE izolasyonu + counterfactual_supported + tracking_key.
 
@@ -194,7 +204,7 @@ def compute_legacy_telemetry_v2(asset, action, slug, timeframe, p_now, p_ref,
         "counterfactual_missing_reason": cf_reason,
         "outcome_link_supported": True,
         "tracking_key": tracking_key,
-        "paper_id": None, "shadow_candidate_id": None,
+        "paper_id": paper_id, "shadow_candidate_id": None,
     })
     return base
 

@@ -4,6 +4,7 @@ import sys
 import os
 import time
 from datetime import date, datetime, timezone
+from uuid import uuid4 as _uuid4
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -471,9 +472,12 @@ async def _paper_shadow_scan_loop(conn) -> None:
                 try:
                     # T=0 snapshot: entry fiyatını sinyal anında dondur (temporal sync)
                     snapshot = await paper_tracker.build_entry_snapshot(f, position_usd=1.25)
+                    # Outcome-link: deterministik paper_id, hem paper'a hem telemetri'ye
+                    _paper_id = str(_uuid4())
                     paper_tracker.schedule_paper_open(
                         f, {"confidence_score": None},
                         {"position_usd": 1.25}, conn=conn, snapshot=snapshot,
+                        paper_id=_paper_id,
                     )
                     # Legacy model telemetri V2 (VOL CLAMP + counterfactual altyapısı) — non-blocking
                     try:
@@ -494,6 +498,7 @@ async def _paper_shadow_scan_loop(conn) -> None:
                             fee_adjustment=0.02, decision_threshold=config.MIN_EDGE_PCT,
                             window_open_ts=str(_w.get("start_ms")) if _w.get("start_ms") else None,
                             window_close_ts=str(_w.get("end_ms")) if _w.get("end_ms") else None,
+                            paper_id=_paper_id,
                         )
                         model_telemetry.schedule_telemetry(_rec, db_path=None)
                     except Exception as _te:

@@ -347,7 +347,7 @@ async def build_entry_snapshot(finding: dict, position_usd: float = 1.25) -> dic
 # ── schedule: non-blocking giriş noktası ─────────────────────────────────────
 
 def schedule_paper_open(finding, gate_result, risk_result, conn=None, db_path=None,
-                        snapshot=None):
+                        snapshot=None, paper_id=None):
     """SENKRON + non-blocking. Paper-open worker fırlatır, anında döner.
 
     snapshot: build_entry_snapshot(T=0) çıktısı — worker get_book çağırmaz (temporal sync).
@@ -368,7 +368,8 @@ def schedule_paper_open(finding, gate_result, risk_result, conn=None, db_path=No
         _active[key] = {"status": "reserving"}
         delay = round((time.perf_counter() - t0) * 1000, 3)
         asyncio.create_task(
-            _paper_open_worker(finding, gate_result, risk_result, db_path, delay, snapshot)
+            _paper_open_worker(finding, gate_result, risk_result, db_path, delay,
+                               snapshot, paper_id)
         )
         return delay
     except Exception as e:
@@ -377,7 +378,7 @@ def schedule_paper_open(finding, gate_result, risk_result, conn=None, db_path=No
 
 
 async def _paper_open_worker(finding, gate_result, risk_result, db_path=None,
-                             live_delay_ms=0.0, snapshot=None):
+                             live_delay_ms=0.0, snapshot=None, paper_id_override=None):
     """Background: depth-walk entry estimate + shadow_positions insert.
 
     Live loop'u bekletmez. Hata → fail-open (memory map temizlenir, log)."""
@@ -437,9 +438,11 @@ async def _paper_open_worker(finding, gate_result, risk_result, db_path=None,
             snapshot_age_ms = None
 
         shares = round(position_usd / entry_price, 6) if entry_price > 0 else 0.0
-        paper_id = str(uuid4())
+        paper_id = paper_id_override or str(uuid4())
         now_iso = datetime.now(timezone.utc).isoformat()
         secs_at_open = finding.get("seconds_remaining")
+        _tf_tk = "5m" if "-5m-" in (finding.get("slug") or "") else "15m"
+        _tracking_key = f"{finding.get('slug')}|{finding.get('asset')}|{_tf_tk}|{action}"
 
         # ── Cohort tasnifi ────────────────────────────────────────────────────
         # 5m AYRI deney evreni (paper_5m) — 15m clean cohort'una ASLA karışmaz.
@@ -483,6 +486,7 @@ async def _paper_open_worker(finding, gate_result, risk_result, db_path=None,
             "collapse_timing_flag": collapse_flag,
             "signal_timestamp_ms":  (snapshot.get("signal_timestamp_ms") if snapshot else None),
             "cohort":               cohort,
+            "tracking_key":         _tracking_key,
             "ref_price":            finding.get("ref_price"),
             "entry_hl_price":       finding.get("cur_price"),
             "confidence_score":     (gate_result or {}).get("confidence_score"),
@@ -749,8 +753,9 @@ async def _insert_paper_position(rec, db_path=None):
                        estimated_slippage_pct, net_ev_after_estimated_slippage,
                        paper_viability, yes_fair, no_fair, action_fair, entry_source,
                        snapshot_age_ms, seconds_remaining_at_signal, seconds_remaining_at_open,
-                       late_entry_flag, collapse_timing_flag, signal_timestamp_ms, created_at
-                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'open',?,'low',?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       late_entry_flag, collapse_timing_flag, signal_timestamp_ms,
+                       tracking_key, created_at
+                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'open',?,'low',?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (rec["paper_id"], rec["source_event_id"], rec["ts_open"], rec["slug"],
                  rec["asset"], rec["action"], rec["entry_price_estimated"], rec["entry_method"],
                  rec["position_usd_paper"], rec["shares_paper"], rec["fair_value"], rec["edge"],
@@ -763,7 +768,7 @@ async def _insert_paper_position(rec, db_path=None):
                  rec.get("entry_source"), rec.get("snapshot_age_ms"),
                  rec.get("seconds_remaining_at_signal"), rec.get("seconds_remaining_at_open"),
                  rec.get("late_entry_flag"), rec.get("collapse_timing_flag"),
-                 rec.get("signal_timestamp_ms"), rec["created_at"]),
+                 rec.get("signal_timestamp_ms"), rec.get("tracking_key"), rec["created_at"]),
             )
             await conn.commit()
     await asyncio.wait_for(_do(), timeout=DB_TIMEOUT)
