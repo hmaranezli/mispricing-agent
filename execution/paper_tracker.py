@@ -347,7 +347,7 @@ async def build_entry_snapshot(finding: dict, position_usd: float = 1.25) -> dic
 # ── schedule: non-blocking giriş noktası ─────────────────────────────────────
 
 def schedule_paper_open(finding, gate_result, risk_result, conn=None, db_path=None,
-                        snapshot=None, paper_id=None):
+                        snapshot=None, paper_id=None, tracking_key=None):
     """SENKRON + non-blocking. Paper-open worker fırlatır, anında döner.
 
     snapshot: build_entry_snapshot(T=0) çıktısı — worker get_book çağırmaz (temporal sync).
@@ -369,7 +369,7 @@ def schedule_paper_open(finding, gate_result, risk_result, conn=None, db_path=No
         delay = round((time.perf_counter() - t0) * 1000, 3)
         asyncio.create_task(
             _paper_open_worker(finding, gate_result, risk_result, db_path, delay,
-                               snapshot, paper_id)
+                               snapshot, paper_id, tracking_key)
         )
         return delay
     except Exception as e:
@@ -378,7 +378,8 @@ def schedule_paper_open(finding, gate_result, risk_result, conn=None, db_path=No
 
 
 async def _paper_open_worker(finding, gate_result, risk_result, db_path=None,
-                             live_delay_ms=0.0, snapshot=None, paper_id_override=None):
+                             live_delay_ms=0.0, snapshot=None, paper_id_override=None,
+                             tracking_key_override=None):
     """Background: depth-walk entry estimate + shadow_positions insert.
 
     Live loop'u bekletmez. Hata → fail-open (memory map temizlenir, log)."""
@@ -441,8 +442,11 @@ async def _paper_open_worker(finding, gate_result, risk_result, db_path=None,
         paper_id = paper_id_override or str(uuid4())
         now_iso = datetime.now(timezone.utc).isoformat()
         secs_at_open = finding.get("seconds_remaining")
-        _tf_tk = "5m" if "-5m-" in (finding.get("slug") or "") else "15m"
-        _tracking_key = f"{finding.get('slug')}|{finding.get('asset')}|{_tf_tk}|{action}"
+        # EVENT-LEVEL UNIQUE tracking_key: main_loop'tan (snapshot_id-bazlı, signal_ts_ms).
+        # Yoksa snapshot signal_timestamp_ms'den türet. slug|asset|tf|action ASLA kullanılmaz.
+        _sig_ms = snapshot.get("signal_timestamp_ms") if snapshot else None
+        _tracking_key = tracking_key_override or (
+            f"{finding.get('slug')}|{_sig_ms}" if _sig_ms else None)
 
         # ── Cohort tasnifi ────────────────────────────────────────────────────
         # 5m AYRI deney evreni (paper_5m) — 15m clean cohort'una ASLA karışmaz.

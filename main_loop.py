@@ -472,12 +472,15 @@ async def _paper_shadow_scan_loop(conn) -> None:
                 try:
                     # T=0 snapshot: entry fiyatını sinyal anında dondur (temporal sync)
                     snapshot = await paper_tracker.build_entry_snapshot(f, position_usd=1.25)
-                    # Outcome-link: deterministik paper_id, hem paper'a hem telemetri'ye
+                    # Outcome-link: deterministik paper_id + EVENT-LEVEL UNIQUE tracking_key
+                    # (snapshot_id = slug|signal_ts_ms). Hem paper'a hem telemetri'ye AYNI değer.
                     _paper_id = str(_uuid4())
+                    _sig_ms = snapshot.get("signal_timestamp_ms") if snapshot else None
+                    _tracking_key = f"{f.get('slug')}|{_sig_ms}" if _sig_ms else None
                     paper_tracker.schedule_paper_open(
                         f, {"confidence_score": None},
                         {"position_usd": 1.25}, conn=conn, snapshot=snapshot,
-                        paper_id=_paper_id,
+                        paper_id=_paper_id, tracking_key=_tracking_key,
                     )
                     # Legacy model telemetri V2 (VOL CLAMP + counterfactual altyapısı) — non-blocking
                     try:
@@ -494,11 +497,11 @@ async def _paper_shadow_scan_loop(conn) -> None:
                             fair_yes_val=f.get("fair_value"), net_ev=f.get("fee_adj_edge"),
                             fair_gap=f.get("edge"), edge_bin=f.get("edge_bucket"),
                             would_enter=True,
-                            snapshot_id=f"{f.get('slug')}|{snapshot.get('signal_timestamp_ms') if snapshot else ''}",
+                            snapshot_id=(_tracking_key or f"{f.get('slug')}|nosnapshot"),
                             fee_adjustment=0.02, decision_threshold=config.MIN_EDGE_PCT,
                             window_open_ts=str(_w.get("start_ms")) if _w.get("start_ms") else None,
                             window_close_ts=str(_w.get("end_ms")) if _w.get("end_ms") else None,
-                            paper_id=_paper_id,
+                            paper_id=_paper_id, tracking_key=_tracking_key,
                         )
                         model_telemetry.schedule_telemetry(_rec, db_path=None)
                     except Exception as _te:

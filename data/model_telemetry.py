@@ -122,9 +122,10 @@ TAKER_FEE = 0.02
 ENTRY_SLIPPAGE = 0.01
 
 
-def make_tracking_key(slug, asset, timeframe, action):
-    """Deterministik outcome-link anahtarı (V2 telemetri ↔ paper join)."""
-    return f"{slug}|{asset}|{timeframe}|{action}"
+def make_tracking_key_v2(slug, signal_timestamp_ms):
+    """EVENT-LEVEL UNIQUE tracking_key = slug|signal_timestamp_ms (snapshot_id).
+    slug|asset|tf|action YASAK (unique değil). signal_ts_ms her event'te farklı → unique."""
+    return f"{slug}|{signal_timestamp_ms}"
 
 
 def resolve_join_method(event_paper_id, paper_paper_id, event_tk, paper_tk):
@@ -137,12 +138,18 @@ def resolve_join_method(event_paper_id, paper_paper_id, event_tk, paper_tk):
     return "slug_action_fallback"
 
 
+def is_final_join(join_method):
+    """FINAL rapor: paper_id veya tracking_key. slug_action_fallback DIŞLANIR."""
+    return join_method in ("paper_id", "tracking_key")
+
+
 def compute_legacy_telemetry_v2(asset, action, slug, timeframe, p_now, p_ref,
                                 tte_seconds, raw_vol, yes_bid, yes_ask, no_ask_observed,
                                 fair_yes_val, net_ev, fair_gap, edge_bin, would_enter,
                                 snapshot_id, fee_adjustment, decision_threshold,
                                 window_open_ts=None, window_close_ts=None,
                                 snapshot_age_ms=None, skip_reason=None, paper_id=None,
+                                tracking_key=None,
                                 vol_source="realized_1m_60m", vol_window="60m"):
     """V2 telemetri: NO türetim + TTE izolasyonu + counterfactual_supported + tracking_key.
 
@@ -188,7 +195,10 @@ def compute_legacy_telemetry_v2(asset, action, slug, timeframe, p_now, p_ref,
         cf_reason = "missing_raw_vol"
     cf_supported = cf_reason is None
 
-    tracking_key = make_tracking_key(slug, asset, timeframe, action)
+    # EVENT-LEVEL UNIQUE tracking_key: dışarıdan (main_loop snapshot_id-bazlı).
+    # Yoksa snapshot_id'den türet (unique). slug|asset|tf|action ASLA kullanılmaz.
+    if tracking_key is None:
+        tracking_key = snapshot_id  # snapshot_id = slug|signal_ts_ms (unique)
 
     base.update({
         "telemetry_schema_version": 2,

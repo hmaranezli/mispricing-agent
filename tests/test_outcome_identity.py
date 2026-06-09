@@ -14,11 +14,12 @@ from unittest.mock import AsyncMock, patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def test_make_tracking_key_deterministic():
-    from data.model_telemetry import make_tracking_key
-    k1 = make_tracking_key("btc-updown-15m-1", "BTC", "15m", "YES")
-    k2 = make_tracking_key("btc-updown-15m-1", "BTC", "15m", "YES")
-    assert k1 == k2 == "btc-updown-15m-1|BTC|15m|YES"
+def test_make_tracking_key_v2_unique():
+    from data.model_telemetry import make_tracking_key_v2
+    # EVENT-LEVEL UNIQUE: signal_ts_ms içerir; slug|asset|tf|action YASAK
+    k1 = make_tracking_key_v2("btc-updown-15m-1", 12345)
+    assert k1 == "btc-updown-15m-1|12345"
+    assert make_tracking_key_v2("btc-updown-15m-1", 67890) != k1  # farklı ts → farklı key
 
 
 def test_v2_telemetry_carries_paper_id():
@@ -52,15 +53,17 @@ async def test_paper_open_writes_tracking_key():
                     "signal_seconds_remaining": 400, "signal_timestamp_ms": int(time.time()*1000),
                     "yes_fair": 0.60, "no_fair": 0.40, "action_fair": 0.60,
                     "paper_viability": "positive_after_slippage"}
+        sig = snapshot["signal_timestamp_ms"]
         with patch("execution.paper_tracker.get_book", new_callable=AsyncMock,
                    return_value={"asks": [{"price": "0.58", "size": "1000"}]}):
             await pt._paper_open_worker(finding, {}, {"position_usd": 1.25}, dbp, 0.1,
-                                        snapshot=snapshot, paper_id_override="PAP-1")
+                                        snapshot=snapshot, paper_id_override="PAP-1",
+                                        tracking_key_override=f"btc-updown-15m-9|{sig}")
         conn = await aiosqlite.connect(str(dbp))
         async with conn.execute("SELECT tracking_key, paper_id FROM shadow_positions") as c:
             row = await c.fetchone()
         await conn.close()
-    assert row[0] == "btc-updown-15m-9|BTC|15m|YES", f"tracking_key yanlış: {row[0]}"
+    assert row[0] == f"btc-updown-15m-9|{sig}", f"tracking_key yanlış: {row[0]}"
     assert row[1] == "PAP-1"
     pt._active.clear()
 

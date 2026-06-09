@@ -420,6 +420,8 @@ _MIGRATIONS = [
     "ALTER TABLE model_decision_events ADD COLUMN shadow_candidate_id TEXT",
     # Outcome link: paper'lara tracking_key (V2 telemetri ↔ shadow_positions join)
     "ALTER TABLE shadow_positions ADD COLUMN tracking_key TEXT",
+    # tracking_key EVENT-LEVEL UNIQUE (eski 4-parça duplicate'ler önce bad_v1: ile karantina edilir)
+    "CREATE UNIQUE INDEX IF NOT EXISTS ix_mde_tracking_key ON model_decision_events(tracking_key)",
 ]
 
 
