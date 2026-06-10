@@ -585,3 +585,180 @@ async def test_unknown_submit_errors_keep_submitted_unknown_no_resubmit(caplog, 
     assert result2 is None
     get_quote_spy2.assert_not_called()
     fake_client2.post_order.assert_not_called()
+
+
+# ── Task G: "no orders found to match" → CANCELLED + reason + telemetry ───────
+
+@pytest.mark.asyncio
+async def test_no_orders_found_transitions_cancelled_with_reason_and_telemetry(caplog):
+    """Task G: post_order 'no orders found to match' → execute None (crash YOK), intent
+    SUBMITTED_UNKNOWN'dan CANCELLED'a geçer, reason FAK_ZERO_FILL|NO_ORDERS_FOUND, no-match
+    telemetry (_handle_fak_no_match) çağrılır, tek submit (resubmit yok), position YARATILMAZ.
+    Borsa 'eşleşecek emir yok' = kesin no-fill kanıtı → araf DEĞİL, terminal CANCELLED."""
+    import execution.order_intent as oi
+    finding = _finding("YES")
+    token_id = finding["yes_token_id"]
+    db_path = str(oi.DB_FILE)  # conftest izole tmp
+
+    fak_spy = AsyncMock()  # no-match telemetry path — çağrıldığı KANITLANMALI
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.side_effect = Exception(
+        "no orders found to match with FAK order. FAK orders are partially filled or killed")
+
+    raised = None
+    with caplog.at_level(logging.WARNING, logger="execution.clob_executor"), \
+         patch("execution.clob_executor._handle_fak_no_match", fak_spy), \
+         patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock,
+               return_value=False), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock,
+               return_value=_qask(0.35)), \
+         patch("execution.clob_executor.get_client", return_value=fake_client):
+        from execution.clob_executor import execute
+        try:
+            result = await execute(finding, _gate(), _risk(), [])
+        except Exception as ex:
+            raised, result = ex, "RAISED"
+
+    assert raised is None, f"no-match → None dönmeli, raise ETMEMELİ: {raised}"
+    assert result is None                                   # position yok
+    fak_spy.assert_called_once()                            # no-match telemetry ÇAĞRILDI
+    assert fake_client.post_order.call_count == 1, \
+        f"tek submit olmalı, resubmit YOK: {fake_client.post_order.call_count}"
+
+    # Intent SUBMITTED_UNKNOWN → CANCELLED (kesin no-fill kanıtı), reason ile
+    c = sqlite3.connect(db_path)
+    try:
+        rows = c.execute(
+            "SELECT status, reconciliation_reason FROM order_intents WHERE market_token_id=?",
+            (token_id,)).fetchall()
+        pos_count = c.execute("SELECT COUNT(*) FROM positions").fetchone()[0]
+    finally:
+        c.close()
+    assert len(rows) == 1, f"tam 1 intent olmalı: {rows}"
+    assert rows[0][0] == "CANCELLED", f"no-match → intent CANCELLED olmalı: {rows}"
+    assert rows[0][1] in ("FAK_ZERO_FILL", "NO_ORDERS_FOUND"), \
+        f"reason FAK_ZERO_FILL|NO_ORDERS_FOUND olmalı: {rows[0][1]}"
+    assert pos_count == 0, f"position YARATILMAMALI (position_store tetiklenmemeli): {pos_count}"
+
+    # ── İkinci çağrı: CANCELLED terminal → unresolved DEĞİL → guard bloklamaz,
+    #    yeni intent + submit AÇIK (araf'ta takılı kalmaz). ───────────────────
+    fake_client2 = MagicMock()
+    fake_client2.create_market_order.return_value = MagicMock()
+    fake_client2.post_order.return_value = _fake_matched_resp()
+    get_quote_spy2 = AsyncMock(return_value=_qask(0.35))
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock,
+               return_value=False), \
+         patch("execution.clob_executor.get_quote", get_quote_spy2), \
+         patch("execution.clob_executor.get_client", return_value=fake_client2):
+        from execution.clob_executor import execute
+        result2 = await execute(finding, _gate(), _risk(), [])
+    # CANCELLED terminal — yeni emir BLOKLANMAZ (SUBMITTED_UNKNOWN'da takılı kalmanın tersi)
+    fake_client2.post_order.assert_called_once()
+
+
+# ── Task G hardening 1: no-match eşleşmesi CASE-INSENSITIVE ──────────────────
+
+@pytest.mark.parametrize("msg", [
+    "NO ORDERS FOUND TO MATCH with FAK order",
+    "No Orders Found To Match with FAK order",
+])
+@pytest.mark.asyncio
+async def test_no_match_routing_is_case_insensitive(msg):
+    """Borsa 'no orders found to match' mesajını farklı case ile dönerse (büyük/başlık harf)
+    yine no-match path'i çalışmalı: telemetry çağrılır, intent CANCELLED+FAK_ZERO_FILL olur,
+    SUBMITTED_UNKNOWN'a düşmez. Production e_str.lower() ile karşılaştırdığı için bu zaten
+    geçer → regression lock (sahte RED üretilmez)."""
+    import execution.order_intent as oi
+    finding = _finding("YES")
+    token_id = finding["yes_token_id"]
+    db_path = str(oi.DB_FILE)
+
+    fak_spy = AsyncMock()
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.side_effect = Exception(msg)
+
+    with patch("execution.clob_executor._handle_fak_no_match", fak_spy), \
+         patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock,
+               return_value=False), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock,
+               return_value=_qask(0.35)), \
+         patch("execution.clob_executor.get_client", return_value=fake_client):
+        from execution.clob_executor import execute
+        result = await execute(finding, _gate(), _risk(), [])
+
+    assert result is None
+    fak_spy.assert_called_once()                            # no-match path'i SEÇİLDİ (case fark etmez)
+    fake_client.post_order.assert_called_once()
+    c = sqlite3.connect(db_path)
+    try:
+        rows = c.execute(
+            "SELECT status, reconciliation_reason FROM order_intents WHERE market_token_id=?",
+            (token_id,)).fetchall()
+    finally:
+        c.close()
+    assert rows == [("CANCELLED", "FAK_ZERO_FILL")], \
+        f"case-insensitive no-match → CANCELLED/FAK_ZERO_FILL olmalı: {rows}"
+
+
+# ── Task G hardening 2: CANCELLED transition DB fail → fail-closed ───────────
+
+@pytest.mark.asyncio
+async def test_no_match_cancelled_transition_db_fail_is_fail_closed(caplog):
+    """Task G defensive: no-match sonrası CANCELLED transition DB hatası fırlatırsa execute()
+    crash ETMEZ: None döner, position YAZILMAZ, ERROR loglanır, intent fail-closed olarak
+    SUBMITTED_UNKNOWN'da KALIR (2c-4 reconcile), tek submit (resubmit yok)."""
+    import execution.order_intent as oi
+    finding = _finding("YES")
+    token_id = finding["yes_token_id"]
+    db_path = str(oi.DB_FILE)
+
+    # Gerçek transition: SUBMITTED_UNKNOWN'ı uygula, ama CANCELLED'da raise et.
+    real_transition = oi.transition
+
+    async def _transition_fail_on_cancel(db_path_arg, intent_id, new_state, **kw):
+        if new_state == "CANCELLED":
+            raise sqlite3.OperationalError("database is locked")
+        return await real_transition(db_path_arg, intent_id, new_state, **kw)
+
+    fak_spy = AsyncMock()
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.side_effect = Exception("no orders found to match with FAK order")
+
+    raised = None
+    with caplog.at_level(logging.ERROR, logger="execution.clob_executor"), \
+         patch("execution.clob_executor._handle_fak_no_match", fak_spy), \
+         patch.object(oi, "transition", _transition_fail_on_cancel), \
+         patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock,
+               return_value=False), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock,
+               return_value=_qask(0.35)), \
+         patch("execution.clob_executor.get_client", return_value=fake_client):
+        from execution.clob_executor import execute
+        try:
+            result = await execute(finding, _gate(), _risk(), [])
+        except Exception as ex:
+            raised, result = ex, "RAISED"
+
+    assert raised is None, f"CANCELLED transition fail → None olmalı, raise ETMEMELİ: {raised}"
+    assert result is None
+    assert fake_client.post_order.call_count == 1, \
+        f"tek submit, resubmit YOK: {fake_client.post_order.call_count}"
+    # Fail-closed: CANCELLED yazılamadı → intent SUBMITTED_UNKNOWN'da kalır (2c-4 reconcile yakalar)
+    c = sqlite3.connect(db_path)
+    try:
+        rows = c.execute(
+            "SELECT status FROM order_intents WHERE market_token_id=?", (token_id,)).fetchall()
+        pos_count = c.execute("SELECT COUNT(*) FROM positions").fetchone()[0]
+    finally:
+        c.close()
+    assert rows == [("SUBMITTED_UNKNOWN",)], \
+        f"CANCELLED transition fail → intent SUBMITTED_UNKNOWN kalmalı (fail-closed): {rows}"
+    assert pos_count == 0, f"position YAZILMAMALI: {pos_count}"
+    errs = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert errs, "CANCELLED transition fail → ERROR log basılmalı"
+    blob = " ".join(r.getMessage() for r in errs).lower()
+    assert "cancelled transition failed" in blob, \
+        f"log no-match CANCELLED transition fail işaretlemeli: {blob}"

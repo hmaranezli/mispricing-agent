@@ -313,6 +313,9 @@ async def execute(
         e_str    = str(e)
         print(f"[clob] {finding['slug']}: order hatası — {e_str}")
         if "no orders found to match" in e_str.lower():
+            # Faz 2c-3 Task G: borsa 'eşleşecek emir yok' = KESİN no-fill kanıtı (emir gitti,
+            # hiç fill olmadı). Araf DEĞİL — intent SUBMITTED_UNKNOWN'dan terminal CANCELLED'a
+            # geçer (reason FAK_ZERO_FILL). Position AÇILMAZ. Telemetri ayrıca loglanır.
             await _handle_fak_no_match(
                 finding=finding,
                 gate_result=gate_result,
@@ -325,6 +328,14 @@ async def execute(
                 e_str=e_str,
                 conn=conn,
             )
+            try:
+                await order_intent.transition(
+                    None, order_intent_id, "CANCELLED", reason="FAK_ZERO_FILL")
+            except Exception as t_err:
+                logger.error(
+                    "[clob] %s: no-match CANCELLED transition FAILED — intent %s "
+                    "SUBMITTED_UNKNOWN kaldı (2c-4 reconcile): %s",
+                    finding.get("slug"), order_intent_id, t_err)
         else:
             # Faz 2c-3 Task E: timeout/connection/unknown — "emir GİTMEDİ" VARSAYILMAZ.
             # intent SUBMITTED_UNKNOWN'da KALIR (transition YOK), resubmit YOK → 2c-4 reconcile.
