@@ -447,6 +447,18 @@ _MIGRATIONS = [
     "ALTER TABLE model_decision_events ADD COLUMN spread_crossed_flag INTEGER",
     "ALTER TABLE model_decision_events ADD COLUMN bid_ask_consistent_spread REAL",
     "ALTER TABLE model_decision_events ADD COLUMN hl_drift_at_entry REAL",
+    # Live Execution Faz 2c-2 — execution_state (kill-switch persist + runtime block)
+    # Singleton satır (state_key='global'). emergency_paused=1 → execute() network call YOK.
+    # Otomatik temizlik YASAK; yalnız clear_emergency_pause() (insan onayı). Fail-closed okuma.
+    """CREATE TABLE IF NOT EXISTS execution_state (
+        state_key        TEXT PRIMARY KEY,
+        emergency_paused INTEGER NOT NULL DEFAULT 0,
+        reason           TEXT,
+        source           TEXT,
+        order_intent_id  TEXT,
+        created_at       TEXT,
+        updated_at       TEXT
+    )""",
     # Telemetry V3.1 — Lifecycle (Fix4 + 4.1 restart recovery)
     "ALTER TABLE shadow_positions ADD COLUMN time_to_mfe_s REAL",
     "ALTER TABLE shadow_positions ADD COLUMN time_to_mae_s REAL",

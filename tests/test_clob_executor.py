@@ -53,7 +53,8 @@ async def test_execute_returns_position_on_matched_fak():
     fake_client = MagicMock()
     fake_client.create_market_order.return_value = MagicMock()
     fake_client.post_order.return_value = _fake_matched_resp()
-    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock, return_value=False), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
          patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
         from execution.clob_executor import execute
         result = await execute(_finding("YES"), _gate(), _risk(), [])
@@ -72,7 +73,8 @@ async def test_execute_returns_none_when_fak_unmatched():
     fake_client = MagicMock()
     fake_client.create_market_order.return_value = MagicMock()
     fake_client.post_order.return_value = {"status": "unmatched", "orderID": "x"}
-    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock, return_value=False), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
          patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
         from execution.clob_executor import execute
         result = await execute(_finding("YES"), _gate(), _risk(), [])
@@ -85,7 +87,8 @@ async def test_execute_uses_yes_token_for_yes_action():
     fake_client = MagicMock()
     fake_client.create_market_order.return_value = MagicMock()
     fake_client.post_order.return_value = _fake_matched_resp()
-    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock, return_value=False), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
          patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
         from execution.clob_executor import execute
         await execute(_finding("YES"), _gate(), _risk(), [])
@@ -99,7 +102,8 @@ async def test_execute_uses_no_token_for_no_action():
     fake_client = MagicMock()
     fake_client.create_market_order.return_value = MagicMock()
     fake_client.post_order.return_value = _fake_matched_resp()
-    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock, return_value=False), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
          patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
         from execution.clob_executor import execute
         await execute(_finding("NO"), _gate(), _risk(), [])
@@ -114,7 +118,8 @@ async def test_execute_uses_fak_order_type():
     fake_client = MagicMock()
     fake_client.create_market_order.return_value = MagicMock()
     fake_client.post_order.return_value = _fake_matched_resp()
-    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock, return_value=False), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
          patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
         from execution.clob_executor import execute
         await execute(_finding("YES"), _gate(), _risk(), [])
@@ -128,7 +133,8 @@ async def test_execute_passes_dollar_amount_not_shares():
     fake_client = MagicMock()
     fake_client.create_market_order.return_value = MagicMock()
     fake_client.post_order.return_value = _fake_matched_resp()
-    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock, return_value=False), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
          patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
         from execution.clob_executor import execute
         await execute(_finding("YES"), _gate(), _risk(), [])
@@ -145,7 +151,8 @@ async def test_execute_passes_tick_size_options():
     fake_client = MagicMock()
     fake_client.create_market_order.return_value = MagicMock()
     fake_client.post_order.return_value = _fake_matched_resp()
-    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock, return_value=False), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
          patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
         from execution.clob_executor import execute
         await execute(_finding("YES"), _gate(), _risk(), [])
@@ -162,7 +169,8 @@ async def test_execute_worst_price_includes_premium():
     fake_client = MagicMock()
     fake_client.create_market_order.return_value = MagicMock()
     fake_client.post_order.return_value = _fake_matched_resp()
-    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock, return_value=False), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
          patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.52)):
         from execution.clob_executor import execute
         await execute(_finding("YES"), _gate(), _risk(), [])
@@ -179,7 +187,8 @@ async def test_execute_falls_back_to_finding_ask_when_clob_price_fails():
     fake_client = MagicMock()
     fake_client.create_market_order.return_value = MagicMock()
     fake_client.post_order.return_value = _fake_matched_resp()
-    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock, return_value=False), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
          patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=None):
         from execution.clob_executor import execute
         await execute(_finding("YES"), _gate(), _risk(), [])
@@ -195,7 +204,8 @@ async def test_execute_position_includes_entry_hl_price():
     fake_client.create_market_order.return_value = MagicMock()
     fake_client.post_order.return_value = _fake_matched_resp()
     finding = {**_finding("YES"), "cur_price": 66500.0}
-    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock, return_value=False), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
          patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
         from execution.clob_executor import execute
         result = await execute(finding, _gate(), _risk(), [])
@@ -207,7 +217,8 @@ async def test_execute_position_includes_entry_hl_price():
 async def test_execute_returns_none_when_token_id_missing():
     """token_id yoksa order gönderilmez, None döner."""
     finding = {**_finding("YES"), "yes_token_id": None}
-    with patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock, return_value=False), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
         from execution.clob_executor import execute
         result = await execute(finding, _gate(), _risk(), [])
     assert result is None
@@ -217,7 +228,8 @@ async def test_execute_returns_none_when_token_id_missing():
 async def test_execute_returns_none_when_position_too_small():
     """position_usd < $1 → order gönderilmez."""
     risk = {**_risk(), "position_usd": 0.50}
-    with patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock, return_value=False), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
         from execution.clob_executor import execute
         result = await execute(_finding("YES"), _gate(), risk, [])
     assert result is None
@@ -230,7 +242,8 @@ async def test_execute_market_order_args_has_fak_order_type():
     fake_client = MagicMock()
     fake_client.create_market_order.return_value = MagicMock()
     fake_client.post_order.return_value = _fake_matched_resp()
-    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock, return_value=False), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
          patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
         from execution.clob_executor import execute
         await execute(_finding("YES"), _gate(), _risk(), [])
@@ -249,7 +262,8 @@ async def test_execute_matched_without_success_field():
         "status": "matched", "orderID": "ord-xyz",
         "takingAmount": "71.43", "makingAmount": "25.00",
     }
-    with patch("execution.clob_executor.get_client", return_value=fake_client), \
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock, return_value=False), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
          patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
         from execution.clob_executor import execute
         result = await execute(_finding("YES"), _gate(), _risk(), [])

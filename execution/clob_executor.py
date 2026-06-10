@@ -20,6 +20,7 @@ from py_clob_client_v2 import MarketOrderArgs, OrderType, PartialCreateOrderOpti
 from py_clob_client_v2.order_builder.constants import BUY
 from data.clob_price import get_quote
 from execution.order_pricing import compute_limit_price
+from execution.emergency_pause import is_emergency_paused
 from data.shadow_quote import get_shadow_quote
 from db.logger import log_entry_air_pocket, update_entry_air_pocket_delayed
 import config
@@ -203,6 +204,14 @@ async def execute(
     FOK (Fill-Or-Kill) yerine FAK kullanılır — kısmi fill kabul edilir.
     Dolarsa position dict döner, dolmazsa None.
     """
+    # Faz 2c-2: KILL-SWITCH RUNTIME BLOCK. emergency_paused → hiçbir network call YAPILMAZ.
+    # Fail-closed: durum okunamazsa is_emergency_paused True döner (güvenli taraf).
+    # get_quote / get_client / create_market_order BU SATIRIN ALTINDA — paused'da hiçbiri çalışmaz.
+    if await is_emergency_paused():  # canonical DB_FILE → restart-safe, fail-closed
+        print(f"[clob] {finding.get('slug')}: EMERGENCY_PAUSE aktif — order GÖNDERİLMEDİ "
+              f"(network call yok)")
+        return None
+
     action   = finding["action"]
     token_id = finding["yes_token_id"] if action == "YES" else finding["no_token_id"]
 
