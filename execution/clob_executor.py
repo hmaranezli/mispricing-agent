@@ -9,6 +9,7 @@ Docs: https://docs.polymarket.com/trading/orders/create.md
 - PartialCreateOrderOptions(tick_size, neg_risk) zorunlu
 """
 import asyncio
+import logging
 import re
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -25,6 +26,8 @@ from execution import order_intent
 from data.shadow_quote import get_shadow_quote
 from db.logger import log_entry_air_pocket, update_entry_air_pocket_delayed
 import config
+
+logger = logging.getLogger("execution.clob_executor")
 
 PRICE_PREMIUM = 0.01   # worst-price slippage buffer: live_ask + 1 cent
 TICK_SIZE     = "0.01" # binary prediction markets default tick size
@@ -258,11 +261,28 @@ async def execute(
     # Faz 2c-3 Task B: NETWORK ÖNCESİ intent lifecycle. create_intent (INTENT_CREATED) +
     # transition SUBMITTED_UNKNOWN — ikisi de commit edilir. post_order ANCAK bu commit'ten
     # SONRA çağrılır; süreç burada ölürse intent SUBMITTED_UNKNOWN'da kalır (2c-4 reconcile).
-    # (DB-fail hard-abort ve fill→classify/transition wiring sonraki task'larda eklenecek.)
-    order_intent_id = await order_intent.create_intent(
-        None, token_id, BUY, worst_price, position_usd, slug=finding.get("slug"))
-    await order_intent.transition(None, order_intent_id, "SUBMITTED_UNKNOWN",
-                                  submitted_at=order_submit_ts)
+    #
+    # Faz 2c-3 Task C: create_intent (DB) fail → HARD ABORT — borsaya submit YOK.
+    try:
+        order_intent_id = await order_intent.create_intent(
+            None, token_id, BUY, worst_price, position_usd, slug=finding.get("slug"))
+    except Exception as e:
+        logger.critical(
+            "[clob] %s: create_intent FAIL — HARD ABORT, order GÖNDERİLMEDİ (network call YOK): %s",
+            finding.get("slug"), e)
+        return None
+
+    # Faz 2c-3 Task D: transition→SUBMITTED_UNKNOWN fail → HARD ABORT — submit YOK.
+    # Intent INTENT_CREATED'de kalır = "never submitted" → 2c-4 reconcile blocker.
+    try:
+        await order_intent.transition(None, order_intent_id, "SUBMITTED_UNKNOWN",
+                                      submitted_at=order_submit_ts)
+    except Exception as e:
+        logger.critical(
+            "[clob] %s: transition→SUBMITTED_UNKNOWN FAIL — HARD ABORT, order GÖNDERİLMEDİ; "
+            "intent %s INTENT_CREATED kaldı (never submitted, 2c-4 reconcile blocker): %s",
+            finding.get("slug"), order_intent_id, e)
+        return None
 
     try:
         client = get_client()

@@ -6,6 +6,8 @@ yalnız tmp DB. execute()/post_order wiring BU dosyada henüz YOK (sonraki task'
 """
 import sys
 import os
+import logging
+import sqlite3
 import tempfile
 from pathlib import Path
 
@@ -325,3 +327,83 @@ async def test_intent_committed_submitted_unknown_before_post_order():
         f"network öncesi tam 1 intent commit edilmeli: rows={captured['rows_at_network']}"
     assert captured["status_at_network"] == "SUBMITTED_UNKNOWN", \
         f"network anında intent SUBMITTED_UNKNOWN commit'li olmalı: {captured['status_at_network']}"
+
+
+# ── Task C/D: create_intent / transition fail → HARD ABORT (submit YOK) ──────
+
+@pytest.mark.asyncio
+async def test_create_intent_fail_hard_aborts_no_submit(caplog):
+    """Task C: create_intent raise → execute None döner, post_order/create_market_order YOK,
+    ERROR/CRITICAL log var. RED: try/except yok → execute raise eder (hard-abort değil)."""
+    create_intent_boom = AsyncMock(side_effect=sqlite3.OperationalError("disk I/O error"))
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.return_value = _fake_matched_resp()
+
+    raised = None
+    with caplog.at_level(logging.ERROR, logger="execution.clob_executor"), \
+         patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock,
+               return_value=False), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock,
+               return_value=_qask(0.35)), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.order_intent.create_intent", create_intent_boom):
+        from execution.clob_executor import execute
+        try:
+            result = await execute(_finding("YES"), _gate(), _risk(), [])
+        except Exception as ex:
+            raised, result = ex, "RAISED"
+
+    assert raised is None, f"create_intent fail → hard-abort (None) olmalı, raise ETMEMELİ: {raised}"
+    assert result is None
+    fake_client.create_market_order.assert_not_called()
+    fake_client.post_order.assert_not_called()             # submit YOK
+    errs = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert errs, "create_intent fail → ERROR/CRITICAL log basılmalı"
+
+
+@pytest.mark.asyncio
+async def test_transition_fail_hard_aborts_intent_stays_created(caplog):
+    """Task D: transition→SUBMITTED_UNKNOWN raise → execute None, submit YOK, ERROR/CRITICAL log;
+    intent INTENT_CREATED'de kalır = 'never submitted' (2c-4 blocker). RED: try/except yok."""
+    import execution.order_intent as oi
+    finding = _finding("YES")
+    token_id = finding["yes_token_id"]
+    db_path = str(oi.DB_FILE)  # conftest izole tmp
+
+    transition_boom = AsyncMock(side_effect=sqlite3.OperationalError("database is locked"))
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.return_value = _fake_matched_resp()
+
+    raised = None
+    with caplog.at_level(logging.ERROR, logger="execution.clob_executor"), \
+         patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock,
+               return_value=False), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock,
+               return_value=_qask(0.35)), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.order_intent.transition", transition_boom):
+        from execution.clob_executor import execute
+        try:
+            result = await execute(finding, _gate(), _risk(), [])
+        except Exception as ex:
+            raised, result = ex, "RAISED"
+
+    assert raised is None, f"transition fail → hard-abort (None) olmalı, raise ETMEMELİ: {raised}"
+    assert result is None
+    fake_client.create_market_order.assert_not_called()
+    fake_client.post_order.assert_not_called()             # submit YOK
+    # Intent INTENT_CREATED'de kalmalı (never submitted)
+    c = sqlite3.connect(db_path)
+    try:
+        rows = c.execute(
+            "SELECT status FROM order_intents WHERE market_token_id=?", (token_id,)).fetchall()
+    finally:
+        c.close()
+    assert rows == [("INTENT_CREATED",)], f"transition fail → intent INTENT_CREATED kalmalı: {rows}"
+    errs = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert errs, "transition fail → ERROR/CRITICAL log basılmalı"
+    blob = " ".join(r.getMessage() for r in errs)
+    assert "INTENT_CREATED" in blob or "never" in blob.lower(), \
+        f"log 'never submitted' / INTENT_CREATED işaretlemeli: {blob}"
