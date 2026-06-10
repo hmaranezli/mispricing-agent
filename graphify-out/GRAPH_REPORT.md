@@ -1,16 +1,16 @@
 # Graph Report - mispricing_agent  (2026-06-10)
 
 ## Corpus Check
-- 156 files · ~155,609 words
+- 159 files · ~157,156 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 3872 nodes · 5836 edges · 278 communities (261 shown, 17 thin omitted)
-- Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 12 edges (avg confidence: 0.63)
+- 3905 nodes · 5893 edges · 277 communities (260 shown, 17 thin omitted)
+- Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 20 edges (avg confidence: 0.7)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `759bc8d4`
+- Built from commit: `7bf4a325`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -285,7 +285,6 @@
 - [[_COMMUNITY_Community 274|Community 274]]
 - [[_COMMUNITY_Community 275|Community 275]]
 - [[_COMMUNITY_Community 276|Community 276]]
-- [[_COMMUNITY_Community 277|Community 277]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `_monitor_positions()` - 78 edges
@@ -295,9 +294,9 @@
 5. `_process_market()` - 46 edges
 6. `_scan_and_execute()` - 40 edges
 7. `verify()` - 40 edges
-8. `_position()` - 37 edges
-9. `redteam()` - 37 edges
-10. `OrderbookSnapshot` - 37 edges
+8. `OrderbookSnapshot` - 39 edges
+9. `_position()` - 37 edges
+10. `redteam()` - 37 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `test_shadow_tables_created()` --calls--> `init_schema()`  [EXTRACTED]
@@ -311,23 +310,23 @@
 - `test_snapshot_schema_columns()` --calls--> `init_schema()`  [EXTRACTED]
   tests/test_paper_snapshot.py → db/schema.py
 
-## Communities (278 total, 17 thin omitted)
+## Communities (277 total, 17 thin omitted)
 
 ### Community 0 - "Community 0"
-Cohesion: 0.11
-Nodes (20): log_partial_fill_update(), log_position_open(), Kısmi fill sonrası açık pozisyonun shares ve partial_* alanlarını DB'ye yazar., Kısmi fill sonrası açık pozisyonun shares ve partial_* alanlarını DB'ye yazar., default_ws_prices(), _enable_new_entries(), tests/test_main_loop.py — main_loop birim testleri. Sıfır API çağrısı., _load_open_positions partial fill alanlarını DB'den geri yükler. (+12 more)
+Cohesion: 0.09
+Nodes (23): default_ws_prices(), _enable_new_entries(), _qask(), _qbid(), tests/test_main_loop.py — main_loop birim testleri. Sıfır API çağrısı., YES + WS bid None → CLOB REST fallback → price_source='clob_rest_bid', mae_data_, YES + WS bid None → CLOB REST fallback → price_source='clob_rest_bid', mae_data_, YES + WS bid None → CLOB REST fallback → price_source='clob_rest_bid', mae_data_ (+15 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.08
-Nodes (32): _asset_of(), tests/test_scout.py — council/scout.py testleri. Unit testler (_asset_of, _edge_, NO edge var ama (1-fair) < CONVICTION_MIN → None.     fair=0.45, ask=0.53 → no_e, NO edge var ama (1-fair) < CONVICTION_MIN → None.     fair=0.45, ask=0.53 → no_e, fair > ask yeterince → YES al., WS get_bid None → /price?side=SELL çağrılır; clob_ask kullanılmaz., WS get_bid None → /price?side=SELL çağrılır; clob_ask kullanılmaz., NO işlem: HL ref'ten %0.5 üstte → giriş engellenmeli (HL bullish, NO yanlış yön) (+24 more)
+Cohesion: 0.13
+Nodes (23): _asset_of(), tests/test_scout.py — council/scout.py testleri. Unit testler (_asset_of, _edge_, NO edge var ama (1-fair) < CONVICTION_MIN → None.     fair=0.45, ask=0.53 → no_e, NO edge var ama (1-fair) < CONVICTION_MIN → None.     fair=0.45, ask=0.53 → no_e, fair > ask yeterince → YES al., NO işlem: HL ref'ten %0.5 üstte → giriş engellenmeli (HL bullish, NO yanlış yön), NO işlem: HL ref'ten %0.5 üstte → giriş engellenmeli (HL bullish, NO yanlış yön), NO işlem: HL ref'ten %0.2 üstte (<%0.3 eşik) → küçük gürültü, giriş geçmeli. (+15 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.05
 Nodes (39): 10. Bağımlılıklar, 1. Amaç, 2. Arayüz, 3. Finding Yapısı (scout çıktısı — referans), 4. Guard Sırası, 5. Giriş Fiyatı Hesabı, 6. Pozisyon Kaydı (dönüş değeri), 7. JSONL Log (+31 more)
 
 ### Community 3 - "Community 3"
-Cohesion: 0.11
-Nodes (17): conn(), tests/test_db.py — db/ birim testleri. aiosqlite in-memory, sıfır sunucu., log_position_close MAE/MFE + stop slippage + timing alanlarını DB'ye yazar., init_schema sonrası candidates ve positions tabloları var., Geçen aday: passed=1, veto_layer=None., Partial fill verileri (count/shares/usdc) kapanışta DB'ye kaydedilmeli., Partial fill yoksa eski formül aynen çalışmalı — geriye dönük uyumlu., Veto yiyen aday: passed=0, veto_layer ve veto_reason dolu. (+9 more)
+Cohesion: 0.06
+Nodes (31): conn(), tests/test_db.py — db/ birim testleri. aiosqlite in-memory, sıfır sunucu., positions tablosu ref_price ve edge sütunlarına sahip olmalı., positions tablosu ref_price ve edge sütunlarına sahip olmalı., log_position_close MAE/MFE + stop slippage + timing alanlarını DB'ye yazar., pm_exit_price=None (market_expired) → realized_pnl=None., pm_exit_price=None (market_expired) → realized_pnl=None., init_schema sonrası candidates ve positions tabloları var. (+23 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.08
@@ -335,15 +334,15 @@ Nodes (27): window=None iken fetch_resolved sonuç verirse pm_exit_price dolu ka
 
 ### Community 5 - "Community 5"
 Cohesion: 0.07
-Nodes (39): fair_yes(), float, str, data/fair_value.py — Binary option fair value hesaplayıcı. Model: log-normal GBM, P(asset_price > p_ref at resolution | current_price = p_now)      Args:, P(asset_price > p_ref at resolution | current_price = p_now)      Args:, tests/test_fair_value.py — data/fair_value.py unit testleri Gerçek API çağrısı y, Takip edilen tüm varlıklar ASSET_VOL sözlüğünde var ve pozitif. (+31 more)
+Nodes (35): fair_yes(), float, str, data/fair_value.py — Binary option fair value hesaplayıcı. Model: log-normal GBM, P(asset_price > p_ref at resolution | current_price = p_now)      Args:, P(asset_price > p_ref at resolution | current_price = p_now)      Args:, tests/test_fair_value.py — data/fair_value.py unit testleri Gerçek API çağrısı y, Takip edilen tüm varlıklar ASSET_VOL sözlüğünde var ve pozitif. (+27 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.18
 Nodes (14): _open_pos(), tests/test_position_store.py — sell_position() testleri.  API docs (https://docs, API exception → current_bid fallback döner, exception fırlatılmaz., UNMATCHED → current_bid fallback döner., takingAmount/makingAmount yoksa fallback kullanılır., no orders found' exception → çıktıda fak_no_match etiketi görünmeli., no orders found' exception → çıktıda fak_no_match etiketi görünmeli., Başarılı SELL → float fill fiyatı döner. (+6 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.15
-Nodes (16): fetch_candles_range(), price_at_timestamp(), int, str, Belirli zaman aralığında mum çeker (ms epoch)., ts_ms anındaki HL spot fiyatını döner (en yakın 1m mumun open fiyatı).     Raise, Belirli zaman aralığında mum çeker (ms epoch)., Belirli zaman aralığında mum çeker (ms epoch). (+8 more)
+Cohesion: 0.05
+Nodes (61): calculate_realized_volatility(), current_price(), fetch_candles(), fetch_candles_range(), main(), price_at_timestamp(), float, int (+53 more)
 
 ### Community 8 - "Community 8"
 Cohesion: 0.13
@@ -354,8 +353,8 @@ Cohesion: 0.13
 Nodes (17): close_position(), _log(), Path, str, position/manager.py — Açık pozisyon takibi ve çıkış kararı., Pozisyonu kapatır, JSONL'a yazar, güncellenmiş kaydı döndürür., Pozisyonu kapatır, JSONL'a yazar, güncellenmiş kaydı döndürür., Pozisyonu kapatır, JSONL'a yazar, güncellenmiş kaydı döndürür. (+9 more)
 
 ### Community 10 - "Community 10"
-Cohesion: 0.06
-Nodes (60): execute(), _log(), Path, str, execution/executor.py — DRY_RUN order logger., Gate onaylı bulguyu DRY_RUN'da loglar, pozisyon kaydı döndürür., execute(), _load_open_positions() (+52 more)
+Cohesion: 0.12
+Nodes (38): execute(), _log(), Path, str, execution/executor.py — DRY_RUN order logger., Gate onaylı bulguyu DRY_RUN'da loglar, pozisyon kaydı döndürür., _finding(), _gate() (+30 more)
 
 ### Community 11 - "Community 11"
 Cohesion: 0.06
@@ -386,12 +385,12 @@ Cohesion: 0.05
 Nodes (47): _make_market(), ETH-YES quarantine dışında — YES sinyali engellenmemeli., Test helper — P0 single-source snapshot. bid varsayılan ask-0.02 (non-crossed)., scan_edges() döndürdüğü finding'de yes_token_id ve no_token_id bulunur., scan_edges() döndürdüğü finding'de yes_token_id ve no_token_id bulunur., scan_edges() döndürdüğü finding'de yes_token_id ve no_token_id bulunur., scan_edges() döndürdüğü finding'de yes_token_id ve no_token_id bulunur., scan_edges() döndürdüğü finding'de yes_token_id ve no_token_id bulunur. (+39 more)
 
 ### Community 18 - "Community 18"
-Cohesion: 0.06
-Nodes (32): float, _daily_loss_usd(), Yeni fırsatları tarar, konsey geçenleri açar., Yeni fırsatları tarar, konsey geçenleri açar., Yeni fırsatları tarar, konsey geçenleri açar., Yeni fırsatları tarar, konsey geçenleri açar., Yeni fırsatları tarar, konsey geçenleri açar., Yeni fırsatları tarar, konsey geçenleri açar. (+24 more)
+Cohesion: 0.09
+Nodes (24): log_position_open(), float, _daily_loss_usd(), Yeni fırsatları tarar, konsey geçenleri açar., Yeni fırsatları tarar, konsey geçenleri açar., Yeni fırsatları tarar, konsey geçenleri açar., Yeni fırsatları tarar, konsey geçenleri açar., Yeni fırsatları tarar, konsey geçenleri açar. (+16 more)
 
 ### Community 19 - "Community 19"
-Cohesion: 0.13
-Nodes (16): backfill(), fetch_resolved(), Kapanmış market için resolution fiyatlarını döndürür.      Returns: {"yes_exit":, Kapanmış market için resolution fiyatlarını döndürür.      Returns: {"yes_exit":, Kapanmış market için resolution fiyatlarını döndürür.      Returns: {"yes_exit":, patch_position_resolution(), float, Kapanmış pozisyonun exit fiyatı ve P&L'ini günceller (market_expired → resolved_ (+8 more)
+Cohesion: 0.11
+Nodes (19): backfill(), patch_position_resolution(), Kapanmış pozisyonun exit fiyatı ve P&L'ini günceller (market_expired → resolved_, Kapanmış pozisyonun exit fiyatı ve P&L'ini günceller (market_expired → resolved_, Kapanmış pozisyonun exit fiyatı ve P&L'ini günceller (market_expired → resolved_, Kapanmış pozisyonun exit fiyatı ve P&L'ini günceller (market_expired → resolved_, Kapanmış pozisyonun exit fiyatı ve P&L'ini günceller (market_expired → resolved_, Kapanmış pozisyonun exit fiyatı ve P&L'ini günceller (market_expired → resolved_ (+11 more)
 
 ### Community 20 - "Community 20"
 Cohesion: 0.11
@@ -402,8 +401,8 @@ Cohesion: 0.14
 Nodes (14): load_closed_today(), Bugünün UTC kapanan pozisyonlarını yükler — restart sonrası daily_loss recovery., Bugünün UTC kapanan pozisyonlarını yükler — restart sonrası daily_loss recovery., Bugünün UTC kapanan pozisyonlarını yükler — restart sonrası daily_loss recovery., Bugünün UTC kapanan pozisyonlarını yükler — restart sonrası daily_loss recovery., Bugünün UTC kapanan pozisyonlarını yükler — restart sonrası daily_loss recovery., Bugünün UTC kapanan pozisyonlarını yükler — restart sonrası daily_loss recovery., Bugünün UTC kapanan pozisyonlarını yükler — restart sonrası daily_loss recovery. (+6 more)
 
 ### Community 22 - "Community 22"
-Cohesion: 0.11
-Nodes (18): fair ≥ CONVICTION_MIN ve edge yeterli → YES geçer.     fair=0.65, ask=0.55 → edg, fair ≥ CONVICTION_MIN ve edge yeterli → YES geçer.     fair=0.65, ask=0.55 → edg, NO yalnızca YES_ask > fair_YES olduğunda açılır (market YES'i aşırı fiyatladığın, Her bulgu _window içeriyor — Verifier PM fallback için., NO yalnızca YES_ask > fair_YES olduğunda açılır (market YES'i aşırı fiyatladığın, NO yalnızca YES_ask > fair_YES olduğunda açılır (market YES'i aşırı fiyatladığın, negRisk=True marketler sonuçlarda olmamalı., Her bulgu _window içeriyor — Verifier PM fallback için. (+10 more)
+Cohesion: 0.08
+Nodes (27): _edge_signal(), fair:     fair_yes değeri [0,1]     best_ask: YES almak için ödeyeceğimiz fiyat, fair:     fair_yes değeri [0,1]     best_ask: YES almak için ödeyeceğimiz fiyat, fair:     fair_yes değeri [0,1]     best_ask: YES almak için ödeyeceğimiz fiyat, fair:     fair_yes değeri [0,1]     best_ask: YES almak için ödeyeceğimiz fiyat, fair: fair_yes değeri [0,1]     best_ask: YES almak için ödeyeceğimiz fiyat, fair: fair_yes değeri [0,1]     best_ask: YES almak için ödeyeceğimiz fiyat, fair:     fair_yes değeri [0,1]     best_ask: YES almak için ödeyeceğimiz fiyat (+19 more)
 
 ### Community 23 - "Community 23"
 Cohesion: 0.11
@@ -422,8 +421,8 @@ Cohesion: 0.07
 Nodes (64): _fake_matched_resp(), _finding(), _gate(), _qask(), _qbid(), tests/test_clob_executor.py — clob_executor execute() testleri (FAK + MarketOrde, post_order OrderType.FAK ile çağrılır — FOK değil., BUY market order'da amount = dolar miktarı (shares değil) — docs zorunluluğu. (+56 more)
 
 ### Community 27 - "Community 27"
-Cohesion: 0.14
-Nodes (20): get_connection(), log_candidate(), log_shadow_candidate(), bool, Path, str, db/logger.py — Aday ve pozisyon kayıtları. conn=None → sessiz atla., Konsey kararı noktasında shadow_candidates tablosuna yazar (ayrı tablo, live P&L (+12 more)
+Cohesion: 0.13
+Nodes (21): get_connection(), log_candidate(), log_shadow_candidate(), bool, float, Path, str, db/logger.py — Aday ve pozisyon kayıtları. conn=None → sessiz atla. (+13 more)
 
 ### Community 29 - "Community 29"
 Cohesion: 0.17
@@ -462,8 +461,8 @@ Cohesion: 0.07
 Nodes (45): check_exit(), Pozisyon için çıkış kararı verir.      Returns:         "max_hold_time"      — M, Pozisyon için çıkış kararı verir.      Returns:         "max_hold_time"      — M, Pozisyon için çıkış kararı verir.      Returns:         "max_hold_time"     — MA, Pozisyon için çıkış kararı verir.      Returns:         "max_hold_time"     — MA, Pozisyon için çıkış kararı verir.      Returns:         "max_hold_time"     — MA, Pozisyon için çıkış kararı verir.      Returns:         "max_hold_time"     — MA, _pos() (+37 more)
 
 ### Community 38 - "Community 38"
-Cohesion: 0.22
-Nodes (11): log_position_close(), execution/reconcile.py — LIVE startup pozisyon mutabakatı., LIVE startup: DB'deki açık pozisyonları Polymarket ile karşılaştırır.     DRY_RU, startup_reconcile(), _make_pos(), DRY_RUN=True → hiçbir şey yapmaz, 0 checked., Market kapanmış (window=None) + çözüm var → pozisyon kapatılır., Market hâlâ açık (window mevcut) → pozisyona dokunulmaz. (+3 more)
+Cohesion: 0.36
+Nodes (7): _make_pos(), DRY_RUN=True → hiçbir şey yapmaz, 0 checked., Market kapanmış (window=None) + çözüm var → pozisyon kapatılır., Market hâlâ açık (window mevcut) → pozisyona dokunulmaz., test_reconcile_active_market_not_closed(), test_reconcile_closes_resolved_market(), test_reconcile_skips_in_dry_run()
 
 ### Community 39 - "Community 39"
 Cohesion: 0.15
@@ -518,20 +517,20 @@ Cohesion: 0.14
 Nodes (13): 6a: _load_open_positions — entry_hl_price SELECT, 6b: _monitor_positions — exit_hl_price geçir, 6c: _heal_pending_resolutions — HL fiyatları, Dosya Haritası, HL Fiyat Bildirimleri + Fill Rate İyileştirme, Task 1: Schema Migration, Task 2: db/logger.py Güncellemeleri, Task 3: execution/executor.py — DRY_RUN entry_hl_price (+5 more)
 
 ### Community 62 - "Community 62"
-Cohesion: 0.08
-Nodes (24): limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır. (+16 more)
+Cohesion: 0.17
+Nodes (12): limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır. (+4 more)
 
 ### Community 63 - "Community 63"
 Cohesion: 0.20
 Nodes (10): NO pozisyon erken çıkışta pm_exit_price = 1 - YES_ask (NO bid fiyatı, YES ask de, NO pozisyon erken çıkışta pm_exit_price = 1 - YES_ask (NO bid fiyatı, YES ask de, window=None iken fetch_resolved sonuç verirse pm_exit_price dolu kapanır (YES)., NO pozisyon erken çıkışta pm_exit_price = WS no_token bid (Gamma fallback değil), NO pozisyon erken çıkışta pm_exit_price = WS no_token bid (Gamma fallback değil), NO pozisyon erken çıkışta pm_exit_price = WS no_token bid (Gamma fallback değil), NO pozisyon erken çıkışta pm_exit_price = WS no_token bid (Gamma fallback değil), NO pozisyon erken çıkışta pm_exit_price = WS no_token bid (Gamma fallback değil) (+2 more)
 
 ### Community 64 - "Community 64"
-Cohesion: 0.10
-Nodes (20): Gerçek NO fırsatı: HL çok bearish ama market hâlâ bullish.      Senaryo:       H, negRisk=True marketler sonuçlarda olmamalı., config.TRACKED_ASSETS dışındaki varlık → _process_market None döner., Gerçek NO fırsatı: HL çok bearish ama market hâlâ bullish.      Senaryo:       H, 60 saniyeden az kalan marketler olmamalı., Gerçek NO fırsatı: HL çok bearish ama market hâlâ bullish.      Senaryo:       H, Gerçek NO fırsatı: HL çok bearish ama market hâlâ bullish.      Senaryo:       H, config.TRACKED_ASSETS dışındaki varlık → _process_market None döner. (+12 more)
+Cohesion: 0.18
+Nodes (11): config.TRACKED_ASSETS dışındaki varlık → _process_market None döner., 60 saniyeden az kalan marketler olmamalı., config.TRACKED_ASSETS dışındaki varlık → _process_market None döner., config.TRACKED_ASSETS dışındaki varlık → _process_market None döner., 60 saniyeden az kalan marketler olmamalı., config.TRACKED_ASSETS dışındaki varlık → _process_market None döner., config.TRACKED_ASSETS dışındaki varlık → _process_market None döner., 60 saniyeden az kalan marketler olmamalı. (+3 more)
 
 ### Community 65 - "Community 65"
-Cohesion: 0.05
-Nodes (43): _edge_signal(), fair:     fair_yes değeri [0,1]     best_ask: YES almak için ödeyeceğimiz fiyat, fair:     fair_yes değeri [0,1]     best_ask: YES almak için ödeyeceğimiz fiyat, fair:     fair_yes değeri [0,1]     best_ask: YES almak için ödeyeceğimiz fiyat, fair:     fair_yes değeri [0,1]     best_ask: YES almak için ödeyeceğimiz fiyat, fair: fair_yes değeri [0,1]     best_ask: YES almak için ödeyeceğimiz fiyat, fair: fair_yes değeri [0,1]     best_ask: YES almak için ödeyeceğimiz fiyat, fair:     fair_yes değeri [0,1]     best_ask: YES almak için ödeyeceğimiz fiyat (+35 more)
+Cohesion: 0.09
+Nodes (24): YES edge var ama fair < CONVICTION_MIN (0.58) → None. Düşük win-rate işlem alınm, YES edge var ama fair < CONVICTION_MIN (0.58) → None. Düşük win-rate işlem alınm, Edge var ama MIN_EDGE_PCT altında → None. (MIN_EDGE_PCT=0.05), NO edge ama MIN_EDGE_PCT altında → None.     no_edge = best_ask - fair = 0.51 -, Edge var ama MIN_EDGE_PCT altında → None. (MIN_EDGE_PCT=0.05), NO edge ama MIN_EDGE_PCT altında → None.     no_edge = best_ask - fair = 0.51 -, KRİTİK regression: market ve HL hemfikirken NO sinyali üretmemeli.      Senaryo, MIN_SECONDS gamma trap önlemi için 300s olmalı (5dk window başına giriş eşiği). (+16 more)
 
 ### Community 66 - "Community 66"
 Cohesion: 0.33
@@ -542,8 +541,8 @@ Cohesion: 0.17
 Nodes (11): Bot Darboğaz Giderme Implementation Plan, Dosya Haritası, Restart Checklist (kullanıcı aksiyonu), Son Kontrol, Task 1: `calculate_realized_volatility` — hl_candles.py, Task 2: `fair_yes` dinamik volatilite parametresi — fair_value.py, Task 3: Scout — vol cache + market cache + MAX_ENTRY_PRICE 0.75, Task 4: Gate EDGE_MAX 0.06 (+3 more)
 
 ### Community 68 - "Community 68"
-Cohesion: 0.12
-Nodes (21): _cadence_flag(), _conservative_pnl(), _depth_walk_sell(), _measure_tp_ladder(), Aggressive taker SELL: bids'i pahalıdan ucuza ez, shares kadar ağırlıklı ort fiy, avg fiyatı ideal_tp_price altına düşürmeden absorbe edilebilen max notional ($)., Cadence overshoot: observed-target > 5pp VEYA real %20+ > ideal → True., conservative = min(real, ideal); partial fill → None (fail). (+13 more)
+Cohesion: 0.10
+Nodes (25): _cadence_flag(), _conservative_pnl(), _depth_walk_sell(), _measure_tp_ladder(), Aggressive taker SELL: bids'i pahalıdan ucuza ez, shares kadar ağırlıklı ort fiy, avg fiyatı ideal_tp_price altına düşürmeden absorbe edilebilen max notional ($)., Cadence overshoot: observed-target > 5pp VEYA real %20+ > ideal → True., conservative = min(real, ideal); partial fill → None (fail). (+17 more)
 
 ### Community 69 - "Community 69"
 Cohesion: 0.16
@@ -554,16 +553,16 @@ Cohesion: 0.11
 Nodes (11): tests/test_rest_timeout_guard.py — REST Timeout Guard TDD.  22s outlier'ın kökü:, current_price timeout → ValueError/Exception; çağıran (scout) yakalar→skip., scan_edges current_price exception'ında çökmez (gather return_exceptions)., Hiçbir data modülünde 20s timeout kalmamalı (22s outlier kökü)., Tek scan cycle ağır REST budget hedefi: en yavaş concurrent path <= 6s.      fin, get_clob_price timeout → None (fail-open), exception fırlatmaz., test_current_price_timeout_propagates_for_caller_skip(), test_get_clob_price_timeout_returns_none() (+3 more)
 
 ### Community 72 - "Community 72"
-Cohesion: 0.09
-Nodes (23): _pos_with_token(), yes_token_id + no_token_id içeren açık pozisyon fixture'ı., yes_token_id + no_token_id içeren açık pozisyon fixture'ı., YES + WS bid mevcut → price_source='ws_bid', mae_data_quality='exact'., yes_token_id + no_token_id içeren açık pozisyon fixture'ı., yes_token_id + no_token_id içeren açık pozisyon fixture'ı., YES + WS bid mevcut → price_source='ws_bid', mae_data_quality='exact'., yes_token_id + no_token_id içeren açık pozisyon fixture'ı. (+15 more)
+Cohesion: 0.07
+Nodes (30): _pos_with_token(), yes_token_id + no_token_id içeren açık pozisyon fixture'ı., yes_token_id + no_token_id içeren açık pozisyon fixture'ı., YES + WS bid mevcut → price_source='ws_bid', mae_data_quality='exact'., yes_token_id + no_token_id içeren açık pozisyon fixture'ı., yes_token_id + no_token_id içeren açık pozisyon fixture'ı., YES + WS bid mevcut → price_source='ws_bid', mae_data_quality='exact'., yes_token_id + no_token_id içeren açık pozisyon fixture'ı. (+22 more)
 
 ### Community 73 - "Community 73"
 Cohesion: 0.09
 Nodes (23): Heal başarılıysa notify_resolved_late doğru asset/seq_no ile çağrılır., DRY_RUN=False iken _monitor_positions çıkışta sell_position çağırır., DRY_RUN=False iken _monitor_positions çıkışta sell_position çağırır., DRY_RUN=False iken _monitor_positions çıkışta sell_position çağırır., DRY_RUN=False iken _monitor_positions çıkışta sell_position çağırır., DRY_RUN=False iken _monitor_positions çıkışta sell_position çağırır., Heal başarılıysa notify_resolved_late doğru asset/seq_no ile çağrılır., Heal başarılıysa notify_resolved_late doğru asset/seq_no ile çağrılır. (+15 more)
 
 ### Community 74 - "Community 74"
-Cohesion: 0.15
-Nodes (27): main(), _paper_shadow_scan_loop(), main_loop.py — Scout→Konsey→Execute→Monitor ana döngüsü., Edge bucket paper scan — düşük-edge (fee_adj>=0.03) adayları paper'a besler., Edge bucket paper scan — düşük-edge (fee_adj>=0.03) adayları paper'a besler., check(), bool, notify_close() (+19 more)
+Cohesion: 0.17
+Nodes (24): main(), main_loop.py — Scout→Konsey→Execute→Monitor ana döngüsü., check(), bool, notify_close(), notify_halt(), notify_hard_stop(), notify_open() (+16 more)
 
 ### Community 75 - "Community 75"
 Cohesion: 0.33
@@ -586,8 +585,8 @@ Cohesion: 0.10
 Nodes (21): _dynamic_stop(), float, int, Zaman bazlı dinamik stop eşiği.      Giriş anında geniş tolerans (toparlama vakt, Zaman bazlı dinamik stop eşiği.      Giriş anında geniş tolerans (toparlama vakt, Zaman bazlı dinamik stop eşiği.      Giriş anında geniş tolerans (toparlama vakt, exit_hl_price verilmezse None olmalı — backward compat., exit_hl_price verilmezse None olmalı — backward compat. (+13 more)
 
 ### Community 80 - "Community 80"
-Cohesion: 0.09
-Nodes (26): _open_position(), check_exit sinyal verince pozisyon open'dan closed'a geçer., Açık pozisyon fixture'ı., check_exit sinyal verince pozisyon open'dan closed'a geçer., parse_market_window None + fetch_resolved None → market_expired ile kapatılır., parse_market_window None + fetch_resolved None → market_expired ile kapatılır., Açık pozisyon fixture'ı., Açık pozisyon fixture'ı. (+18 more)
+Cohesion: 0.07
+Nodes (33): _open_position(), check_exit sinyal verince pozisyon open'dan closed'a geçer., Açık pozisyon fixture'ı., check_exit sinyal verince pozisyon open'dan closed'a geçer., parse_market_window None + fetch_resolved None → market_expired ile kapatılır., parse_market_window None + fetch_resolved None → market_expired ile kapatılır., check_exit sinyal verince pos['first_exit_decision_ts'] set edilmeli., check_exit sinyal verince pos['first_exit_decision_ts'] set edilmeli. (+25 more)
 
 ### Community 81 - "Community 81"
 Cohesion: 0.17
@@ -606,20 +605,20 @@ Cohesion: 0.09
 Nodes (25): _decide(), Air-pocket exit guard karar ağacı (saf, yan etkisiz).      Returns: (decision, o, tests/test_air_pocket_shadow.py — Air-Pocket Exit Guard Shadow (Faz A) TDD.  KRİ, post-wait bid > current fill → would_have_improved_fill=True (gerçek veri)., get_book hata/timeout → post_wait_error kaydedilir, worker patlamaz, kayıt yazıl, DB write patlasa bile _worker exception fırlatmaz (canlı exit zaten ayrı path)., _worker bittiğinde _active azalmalı (finally) — queue dolmasın., _write gerçek DB'ye satır yazar (timeout'lu async). (+17 more)
 
 ### Community 85 - "Community 85"
-Cohesion: 0.10
-Nodes (21): DB'den yüklenen pozisyonda entry_hl_price alanı olmalı., DB'den yüklenen pozisyonda entry_hl_price alanı olmalı., fetch_resolved None döndürürse notify_resolved_late çağrılmaz., DRY_RUN=False iken sell_position None → pozisyon AÇIK kalır, kapatılmaz.      FA, Regression: n_open_before'un _monitor_positions'dan ÖNCE alınması,     aynı turd, DB'den yüklenen pozisyonda entry_hl_price alanı olmalı., DRY_RUN=False iken sell_position None → pozisyon AÇIK kalır, kapatılmaz.      FA, DRY_RUN=False iken sell_position None → pozisyon AÇIK kalır, kapatılmaz.      FA (+13 more)
+Cohesion: 0.17
+Nodes (12): DB'den yüklenen pozisyonda entry_hl_price alanı olmalı., DB'den yüklenen pozisyonda entry_hl_price alanı olmalı., Regression: n_open_before'un _monitor_positions'dan ÖNCE alınması,     aynı turd, DB'den yüklenen pozisyonda entry_hl_price alanı olmalı., DB'den yüklenen pozisyonda entry_hl_price alanı olmalı., DB'den yüklenen pozisyonda entry_hl_price alanı olmalı., DB'den yüklenen pozisyonda entry_hl_price alanı olmalı., DB'den yüklenen pozisyonda entry_hl_price alanı olmalı. (+4 more)
 
 ### Community 86 - "Community 86"
 Cohesion: 0.12
 Nodes (15): 0. Problem, 10. Başarı kriteri, 11. Implementation Checklist (kod yok — sadece plan), 12. KRİTİK ÖN-BLOKER: get_book sıralama bug'ı, 1. Hangi token'lara subscribe?, 2. Abonelik limiti, 3. RAM / cache TTL, 4. Stale price nasıl işaretlenir? (+7 more)
 
 ### Community 87 - "Community 87"
-Cohesion: 0.08
-Nodes (26): parse_hours(), /istatistik6' → 6  |  '/istatistik' → None, /istatistik6' → 6  |  '/istatistik' → None, /istatistik6' → 6  |  '/istatistik' → None, tests/test_telegram_commands.py — Telegram komut sistemi testleri., /istatistik → None (tum zamanlar), EPOCH3_START_SEQ = 1336 — kalibrasyon sonrası ilk temiz trade., /istatistik cevabı 'Epoch 3' veya 'epoch3' etiketi içermeli (ana KPI). (+18 more)
+Cohesion: 0.09
+Nodes (24): parse_hours(), /istatistik6' → 6  |  '/istatistik' → None, /istatistik6' → 6  |  '/istatistik' → None, /istatistik6' → 6  |  '/istatistik' → None, tests/test_telegram_commands.py — Telegram komut sistemi testleri., /istatistik → None (tum zamanlar), EPOCH3_START_SEQ = 1336 — kalibrasyon sonrası ilk temiz trade., /istatistik cevabı 'Epoch 3' veya 'epoch3' etiketi içermeli (ana KPI). (+16 more)
 
 ### Community 88 - "Community 88"
-Cohesion: 0.11
-Nodes (26): _connect_and_run(), _flush_pending(), get_ask(), get_bid(), get_spread(), _handle_best_bid_ask(), _handle_book(), _handle_market_resolved() (+18 more)
+Cohesion: 0.06
+Nodes (47): _connect_and_run(), _flush_pending(), get_ask(), get_bid(), get_price_event(), get_snapshot(), get_spread(), _handle_best_bid_ask() (+39 more)
 
 ### Community 89 - "Community 89"
 Cohesion: 0.13
@@ -638,32 +637,32 @@ Cohesion: 0.16
 Nodes (21): tests/test_ws_prices.py — ws_prices birim testleri. Gerçek WS bağlantısı yok., run(): token yokken bağlanma — guard olmalı., _flush_pending: _pending_unsub varsa operation=unsubscribe mesajı gönderir., _reset(), test_flush_pending_sends_unsubscribe_message(), test_get_ask_returns_none_when_not_cached(), test_get_bid_returns_none_when_not_cached(), test_handle_best_bid_ask_event() (+13 more)
 
 ### Community 93 - "Community 93"
-Cohesion: 0.18
-Nodes (15): bool, run_canary(), bool, run_test(), ClobClient, find_shortterm(), get_client(), execution/clob_client.py — py-clob-client-v2 singleton. Lazy init, env'den crede (+7 more)
+Cohesion: 0.14
+Nodes (16): bool, run_canary(), bool, run_test(), ClobClient, get_effective_bankroll(), float, execution/balance.py — Etkili bankroll: DRY_RUN→config, LIVE→gerçek USDC bakiyes (+8 more)
 
 ### Community 94 - "Community 94"
 Cohesion: 0.11
 Nodes (18): _heal_pending_resolutions(), market_expired + pm_exit_price=None kayıtları için resolution retry eder., market_expired + pm_exit_price=None kayıtları için resolution retry eder., market_expired + pm_exit_price=None kayıtları için resolution retry eder., market_expired + pm_exit_price=None kayıtları için resolution retry eder., market_expired + pm_exit_price=None kayıtları için resolution retry eder., market_expired + pm_exit_price=None kayıtları için resolution retry eder., market_expired + pm_exit_price=None kayıtları için resolution retry eder. (+10 more)
 
 ### Community 95 - "Community 95"
-Cohesion: 0.18
-Nodes (15): arm(), disarm(), monitor/kill_switch.py — Dosya tabanlı kill switch. touch logs/KILL → durur., hard_resume(), monitor/state.py — Paylasilan bot durumu: main_loop ve telegram_commands arasin, request_flatten(), soft_pause(), soft_resume() (+7 more)
+Cohesion: 0.16
+Nodes (17): arm(), disarm(), monitor/kill_switch.py — Dosya tabanlı kill switch. touch logs/KILL → durur., hard_resume(), monitor/state.py — Paylasilan bot durumu: main_loop ve telegram_commands arasin, request_flatten(), soft_pause(), soft_resume() (+9 more)
 
 ### Community 96 - "Community 96"
 Cohesion: 0.06
 Nodes (47): _position(), int, str, tests/test_position.py — position/manager birim testleri. API çağrısı yok., YES: büyük kâr tek döngüde değil, 2 ardışık döngüde onaylanınca çıkar.      entr, NO: HL ref'in üstüne çıkınca fair_yes > 0.52 → 'thesis_invalidated'.      fair_y, YES: büyük kâr tek döngüde değil, 2 ardışık döngüde + 3s geçince onaylanınca çık, YES: büyük kâr tek döngüde değil, 2 ardışık döngüde onaylanınca çıkar.      entr (+39 more)
 
 ### Community 97 - "Community 97"
-Cohesion: 0.11
-Nodes (18): _action_fair(), Aldığımız tarafın fair olasılığı. YES→yes_fair, NO→1-yes_fair., Aldığımız tarafın fair olasılığı. YES→yes_fair, NO→1-yes_fair., Slippage baseline = ALDIĞIMIZ token'ın ask'ı. YES→best_ask, NO→no_ask.     NO-fi, Slippage baseline = ALDIĞIMIZ token'ın ask'ı. YES→best_ask, NO→no_ask.     NO-fi, _slippage_baseline(), tests/test_paper_snapshot.py — NO slippage baseline + temporal snapshot handoff, Normal seconds_remaining → cohort='paper' (clean). (+10 more)
+Cohesion: 0.09
+Nodes (23): _action_fair(), build_entry_snapshot(), float, T=0 entry snapshot — sinyal görüldüğü anda fiyat/EV dondurur (temporal sync)., T=0 entry snapshot — sinyal görüldüğü anda fiyat/EV dondurur (temporal sync)., T=0 entry snapshot — sinyal görüldüğü anda fiyat/EV dondurur (temporal sync)., Aldığımız tarafın fair olasılığı. YES→yes_fair, NO→1-yes_fair., Aldığımız tarafın fair olasılığı. YES→yes_fair, NO→1-yes_fair. (+15 more)
 
 ### Community 98 - "Community 98"
-Cohesion: 0.14
-Nodes (20): _calc_shares(), _delayed_capture_and_store(), execute(), _get_clob_price(), _handle_fak_no_match(), float, int, str (+12 more)
+Cohesion: 0.12
+Nodes (23): _calc_shares(), _delayed_capture_and_store(), execute(), _get_clob_price(), _handle_fak_no_match(), float, int, str (+15 more)
 
 ### Community 99 - "Community 99"
-Cohesion: 0.07
-Nodes (31): OrderbookSnapshot, bool, float, data/orderbook_snapshot.py — Atomic orderbook snapshot (P0 data-integrity).  Ent, bid >= ask → crossed (stale/kısmi update artefaktı)., Snapshot entry'ye girebilir mi? bid+ask dolu, pozitif, non-crossed,         dust, get_snapshot(), str (+23 more)
+Cohesion: 0.08
+Nodes (27): OrderbookSnapshot, bool, float, data/orderbook_snapshot.py — Atomic orderbook snapshot (P0 data-integrity).  Ent, bid >= ask → crossed (stale/kısmi update artefaktı)., Snapshot entry'ye girebilir mi? bid+ask dolu, pozitif, non-crossed,         dust, tests/test_orderbook_snapshot.py — P0 Data Pipeline Refactor TDD.  Atomic Orderb, WS cache crossed (kısmi update) → snapshot invalid (Frankenstein engellenir). (+19 more)
 
 ### Community 100 - "Community 100"
 Cohesion: 0.14
@@ -674,8 +673,8 @@ Cohesion: 0.15
 Nodes (13): fresh_edge=0.40 (> 0.35) → edge_suspiciously_large veto., fresh_edge=0.40 (> 0.35) → edge_suspiciously_large veto., fresh_edge=0.40 (> 0.35) → edge_suspiciously_large veto., fresh_edge=0.40 (> 0.35) → edge_suspiciously_large veto., Warning tek başına pass=False yapmaz., Scout → Verifier → RedTeam zinciri doğru yapı döndürür., Warning tek başına pass=False yapmaz., Warning tek başına pass=False yapmaz. (+5 more)
 
 ### Community 102 - "Community 102"
-Cohesion: 0.13
-Nodes (18): fetch_by_slug(), _fetch_slug(), main(), data/shortterm.py — Kisa vadeli BTC/ETH Up/Down market bulucu. Slug'i o anki UTC, Tek slug için bağımsız sorgu — main_loop._monitor_positions kullanır., Tek slug için bağımsız sorgu — main_loop._monitor_positions kullanır., Su an ve son birkac periyodun slug'larini uretir., Su an ve son birkac periyodun slug'larini uretir. (+10 more)
+Cohesion: 0.21
+Nodes (14): fetch_by_slug(), _fetch_slug(), find_shortterm(), main(), data/shortterm.py — Kisa vadeli BTC/ETH Up/Down market bulucu. Slug'i o anki UTC, Tek slug için bağımsız sorgu — main_loop._monitor_positions kullanır., Tek slug için bağımsız sorgu — main_loop._monitor_positions kullanır., Su an ve son birkac periyodun slug'larini uretir. (+6 more)
 
 ### Community 103 - "Community 103"
 Cohesion: 0.17
@@ -683,19 +682,19 @@ Nodes (12): close_position exit_hl_price parametresini closed dict'e eklemeli., 
 
 ### Community 104 - "Community 104"
 Cohesion: 0.11
-Nodes (18): get_price_event(), int, Ard arda kısa bağlantılar → Telegram uyarısı., Ard arda kısa bağlantılar → Telegram uyarısı., Token ID'leri subscribe listesine ekle. WS aktifse 2s içinde gönderilir., Token ID'leri subscribe listesine ekle. WS aktifse 2s içinde gönderilir., Ana WS döngüsü. asyncio.create_task ile çalıştırılır., Token ID'leri subscribe listesine ekle. WS aktifse 2s içinde gönderilir. (+10 more)
+Nodes (22): execute(), _load_open_positions(), DB'deki status=open pozisyonları yükler — restart sonrası memory'yi geri dolduru, DRY_RUN flag'ine göre executor seç. Runtime'da değerlendirilir., DRY_RUN flag'ine göre executor seç. Runtime'da değerlendirilir., DRY_RUN flag'ine göre executor seç. Runtime'da değerlendirilir., DRY_RUN flag'ine göre executor seç. Runtime'da değerlendirilir., DRY_RUN flag'ine göre executor seç. Runtime'da değerlendirilir. (+14 more)
 
 ### Community 105 - "Community 105"
 Cohesion: 0.09
 Nodes (22): _fee_adjusted_edge(), str, Fee sonrası gerçek edge.     YES: fair × (1−fee) − ask     NO:  (1−fair) × (1−fe, Fee sonrası gerçek edge.     YES: fair × (1−fee) − ask     NO:  (1−fair) × (1−fe, Fee VE giriş slippage sonrası gerçek edge.     Gerçek giriş maliyeti = ask + sli, Fee VE giriş slippage sonrası gerçek edge.     Gerçek giriş maliyeti = ask + sli, Fee VE giriş slippage sonrası gerçek edge.     Gerçek giriş maliyeti = ask + sli, Varsayılan çağrı BEKLENEN slippage'i (0.015) uygular. (+14 more)
 
 ### Community 106 - "Community 106"
-Cohesion: 0.07
-Nodes (40): _crossed_orderbook_skip(), _drift_ok(), _edge_bucket(), _get_all_vols(), _get_market_state(), main(), _process_market(), bool (+32 more)
+Cohesion: 0.10
+Nodes (28): _crossed_orderbook_skip(), _drift_ok(), _edge_bucket(), _get_all_vols(), _get_market_state(), main(), bool, float (+20 more)
 
 ### Community 107 - "Community 107"
 Cohesion: 0.12
-Nodes (22): compute_counterfactual(), compute_legacy_telemetry_v2(), V2 telemetri: NO türetim + TTE izolasyonu + counterfactual_supported + tracking_, OFFLINE counterfactual: clamped yerine raw_vol ile fair/net_ev. SADECE aynı even, OFFLINE counterfactual: clamped yerine raw_vol ile fair/net_ev. SADECE aynı even, tests/test_model_telemetry_v2.py — Telemetry V2 + counterfactual altyapısı TDD., V2 raporu telemetry_schema_version=2 filtreler; V1 (1/NULL) dahil değil., test_counterfactual_math_safe_near_expiry() (+14 more)
+Nodes (21): compute_counterfactual(), compute_legacy_telemetry_v2(), V2 telemetri: NO türetim + TTE izolasyonu + counterfactual_supported + tracking_, OFFLINE counterfactual: clamped yerine raw_vol ile fair/net_ev. SADECE aynı even, OFFLINE counterfactual: clamped yerine raw_vol ile fair/net_ev. SADECE aynı even, tests/test_model_telemetry_v2.py — Telemetry V2 + counterfactual altyapısı TDD., test_counterfactual_math_safe_near_expiry(), test_counterfactual_missing_no_ask() (+13 more)
 
 ### Community 108 - "Community 108"
 Cohesion: 0.13
@@ -706,24 +705,24 @@ Cohesion: 0.15
 Nodes (13): clobTokenIds yoksa yes_token_id ve no_token_id None döner, exception yok., clobTokenIds yoksa yes_token_id ve no_token_id None döner, exception yok., clobTokenIds yoksa yes_token_id ve no_token_id None döner, exception yok., clobTokenIds yoksa yes_token_id ve no_token_id None döner, exception yok., clobTokenIds yoksa yes_token_id ve no_token_id None döner, exception yok., clobTokenIds yoksa yes_token_id ve no_token_id None döner, exception yok., clobTokenIds yoksa yes_token_id ve no_token_id None döner, exception yok., _process_market CLOB fiyatını kullanır, market API best_ask'ı değil. (+5 more)
 
 ### Community 110 - "Community 110"
-Cohesion: 0.15
-Nodes (16): calculate_realized_volatility(), float, Son N dakikanın 1m mumlarından yıllıklandırılmış realized volatilite.     Formül, Yıllıklandırılmış realized vol — CLAMP YOK (clamp öncesi ham değer).     Telemet, Son N dakikanın 1m mumlarından yıllıklandırılmış realized volatilite.     Formül, realized_vol_raw(), Hiç hareket yok → std_dev=0 → annualized=0 → clamp 0.30., 100→200→100→200: aşırı hareket → annualized >> 3.00 → clamp 3.00. (+8 more)
+Cohesion: 0.12
+Nodes (19): FAK kill (execute→None) olan slug failed_slugs'a EKLENMEMELİ.     Capital riske, failed_slugs'taki slug için _run_council hiç çağrılmaz., FAK kill (execute→None) olan slug failed_slugs'a EKLENMEMELİ.     Capital riske, FAK kill (execute→None) olan slug failed_slugs'a EKLENMEMELİ.     Capital riske, FAK kill (execute→None) olan slug failed_slugs'a EKLENMEMELİ.     Capital riske, failed_slugs'taki slug için _run_council hiç çağrılmaz., failed_slugs'ta farklı bir slug varsa mevcut finding engellenmez., FAK kill (execute→None) olan slug failed_slugs'a EKLENMEMELİ.     Capital riske (+11 more)
 
 ### Community 111 - "Community 111"
-Cohesion: 0.06
-Nodes (39): DB'deki status=open pozisyonlar yüklenir, closed olanlar atlanır., DB'deki status=open pozisyonlar yüklenir, closed olanlar atlanır., DRY_RUN YES çıkışta pm_exit_price = best_bid (satış fiyatı), best_ask değil., fetch_resolved hâlâ None dönerse DB kaydına dokunulmaz., fetch_resolved hâlâ None dönerse DB kaydına dokunulmaz., DB'deki status=open pozisyonlar yüklenir, closed olanlar atlanır., DB'deki status=open pozisyonlar yüklenir, closed olanlar atlanır., fetch_resolved hâlâ None dönerse DB kaydına dokunulmaz. (+31 more)
+Cohesion: 0.08
+Nodes (28): DB'deki status=open pozisyonlar yüklenir, closed olanlar atlanır., DB'deki status=open pozisyonlar yüklenir, closed olanlar atlanır., DRY_RUN YES çıkışta pm_exit_price = best_bid (satış fiyatı), best_ask değil., DB'deki status=open pozisyonlar yüklenir, closed olanlar atlanır., DB'deki status=open pozisyonlar yüklenir, closed olanlar atlanır., DB'deki status=open pozisyonlar yüklenir, closed olanlar atlanır., DB'deki status=open pozisyonlar yüklenir, closed olanlar atlanır., DB'deki status=open pozisyonlar yüklenir, closed olanlar atlanır. (+20 more)
 
 ### Community 112 - "Community 112"
 Cohesion: 0.15
 Nodes (12): 6 Kural (Codex/Gemini/Claude/Hasan konsensüsü), Beklenen Metrik İyileşmesi, `data/ws_prices.py`, Değişmeyen Şeyler, Etkilenen Modüller, Faz 2 — WS Event-Driven Position Monitor: Tasarım Spesifikasyonu, Kabul Edilen Tasarım: Yaklaşım A1, `main_loop.py` (+4 more)
 
 ### Community 113 - "Community 113"
-Cohesion: 0.10
-Nodes (21): _handle_ws_resolved(), WS market_resolved event'ına göre açık pozisyonu anında kapat., WS market_resolved event'ına göre açık pozisyonu anında kapat., WS market_resolved event'ına göre açık pozisyonu anında kapat., WS market_resolved event'ına göre açık pozisyonu anında kapat., WS market_resolved event'ına göre açık pozisyonu anında kapat., WS market_resolved event'ına göre açık pozisyonu anında kapat., WS market_resolved event'ına göre açık pozisyonu anında kapat. (+13 more)
+Cohesion: 0.18
+Nodes (11): _handle_ws_resolved(), WS market_resolved event'ına göre açık pozisyonu anında kapat., WS market_resolved event'ına göre açık pozisyonu anında kapat., WS market_resolved event'ına göre açık pozisyonu anında kapat., WS market_resolved event'ına göre açık pozisyonu anında kapat., WS market_resolved event'ına göre açık pozisyonu anında kapat., WS market_resolved event'ına göre açık pozisyonu anında kapat., WS market_resolved event'ına göre açık pozisyonu anında kapat. (+3 more)
 
 ### Community 114 - "Community 114"
-Cohesion: 0.11
-Nodes (21): _fee_adj(), get_shadow_quote(), float, str, data/shadow_quote.py — Entry FAK_NO_MATCH sonrası shadow book snapshot ve fee_ad, Fee ve giriş slippage sonrası gerçek edge. redteam._fee_adjusted_edge() ile aynı, Returns (ask, book_age_ms, source, top_size_usd, levels).      Önce WS cache den, Shadow book snapshot. WS cache veya REST'ten anlık book okur, fee_adj hesaplar. (+13 more)
+Cohesion: 0.06
+Nodes (39): _fee_adj(), get_shadow_quote(), float, str, data/shadow_quote.py — Entry FAK_NO_MATCH sonrası shadow book snapshot ve fee_ad, Fee ve giriş slippage sonrası gerçek edge. redteam._fee_adjusted_edge() ile aynı, Returns (ask, book_age_ms, source, top_size_usd, levels).      Önce WS cache den, Shadow book snapshot. WS cache veya REST'ten anlık book okur, fee_adj hesaplar. (+31 more)
 
 ### Community 115 - "Community 115"
 Cohesion: 0.12
@@ -738,40 +737,40 @@ Cohesion: 0.10
 Nodes (24): Paper finding için fee_adj_edge (redteam formülü, slippage 0.01)., _shadow_fee_adj(), _net_ev_after_slippage(), Tahmini gerçek fill sonrası net EV (sabit slippage değil, depth-walk fill)., Tahmini gerçek fill sonrası net EV (sabit slippage değil, depth-walk fill)., Tahmini gerçek fill sonrası net EV (sabit slippage değil, depth-walk fill)., Tahmini gerçek fill sonrası net EV (sabit slippage değil, depth-walk fill)., tests/test_edge_bucket_shadow.py — Edge Bucket Shadow Experiment TDD.  Paper coh (+16 more)
 
 ### Community 118 - "Community 118"
-Cohesion: 0.12
-Nodes (16): tests/test_entry_air_pocket.py — Entry FAK_NO_MATCH air pocket telemetri testler, REST API başarısız → tüm sayısal alanlar None, crash yok., REST API başarısız → tüm sayısal alanlar None, crash yok., price_delta_cents = (fresh_ask − original_ask) × 100., price_delta_cents = (fresh_ask − original_ask) × 100., REST book'tan top_of_book_size hesaplanmalı (USD = size × price)., REST book'tan top_of_book_size hesaplanmalı (USD = size × price)., NO action → no_ask dolu, fee_adj (1-fair) formülü. (+8 more)
+Cohesion: 0.24
+Nodes (16): Decimal, _ceil_to_tick(), compute_limit_price(), _floor_to_tick(), order_payload_hash(), execution/order_pricing.py — Faz 2b: taker-intent tick-safe limit price + bounds, Taker-intent limit price. Tümü Decimal. Returns (Decimal limit_price, None) veya, Canonical (sort_keys) sha256 — borsaya gidecek SON tick-rounded limit_price üzer (+8 more)
 
 ### Community 119 - "Community 119"
 Cohesion: 0.25
 Nodes (7): Dosya Yapısı, Son Kontrol, Task 1: `data/ws_prices.py` — WS fiyat cache modülü, Task 2: `council/scout.py` — WS cache + REST fallback, Task 3: `main_loop.py` — WS başlat + instant resolution + gerçek bid, WebSocket Price Feed Implementation Plan, Özet: Bu Plan Ne Sağlar
 
 ### Community 120 - "Community 120"
-Cohesion: 0.08
-Nodes (26): Regression: n_open_before'un _monitor_positions'dan ÖNCE alınması,     aynı turd, Regression: n_open_before'un _monitor_positions'dan ÖNCE alınması,     aynı turd, BANKROLL_USD env değişkeni set edilince main_loop bu değeri kullanır., Regression: n_open_before'un _monitor_positions'dan ÖNCE alınması,     aynı turd, BANKROLL_USD env değişkeni set edilince main_loop bu değeri kullanır., BANKROLL_USD env değişkeni set edilince main_loop bu değeri kullanır., Regression: n_open_before'un _monitor_positions'dan ÖNCE alınması,     aynı turd, fetch_resolved hâlâ None dönerse DB kaydına dokunulmaz. (+18 more)
+Cohesion: 0.15
+Nodes (13): BANKROLL_USD env değişkeni set edilince main_loop bu değeri kullanır., BANKROLL_USD env değişkeni set edilince main_loop bu değeri kullanır., BANKROLL_USD env değişkeni set edilince main_loop bu değeri kullanır., BANKROLL_USD env değişkeni set edilince main_loop bu değeri kullanır., BANKROLL_USD env değişkeni set edilince main_loop bu değeri kullanır., BANKROLL_USD env değişkeni set edilince main_loop bu değeri kullanır., BANKROLL_USD env değişkeni set edilince main_loop bu değeri kullanır., BANKROLL_USD env değişkeni set edilince main_loop bu değeri kullanır. (+5 more)
 
 ### Community 121 - "Community 121"
-Cohesion: 0.20
-Nodes (10): is_authorized(), poll_commands(), bool, str, Ana bot ile birlikte asyncio.create_task() ile calisir., Ana bot ile birlikte asyncio.create_task() ile calisir., Ana bot ile birlikte asyncio.create_task() ile calisir., Ana bot ile birlikte asyncio.create_task() ile calisir. (+2 more)
+Cohesion: 0.29
+Nodes (7): poll_commands(), Ana bot ile birlikte asyncio.create_task() ile calisir., Ana bot ile birlikte asyncio.create_task() ile calisir., Ana bot ile birlikte asyncio.create_task() ile calisir., Ana bot ile birlikte asyncio.create_task() ile calisir., Ana bot ile birlikte asyncio.create_task() ile calisir., Ana bot ile birlikte asyncio.create_task() ile calisir.
 
 ### Community 122 - "Community 122"
 Cohesion: 0.12
 Nodes (16): ACCEPTANCE CRITERIA (hepsi PASS şart), Canlı/paper karar mantığına dokunulmadığı doğrulama, DB kolonları/indexleri özeti (ALTER, hepsi nullable), Eski veri quarantine, Faz ayrımı, Feature flag / kill switch, Fix 1 — snapshot_age_ms doldur, Fix 2 — action_spread crossed-fix + flag (edge zehirlenmesin) (+8 more)
 
 ### Community 123 - "Community 123"
-Cohesion: 0.07
-Nodes (34): find_shortterm_4h(), 4h pencere slug'ları üretir. Format: {asset}-updown-4h-{unix_ts}, 4h pencere slug'ları üretir. Format: {asset}-updown-4h-{unix_ts}, 4h Up/Down marketleri çeker. Shadow scan içindir — canlı trade'e gitmez., 4h Up/Down marketleri çeker. Shadow scan içindir — canlı trade'e gitmez., slugs_for_now_4h(), 4h market snapshot — shadow log, hiçbir zaman execute'a gitmez.      trade_enabl, 4h market snapshot — shadow log, hiçbir zaman execute'a gitmez.      trade_enabl (+26 more)
+Cohesion: 0.11
+Nodes (19): 4h pencere slug'ları üretir. Format: {asset}-updown-4h-{unix_ts}, 4h pencere slug'ları üretir. Format: {asset}-updown-4h-{unix_ts}, slugs_for_now_4h(), Migrasyon sonrası 5 yeni kolon mevcut olmalı., timeframe, trade_enabled, fee_adj_edge, liquidity_usd, spread DB'ye yazılmalı., Eski çağrı tarzı (timeframe/trade_enabled yok) → trade_enabled=1, timeframe=NULL, scan_edges() artık 60m interval kullanmamalı.     find_shortterm'e geçilen inter, Slug formatı: {asset}-updown-4h-{unix_ts}, asla 4m veya 240m olmamalı. (+11 more)
 
 ### Community 124 - "Community 124"
-Cohesion: 0.09
-Nodes (23): _monitor_positions(), Açık pozisyonları izler, çıkış koşulu varsa kapatır., Açık pozisyonları izler, çıkış koşulu varsa kapatır., Açık pozisyonları izler, çıkış koşulu varsa kapatır., Açık pozisyonları izler, çıkış koşulu varsa kapatır., Açık pozisyonları izler, çıkış koşulu varsa kapatır., Açık pozisyonları izler, çıkış koşulu varsa kapatır., Açık pozisyonları izler, çıkış koşulu varsa kapatır. (+15 more)
+Cohesion: 0.07
+Nodes (29): _monitor_positions(), Açık pozisyonları izler, çıkış koşulu varsa kapatır., Açık pozisyonları izler, çıkış koşulu varsa kapatır., Açık pozisyonları izler, çıkış koşulu varsa kapatır., Açık pozisyonları izler, çıkış koşulu varsa kapatır., Açık pozisyonları izler, çıkış koşulu varsa kapatır., Açık pozisyonları izler, çıkış koşulu varsa kapatır., Açık pozisyonları izler, çıkış koşulu varsa kapatır. (+21 more)
 
 ### Community 125 - "Community 125"
-Cohesion: 0.10
-Nodes (30): log_entry_air_pocket(), int, Entry-side FAK_NO_MATCH event'ını entry_air_pocket_events tablosuna yazar., Delayed shadow snapshot alanlarını mevcut air_pocket event'a yazar.      Backgro, update_entry_air_pocket_delayed(), _mem_conn(), log_entry_air_pocket → int event_id döner., log_entry_air_pocket → int event_id döner. (+22 more)
+Cohesion: 0.09
+Nodes (37): log_entry_air_pocket(), int, Entry-side FAK_NO_MATCH event'ını entry_air_pocket_events tablosuna yazar., Delayed shadow snapshot alanlarını mevcut air_pocket event'a yazar.      Backgro, update_entry_air_pocket_delayed(), _mem_conn(), tests/test_entry_air_pocket.py — Entry FAK_NO_MATCH air pocket telemetri testler, log_entry_air_pocket → int event_id döner. (+29 more)
 
 ### Community 126 - "Community 126"
-Cohesion: 0.06
-Nodes (36): _estimate_entry_price(), _mfe_breakeven_decide(), MFE breakeven shadow model. state['_breakeven_armed'] kalıcı., MFE breakeven shadow model. state['_breakeven_armed'] kalıcı., MFE breakeven shadow model. state['_breakeven_armed'] kalıcı., Paper pozisyon kapanmalı mı? Returns reason | None., Paper pozisyon kapanmalı mı? Returns reason | None., MFE breakeven shadow model. state['_breakeven_armed'] kalıcı. (+28 more)
+Cohesion: 0.05
+Nodes (41): _ask_buffer_price(), _estimate_entry_price(), _mfe_breakeven_decide(), MFE breakeven shadow model. state['_breakeven_armed'] kalıcı., MFE breakeven shadow model. state['_breakeven_armed'] kalıcı., MFE breakeven shadow model. state['_breakeven_armed'] kalıcı., Paper pozisyon kapanmalı mı? Returns reason | None., Paper pozisyon kapanmalı mı? Returns reason | None. (+33 more)
 
 ### Community 127 - "Community 127"
 Cohesion: 0.22
@@ -790,8 +789,8 @@ Cohesion: 0.50
 Nodes (4): Kapanan pozisyonda realized_pnl hesaplanıp DB'ye yazılır.     entry=0.40, exit=0, Kapanan pozisyonda realized_pnl hesaplanıp DB'ye yazılır.     entry=0.40, exit=0, Kapanan pozisyonda realized_pnl hesaplanıp DB'ye yazılır.     entry=0.40, exit=0, test_log_position_close_stores_realized_pnl()
 
 ### Community 131 - "Community 131"
-Cohesion: 0.09
-Nodes (23): int, Finding'i 5 katmandan geçirir. Herhangi biri düşerse None., Finding'i 5 katmandan geçirir. Herhangi biri düşerse None., Finding'i 5 katmandan geçirir. Herhangi biri düşerse None., Finding'i 5 katmandan geçirir. Herhangi biri düşerse None., Finding'i 5 katmandan geçirir. Herhangi biri düşerse None., Finding'i 5 katmandan geçirir. Herhangi biri düşerse None., Finding'i 5 katmandan geçirir. Herhangi biri düşerse None. (+15 more)
+Cohesion: 0.13
+Nodes (15): int, Finding'i 5 katmandan geçirir. Herhangi biri düşerse None., Finding'i 5 katmandan geçirir. Herhangi biri düşerse None., Finding'i 5 katmandan geçirir. Herhangi biri düşerse None., Finding'i 5 katmandan geçirir. Herhangi biri düşerse None., Finding'i 5 katmandan geçirir. Herhangi biri düşerse None., Finding'i 5 katmandan geçirir. Herhangi biri düşerse None., Finding'i 5 katmandan geçirir. Herhangi biri düşerse None. (+7 more)
 
 ### Community 132 - "Community 132"
 Cohesion: 0.33
@@ -815,11 +814,11 @@ Nodes (7): Dosya Haritası, Faz 2 — WS Event-Driven Position Monitor: Implemen
 
 ### Community 137 - "Community 137"
 Cohesion: 0.08
-Nodes (31): get_book(), get_clob_price(), CLOB GET /book?token_id=<id> → tam OrderBookSummary.      DİKKAT: Polymarket ask, CLOB GET /book?token_id=<id> → tam OrderBookSummary.      bids: fiyata göre azal, P0 QuoteProvider — TEK quote abstraction. /price ASLA (BUY/SELL semantiği ters)., CLOB /price?side=BUY|SELL → token için anlık fiyat.      BUY  → best ask (almak, CLOB /price?side=BUY|SELL → token için anlık fiyat.      BUY  → best ask (almak, data/depth_enricher.py — Faz 4A-0 Shadow Mode depth telemetri.  Pozisyon açıldık (+23 more)
+Nodes (33): get_book(), get_clob_price(), str, CLOB GET /book?token_id=<id> → tam OrderBookSummary.      DİKKAT: Polymarket ask, CLOB GET /book?token_id=<id> → tam OrderBookSummary.      bids: fiyata göre azal, Ham book seviyelerini [(price, size)] güvenli parse eder (string/float).     Geç, P0 QuoteProvider — TEK quote abstraction. /price ASLA (BUY/SELL semantiği ters)., CLOB /price?side=BUY|SELL → token için anlık fiyat.      BUY  → best ask (almak (+25 more)
 
 ### Community 138 - "Community 138"
-Cohesion: 0.19
-Nodes (13): init_schema(), mem_db(), tests/test_telemetry_identity_coverage.py — Telemetry Identity & Coverage Fix TD, test_duplicate_tracking_key_counts_collision_no_crash(), test_would_enter_false_event_written(), test_would_enter_false_paper_id_null_tracking_key_filled(), test_would_enter_true_paper_tracking_key_matches(), tests/test_telemetry_v31.py — Telemetry V3.1 Data Integrity + Lifecycle TDD.  Fi (+5 more)
+Cohesion: 0.15
+Nodes (16): _parse(), tests/test_shortterm.py — data/shortterm.py testleri. parse_market_window unit t, slugs_for_now her interval için btc/eth/sol/xrp içermeli., Her asset için en az 7 pencere sorgulanmalı., fetch_by_slug(slug) — session parametresi olmadan çağrılabilmeli (main_loop kull, 4 asset × 3 interval × 7 lookback = 84 slug — 80+ hedefine ulaşmış olmalı., interval=5 için en fazla 4 asset × 2 lookback = 8 slug denenmeli (gereksiz 404 a, test_fetch_by_slug_takes_single_arg() (+8 more)
 
 ### Community 139 - "Community 139"
 Cohesion: 0.11
@@ -843,11 +842,11 @@ Nodes (5): Kâr sinyali ardışık değilse sayaç sıfırlanır → tek seferli
 
 ### Community 144 - "Community 144"
 Cohesion: 0.10
-Nodes (20): ws_triggered=True iken scan+heal mantığı atlanır (main() koşullu bloğu doğrular), ws_triggered=True iken scan+heal mantığı atlanır (main() koşullu bloğu doğrular), _do_flatten tüm açık pozisyonları FAK SELL ile kapatır, listeden siler., _do_flatten tüm açık pozisyonları FAK SELL ile kapatır, listeden siler., sell_position None → pozisyon açık kalır, _closing sıfırlanır., sell_position None → pozisyon açık kalır, _closing sıfırlanır., ws_triggered=True iken scan+heal mantığı atlanır (main() koşullu bloğu doğrular), _do_flatten tüm açık pozisyonları FAK SELL ile kapatır, listeden siler. (+12 more)
+Nodes (21): log_partial_fill_update(), Kısmi fill sonrası açık pozisyonun shares ve partial_* alanlarını DB'ye yazar., Kısmi fill sonrası açık pozisyonun shares ve partial_* alanlarını DB'ye yazar., _do_flatten tüm açık pozisyonları FAK SELL ile kapatır, listeden siler., _do_flatten tüm açık pozisyonları FAK SELL ile kapatır, listeden siler., sell_position None → pozisyon açık kalır, _closing sıfırlanır., sell_position None → pozisyon açık kalır, _closing sıfırlanır., _load_open_positions partial fill alanlarını DB'den geri yükler. (+13 more)
 
 ### Community 145 - "Community 145"
-Cohesion: 0.10
-Nodes (21): _all_model_decisions(), _model_balanced(), _model_conservative(), _model_current(), HL trade yönüne karşı mı? NO→drift>0 yanlış, YES→drift<0 yanlış., HL trade yönüne karşı mı? NO→drift>0 yanlış, YES→drift<0 yanlış., Aggressive taker SELL: bids'i pahalıdan ucuza ez, shares kadar.     Returns (avg, Mevcut canlı stop_curve aynası (manager.stop_curve). (+13 more)
+Cohesion: 0.15
+Nodes (13): _all_model_decisions(), _model_current(), Aggressive taker SELL: bids'i pahalıdan ucuza ez, shares kadar.     Returns (avg, Mevcut canlı stop_curve aynası (manager.stop_curve)., Mevcut canlı stop_curve aynası (manager.stop_curve)., 4 modelin (action, reason) çıktısı., 4 modelin (action, reason) çıktısı., 4 modelin (action, reason) çıktısı. (+5 more)
 
 ### Community 146 - "Community 146"
 Cohesion: 0.33
@@ -858,24 +857,24 @@ Cohesion: 0.12
 Nodes (15): Doğrulama Kontrol Listesi, Faz 2.5 WS Lifecycle Fix Implementation Plan, File Structure, Step 1.1: RED — 4 failing test yaz, Step 1.2: GREEN — ws_prices.py değişiklikleri, Step 1.3: Commit, Step 2.1: RED — 6 failing test yaz, Step 2.2: GREEN — ws_prices.py değişiklikleri (+7 more)
 
 ### Community 148 - "Community 148"
-Cohesion: 0.29
-Nodes (7): NO sinyali: gerçek NO_ask ile (1-fair)-no_ask edge hesaplanır, finding'e yazılır, P0 KURAL 2 — WS valid snapshot → bid+ask AYNI snapshot'tan (Frankenstein SELL ya, NO sinyali: gerçek NO_ask ile (1-fair)-no_ask edge hesaplanır, finding'e yazılır, NO sinyali: gerçek NO_ask ile (1-fair)-no_ask edge hesaplanır, finding'e yazılır, NO sinyali: gerçek NO_ask ile (1-fair)-no_ask edge hesaplanır, finding'e yazılır, test_no_edge_uses_real_no_ask_and_correct_formula(), test_single_source_ws_snapshot_no_frankenstein()
+Cohesion: 0.06
+Nodes (36): _process_market(), Tek marketi değerlendirir. Edge yoksa veya veri eksikse None., Tek marketi değerlendirir. Edge yoksa veya veri eksikse None., Tek marketi değerlendirir. Edge yoksa veya veri eksikse None., Tek marketi değerlendirir. Edge yoksa veya veri eksikse None.      min_edge: Non, Tek marketi değerlendirir. Edge yoksa veya veri eksikse None.      min_edge:, Tek marketi değerlendirir. Edge yoksa veya veri eksikse None.      min_edge:, Tek marketi değerlendirir. Edge yoksa veya veri eksikse None. (+28 more)
 
 ### Community 149 - "Community 149"
-Cohesion: 0.50
-Nodes (4): log_position_open → entry_hl_price DB'ye kaydedilmeli., log_position_open → entry_hl_price DB'ye kaydedilmeli., log_position_open → entry_hl_price DB'ye kaydedilmeli., test_log_position_open_saves_entry_hl_price()
+Cohesion: 0.15
+Nodes (13): Regression: n_open_before'un _monitor_positions'dan ÖNCE alınması,     aynı turd, Regression: n_open_before'un _monitor_positions'dan ÖNCE alınması,     aynı turd, Regression: n_open_before'un _monitor_positions'dan ÖNCE alınması,     aynı turd, Regression: n_open_before'un _monitor_positions'dan ÖNCE alınması,     aynı turd, fetch_resolved hâlâ None dönerse DB kaydına dokunulmaz., Regression: n_open_before'un _monitor_positions'dan ÖNCE alınması,     aynı turd, Regression: n_open_before'un _monitor_positions'dan ÖNCE alınması,     aynı turd, Regression: n_open_before'un _monitor_positions'dan ÖNCE alınması,     aynı turd (+5 more)
 
 ### Community 150 - "Community 150"
 Cohesion: 0.14
 Nodes (12): get_quote(), tests/test_live_exec_lineage.py — Faz 1: live execution path /price-ters → Quote, test_get_quote_is_book_derived_not_side(), tests/test_quote_provider.py — QuoteProvider abstraction (P0 /price-ters fix)., Exit (pozisyon satışı) action-side BID ile. /price SELL (=ask, optimistic) YASAK, scout decision + paper exit/mfe yolunda get_clob_price (/price) kalmamalı., test_get_quote_prefers_valid_ws(), test_get_quote_rest_book_derived() (+4 more)
 
 ### Community 151 - "Community 151"
-Cohesion: 0.20
-Nodes (9): tests/test_paper_5m_cohort.py — 5m ayrı deney cohort TDD.  5m marketler MIN_SECO, _process_market min_seconds default → scout.MIN_SECONDS (canlı 300 korunur)., 5m slug → cohort='paper_5m', 15m clean cohort='paper'a karışmaz., 15m normal → cohort='paper' (5m değişikliği 15m'i bozmaz)., scan_shadow_edges 5m filtresi + düşük min_seconds ile 5m aday döndürür., test_15m_still_paper_cohort(), test_5m_paper_cohort_separate(), test_process_market_min_seconds_default_unchanged() (+1 more)
+Cohesion: 0.11
+Nodes (21): init_schema(), mem_db(), V2 raporu telemetry_schema_version=2 filtreler; V1 (1/NULL) dahil değil., test_v1_events_quarantined_not_in_v2(), tests/test_paper_5m_cohort.py — 5m ayrı deney cohort TDD.  5m marketler MIN_SECO, _process_market min_seconds default → scout.MIN_SECONDS (canlı 300 korunur)., 5m slug → cohort='paper_5m', 15m clean cohort='paper'a karışmaz., 15m normal → cohort='paper' (5m değişikliği 15m'i bozmaz). (+13 more)
 
 ### Community 152 - "Community 152"
-Cohesion: 0.13
-Nodes (25): best_ask_from_book(), best_bid_from_book(), _book_levels(), fetch_book_snapshot(), float, str, data/clob_price.py — CLOB anlık fiyat yardımcısı (paylaşımlı)., Ham book seviyelerini [(price, size)] güvenli parse eder (string/float).     Geç (+17 more)
+Cohesion: 0.14
+Nodes (23): best_ask_from_book(), best_bid_from_book(), _book_levels(), fetch_book_snapshot(), float, data/clob_price.py — CLOB anlık fiyat yardımcısı (paylaşımlı)., Ask seviyeleri ucuzdan pahalıya (best=ilk). Polymarket /book asks AZALAN gelir, Bid seviyeleri pahalıdan ucuza (best=ilk). Polymarket /book bids ARTAN gelir. (+15 more)
 
 ### Community 153 - "Community 153"
 Cohesion: 0.40
@@ -886,24 +885,24 @@ Cohesion: 0.20
 Nodes (11): float, Açık pozisyonun token'larını satar (IOC SELL order).      pos: position dict — a, Başarılı fill sonrası timing ve slippage metriklerini pos'a yazar., Başarılı fill sonrası timing ve slippage metriklerini pos'a yazar., Başarılı fill sonrası timing ve slippage metriklerini pos'a yazar., Başarılı fill sonrası timing ve slippage metriklerini pos'a yazar., Açık pozisyonun token'larını FAK SELL order ile satar.      pos: position dict —, Açık pozisyonun token'larını FAK SELL order ile satar.      pos: position dict — (+3 more)
 
 ### Community 155 - "Community 155"
-Cohesion: 0.10
-Nodes (29): _parse(), parse_market_window(), Ham Gamma market dict'inden scout'un ihtiyacı olan alanları çıkarır.     Returns, Ham Gamma market dict'inden scout'un ihtiyacı olan alanları çıkarır.     Returns, tests/test_shortterm.py — data/shortterm.py testleri. parse_market_window unit t, endDate yoksa None döner., negRisk=True doğru parse edilir., negRisk alanı yoksa False varsayılır. (+21 more)
+Cohesion: 0.12
+Nodes (17): parse_market_window(), Ham Gamma market dict'inden scout'un ihtiyacı olan alanları çıkarır.     Returns, Ham Gamma market dict'inden scout'un ihtiyacı olan alanları çıkarır.     Returns, log_position_close(), execution/reconcile.py — LIVE startup pozisyon mutabakatı., LIVE startup: DB'deki açık pozisyonları Polymarket ile karşılaştırır.     DRY_RU, startup_reconcile(), negRisk=True doğru parse edilir. (+9 more)
 
 ### Community 156 - "Community 156"
-Cohesion: 0.22
-Nodes (9): build_durum_message(), float, _query_daily_pnl(), /durum acik pozisyon yoksa bos mesaj vermemeli, /durum mesaji acik pozisyon sayisi icermeli, /durum acik pozisyon yoksa bos mesaj vermemeli, /durum mesaji acik pozisyon sayisi icermeli, test_build_durum_empty_positions() (+1 more)
+Cohesion: 0.17
+Nodes (12): build_durum_message(), is_authorized(), bool, float, str, _query_daily_pnl(), /durum acik pozisyon yoksa bos mesaj vermemeli, /durum mesaji acik pozisyon sayisi icermeli (+4 more)
 
 ### Community 157 - "Community 157"
-Cohesion: 0.14
-Nodes (14): Kısmi fill → partial_fill_shares ve partial_realized_usdc kümülatif birikir., Kısmi fill → partial_fill_shares ve partial_realized_usdc kümülatif birikir., Tam fill (making >= shares * 0.98) → pozisyon listeden çıkar., Tam fill (making >= shares * 0.98) → pozisyon listeden çıkar., Kısmi fill → partial_fill_shares ve partial_realized_usdc kümülatif birikir., Tam fill (making >= shares * 0.98) → pozisyon listeden çıkar., Kısmi fill → partial_fill_shares ve partial_realized_usdc kümülatif birikir., Kısmi fill → partial_fill_shares ve partial_realized_usdc kümülatif birikir. (+6 more)
+Cohesion: 0.09
+Nodes (22): ws_triggered=True iken scan+heal mantığı atlanır (main() koşullu bloğu doğrular), Kısmi fill → partial_fill_shares ve partial_realized_usdc kümülatif birikir., Kısmi fill → partial_fill_shares ve partial_realized_usdc kümülatif birikir., Tam fill (making >= shares * 0.98) → pozisyon listeden çıkar., Tam fill (making >= shares * 0.98) → pozisyon listeden çıkar., ws_triggered=True iken scan+heal mantığı atlanır (main() koşullu bloğu doğrular), Kısmi fill → partial_fill_shares ve partial_realized_usdc kümülatif birikir., Tam fill (making >= shares * 0.98) → pozisyon listeden çıkar. (+14 more)
 
 ### Community 158 - "Community 158"
 Cohesion: 0.22
 Nodes (9): NO pozisyon: mae_data_quality='estimated' (1-YES ask, gerçek NO bid değil)., NO pozisyon: mae_data_quality='estimated' (1-YES ask, gerçek NO bid değil)., NO pozisyon: mae_data_quality='estimated' (1-YES ask, gerçek NO bid değil)., YES pozisyon: mae_data_quality='rest'., Stop tetiklenince sl_trigger_px, sl_trigger_pct, first_trigger_ts set edilir., Stop tetiklenince sl_trigger_px, sl_trigger_pct, first_trigger_ts set edilir., test_check_exit_no_position_mae_data_quality_estimated(), test_check_exit_stop_captures_trigger_snapshot() (+1 more)
 
 ### Community 159 - "Community 159"
-Cohesion: 0.15
-Nodes (15): compute_legacy_telemetry(), Legacy GBM iç değişkenlerini hesaplar (SAF — model kararını değiştirmez).      r, tests/test_model_telemetry.py — Legacy fair-value telemetri + VOL CLAMP hipotezi, DB write hatası → exception loglanır, bot loop crash etmez (worker yutar)., Refactor davranış-koruyucu: clamp'li sonuç eski formülle aynı., test_calculate_realized_volatility_unchanged(), test_clamp_hit_high_vol(), test_fair_no_complement() (+7 more)
+Cohesion: 0.17
+Nodes (13): compute_legacy_telemetry(), Legacy GBM iç değişkenlerini hesaplar (SAF — model kararını değiştirmez).      r, tests/test_model_telemetry.py — Legacy fair-value telemetri + VOL CLAMP hipotezi, DB write hatası → exception loglanır, bot loop crash etmez (worker yutar)., test_clamp_hit_high_vol(), test_fair_no_complement(), test_model_decision_events_schema(), test_no_clamp_in_range() (+5 more)
 
 ### Community 160 - "Community 160"
 Cohesion: 0.50
@@ -914,12 +913,12 @@ Cohesion: 0.18
 Nodes (14): create_intent(), has_unresolved_intent(), is_position_open(), make_order_intent_id(), payload_hash(), bool, str, execution/order_intent.py — Faz 2a: local idempotency + order intent state machi (+6 more)
 
 ### Community 162 - "Community 162"
-Cohesion: 0.12
-Nodes (17): _close_and_finalize(), _close_paper_position(), _exit_quote_price(), _paper_monitor_cycle(), Tüm açık paper pozisyonları bir kez güncelle + lifecycle close.      Live monito, Tüm açık paper pozisyonları bir kez güncelle + lifecycle close.      Live monito, Paper kapat: DB güncelle + model_pnl yaz + memory map'ten çıkar (leak önleme)., Paper kapat: DB güncelle + model_pnl yaz + memory map'ten çıkar (leak önleme). (+9 more)
+Cohesion: 0.08
+Nodes (25): _close_and_finalize(), _close_paper_position(), _exit_quote_price(), _paper_monitor_cycle(), _paper_monitor_loop(), Tüm açık paper pozisyonları bir kez güncelle + lifecycle close.      Live monito, Tüm açık paper pozisyonları bir kez güncelle + lifecycle close.      Live monito, Paper kapat: DB güncelle + model_pnl yaz + memory map'ten çıkar (leak önleme). (+17 more)
 
 ### Community 163 - "Community 163"
-Cohesion: 0.67
-Nodes (3): /durdur → /hardkill gibi davranır, uyarı mesajı içermeli., /durdur → /hardkill gibi davranır, uyarı mesajı içermeli., test_durdur_is_hardkill_alias_with_warning()
+Cohesion: 0.17
+Nodes (11): 1. Payload Hash Contract (RİSK), 2. Order Payload / TiF (RİSK), 3. Tick-size / Rounding (RİSK), 4. Partial Fill Muhasebesi (RİSK), 5. Fill-Confirm Invariant (RİSK), Acceptance (live açmadan önce, 2b kapsamı), API doğrulama (read-only, py_clob_client_v2) — TAMAMLANDI, Diğer zorunlu başlıklar (+3 more)
 
 ### Community 164 - "Community 164"
 Cohesion: 0.18
@@ -954,28 +953,28 @@ Cohesion: 0.12
 Nodes (16): NO + CLOB no_bid var + YES ask None (REST+CLOB) → check_exit çağrılmalı., NO + CLOB no_bid var + YES ask None (REST+CLOB) → check_exit çağrılmalı., WS event geldiğinde _cached_hl_price yoksa pozisyon skip edilmeli — crash yok, c, NO + CLOB no_bid var + YES ask None (REST+CLOB) → check_exit çağrılmalı., Kısmi fill (making < shares * 0.98) → pozisyon listede kalır, shares azalır, _cl, Kısmi fill (making < shares * 0.98) → pozisyon listede kalır, shares azalır, _cl, WS event geldiğinde _cached_hl_price yoksa pozisyon skip edilmeli — crash yok, c, Kısmi fill (making < shares * 0.98) → pozisyon listede kalır, shares azalır, _cl (+8 more)
 
 ### Community 173 - "Community 173"
-Cohesion: 0.10
-Nodes (20): fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır., fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır., fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır., YES pozisyon + 'Yes' kazanınca pm_exit=1.0 ile kapanmalı., fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır., fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır., fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır., fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır. (+12 more)
+Cohesion: 0.20
+Nodes (10): YES pozisyon + 'Yes' kazanınca pm_exit=1.0 ile kapanmalı., fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır., YES pozisyon + 'Yes' kazanınca pm_exit=1.0 ile kapanmalı., YES pozisyon + 'Yes' kazanınca pm_exit=1.0 ile kapanmalı., YES pozisyon + 'Yes' kazanınca pm_exit=1.0 ile kapanmalı., YES pozisyon + 'Yes' kazanınca pm_exit=1.0 ile kapanmalı., YES pozisyon + 'Yes' kazanınca pm_exit=1.0 ile kapanmalı., YES pozisyon + 'Yes' kazanınca pm_exit=1.0 ile kapanmalı. (+2 more)
 
 ### Community 175 - "Community 175"
 Cohesion: 0.25
 Nodes (8): _closing=True pozisyon WS event path'te check_exit çağrılmadan skip edilir., _closing=True pozisyon WS event path'te check_exit çağrılmadan skip edilir., _closing=True pozisyon WS event path'te check_exit çağrılmadan skip edilir., _closing=True pozisyon WS event path'te check_exit çağrılmadan skip edilir., _closing=True pozisyon WS event path'te check_exit çağrılmadan skip edilir., _closing=True pozisyon WS event path'te check_exit çağrılmadan skip edilir., _closing=True pozisyon WS event path'te check_exit çağrılmadan skip edilir., test_monitor_ws_path_skips_closing_position()
 
 ### Community 176 - "Community 176"
-Cohesion: 0.05
-Nodes (60): _finding(), _pass_gate(), _pass_risk(), findings listesinde aynı slug iki kez varsa yalnızca bir pozisyon açılır., Konsey geçince execute() çağrılır, pozisyon open_positions'a eklenir., Konsey geçince execute() çağrılır, pozisyon open_positions'a eklenir., Konsey geçince execute() çağrılır, pozisyon open_positions'a eklenir., Konsey geçince execute() çağrılır, pozisyon open_positions'a eklenir. (+52 more)
+Cohesion: 0.11
+Nodes (24): _finding(), _pass_gate(), _pass_risk(), Konsey geçince execute() çağrılır, pozisyon open_positions'a eklenir., Konsey geçince execute() çağrılır, pozisyon open_positions'a eklenir., Konsey geçince execute() çağrılır, pozisyon open_positions'a eklenir., Konsey geçince execute() çağrılır, pozisyon open_positions'a eklenir., Konsey geçince execute() çağrılır, pozisyon open_positions'a eklenir. (+16 more)
 
 ### Community 177 - "Community 177"
 Cohesion: 0.25
 Nodes (8): clobTokenIds sadece 1 eleman içeriyorsa yes_token_id set, no_token_id None — cra, clobTokenIds sadece 1 eleman içeriyorsa yes_token_id set, no_token_id None — cra, clobTokenIds sadece 1 eleman içeriyorsa yes_token_id set, no_token_id None — cra, clobTokenIds sadece 1 eleman içeriyorsa yes_token_id set, no_token_id None — cra, clobTokenIds sadece 1 eleman içeriyorsa yes_token_id set, no_token_id None — cra, clobTokenIds sadece 1 eleman içeriyorsa yes_token_id set, no_token_id None — cra, clobTokenIds sadece 1 eleman içeriyorsa yes_token_id set, no_token_id None — cra, test_finding_token_ids_single_element_no_crash()
 
 ### Community 178 - "Community 178"
-Cohesion: 0.12
-Nodes (20): _dedupe_key(), _insert_entry_event(), _insert_paper_position(), invalidate_pre_patch_open_paper(), _paper_open_worker(), execution/paper_tracker.py — Paper/Shadow Position Tracker + MFE Breakeven.  NEW, SENKRON + non-blocking. Paper-open worker fırlatır, anında döner.      Live loop, SENKRON + non-blocking. Paper-open worker fırlatır, anında döner.      Live loop (+12 more)
+Cohesion: 0.09
+Nodes (28): _dedupe_key(), _insert_entry_event(), _insert_paper_position(), invalidate_pre_patch_open_paper(), _model_balanced(), _model_conservative(), _paper_open_worker(), execution/paper_tracker.py — Paper/Shadow Position Tracker + MFE Breakeven.  NEW (+20 more)
 
 ### Community 179 - "Community 179"
-Cohesion: 0.20
-Nodes (13): Son 'window_minutes' dakikada fiyat GERCEKTE % kac degisti., Son 'window_minutes' dakikada fiyat GERCEKTE % kac degisti., Son 'window_minutes' dakikada fiyat GERCEKTE % kac degisti., Son 'window_minutes' dakikada fiyat GERCEKTE % kac degisti., realized_move(), tests/test_hl_candles.py — data/hl_candles.py testleri. Mevcut fonksiyonlar için, Boş liste → 0.80 fallback., test_calculate_realized_vol_empty_returns_fallback() (+5 more)
+Cohesion: 0.18
+Nodes (11): fetch_resolved hâlâ None dönerse DB kaydına dokunulmaz., fetch_resolved hâlâ None dönerse DB kaydına dokunulmaz., fetch_resolved hâlâ None dönerse DB kaydına dokunulmaz., fetch_resolved hâlâ None dönerse DB kaydına dokunulmaz., fetch_resolved hâlâ None dönerse DB kaydına dokunulmaz., fetch_resolved hâlâ None dönerse DB kaydına dokunulmaz., fetch_resolved hâlâ None dönerse DB kaydına dokunulmaz., fetch_resolved hâlâ None dönerse DB kaydına dokunulmaz. (+3 more)
 
 ### Community 181 - "Community 181"
 Cohesion: 0.14
@@ -990,8 +989,8 @@ Cohesion: 0.50
 Nodes (4): /baslat SOFT_PAUSED'u temizler., /baslat SOFT_PAUSED'u temizler., /baslat SOFT_PAUSED'u temizler., test_baslat_clears_soft_paused()
 
 ### Community 184 - "Community 184"
-Cohesion: 0.17
-Nodes (12): fetch_resolved None döndürürse notify_resolved_late çağrılmaz., fetch_resolved None döndürürse notify_resolved_late çağrılmaz., fetch_resolved None döndürürse notify_resolved_late çağrılmaz., fetch_resolved None döndürürse notify_resolved_late çağrılmaz., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., fetch_resolved None döndürürse notify_resolved_late çağrılmaz., fetch_resolved None döndürürse notify_resolved_late çağrılmaz., fetch_resolved None döndürürse notify_resolved_late çağrılmaz. (+4 more)
+Cohesion: 0.18
+Nodes (11): fetch_resolved None döndürürse notify_resolved_late çağrılmaz., fetch_resolved None döndürürse notify_resolved_late çağrılmaz., fetch_resolved None döndürürse notify_resolved_late çağrılmaz., fetch_resolved None döndürürse notify_resolved_late çağrılmaz., limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., fetch_resolved None döndürürse notify_resolved_late çağrılmaz., fetch_resolved None döndürürse notify_resolved_late çağrılmaz., fetch_resolved None döndürürse notify_resolved_late çağrılmaz. (+3 more)
 
 ### Community 185 - "Community 185"
 Cohesion: 0.33
@@ -1010,8 +1009,8 @@ Cohesion: 0.67
 Nodes (3): /hardkill → kill switch devreye girer, uyarı mesajı içermeli., /hardkill → kill switch devreye girer, uyarı mesajı içermeli., test_hardkill_arms_kill_switch_and_warns()
 
 ### Community 189 - "Community 189"
-Cohesion: 0.18
-Nodes (11): MIN_EDGE_PCT (0.05) üstünde edge → geçer. Float kesinliğinden kaçınmak için 0.10, config.TRACKED_ASSETS içindeki varlık → _process_market None dönemez (None döner, MIN_EDGE_PCT (0.05) üstünde edge → geçer. fair konviksiyon eşiği üstünde (0.65)., MIN_EDGE_PCT (0.05) üstünde edge → geçer. fair konviksiyon eşiği üstünde (0.65)., MIN_EDGE_PCT (0.05) üstünde edge → geçer. fair konviksiyon eşiği üstünde (0.65)., config.TRACKED_ASSETS içindeki varlık → _process_market None dönemez (None döner, config.TRACKED_ASSETS içindeki varlık → _process_market None dönemez (None döner, config.TRACKED_ASSETS içindeki varlık → _process_market None dönemez (None döner (+3 more)
+Cohesion: 0.08
+Nodes (25): Gerçek NO fırsatı: HL çok bearish ama market hâlâ bullish.      Senaryo:       H, negRisk=True marketler sonuçlarda olmamalı., Gerçek NO fırsatı: HL çok bearish ama market hâlâ bullish.      Senaryo:       H, MIN_EDGE_PCT (0.05) üstünde edge → geçer. Float kesinliğinden kaçınmak için 0.10, config.TRACKED_ASSETS içindeki varlık → _process_market None dönemez (None döner, MIN_EDGE_PCT (0.05) üstünde edge → geçer. fair konviksiyon eşiği üstünde (0.65)., Her bulgu _window içeriyor — Verifier PM fallback için., Gerçek NO fırsatı: HL çok bearish ama market hâlâ bullish.      Senaryo:       H (+17 more)
 
 ### Community 190 - "Community 190"
 Cohesion: 0.20
@@ -1074,16 +1073,16 @@ Cohesion: 0.10
 Nodes (20): NO + WS no_bid mevcut → price_source='ws_bid', mae_data_quality='exact'., WS event 7s içinde gelmezse False döner, cache güncellenir., WS event 7s içinde gelmezse False döner, cache güncellenir., NO + WS no_bid mevcut → price_source='ws_bid', mae_data_quality='exact'., NO + WS no_bid mevcut → price_source='ws_bid', mae_data_quality='exact'., NO + WS no_bid var + YES ask None → check_exit çağrılmalı, skip edilmemeli., NO + WS no_bid var + YES ask None → check_exit çağrılmalı, skip edilmemeli., SELL başarılı + DB log exception → pozisyon open_positions'dan çıkarılmış olmalı (+12 more)
 
 ### Community 206 - "Community 206"
-Cohesion: 0.33
-Nodes (5): get_effective_bankroll(), float, execution/balance.py — Etkili bankroll: DRY_RUN→config, LIVE→gerçek USDC bakiyes, DRY_RUN=True  → bankroll_config (env değeri), API çağrısı yok.     DRY_RUN=False, DRY_RUN=True  → bankroll_config (env değeri), API çağrısı yok.     DRY_RUN=False
+Cohesion: 0.18
+Nodes (11): limit=2 → 5 null kayıt varsa sadece 2 işlenir, 3 null kalır., _heal entry_hl_price DB'den okuyup exit için current_price çağırmalı., _heal entry_hl_price DB'den okuyup exit için current_price çağırmalı., _heal entry_hl_price DB'den okuyup exit için current_price çağırmalı., _heal entry_hl_price DB'den okuyup exit için current_price çağırmalı., _heal entry_hl_price DB'den okuyup exit için current_price çağırmalı., _heal entry_hl_price DB'den okuyup exit için current_price çağırmalı., _heal entry_hl_price DB'den okuyup exit için current_price çağırmalı. (+3 more)
 
 ### Community 207 - "Community 207"
 Cohesion: 0.36
 Nodes (7): fetch_market_state(), main(), _post(), data/hyperliquid.py — Hyperliquid veri katmani (public, key gerekmez). BTC/ETH i, Basit yon gostergesi: mark vs oracle + gunluk degisim + funding., Basit yon gostergesi: mark vs oracle + gunluk degisim + funding., _signal()
 
 ### Community 210 - "Community 210"
-Cohesion: 0.14
-Nodes (15): get_raw_vol(), data/model_telemetry.py — Legacy fair-value modeli karar telemetrisi.  Model dav, SENKRON + non-blocking. Telemetri yazımını background'a fırlatır, anında döner., SENKRON + non-blocking. Telemetri yazımını background'a fırlatır, anında döner., Background: telemetri DB yazımı. Hata → log error + devam (crash YOK)., Background: telemetri DB yazımı. Hata → log error + devam (crash YOK)., V2 INSERT (OR IGNORE KALDIRILDI) — tracking_key UNIQUE collision IntegrityError, V2 INSERT (OR IGNORE KALDIRILDI) — tracking_key UNIQUE collision IntegrityError (+7 more)
+Cohesion: 0.16
+Nodes (13): data/model_telemetry.py — Legacy fair-value modeli karar telemetrisi.  Model dav, SENKRON + non-blocking. Telemetri yazımını background'a fırlatır, anında döner., SENKRON + non-blocking. Telemetri yazımını background'a fırlatır, anında döner., Background: telemetri DB yazımı. Hata → log error + devam (crash YOK)., Background: telemetri DB yazımı. Hata → log error + devam (crash YOK)., V2 INSERT (OR IGNORE KALDIRILDI) — tracking_key UNIQUE collision IntegrityError, V2 INSERT (OR IGNORE KALDIRILDI) — tracking_key UNIQUE collision IntegrityError, model_decision_events INSERT OR IGNORE (UNIQUE event_id → idempotent), timeout'l (+5 more)
 
 ### Community 212 - "Community 212"
 Cohesion: 0.25
@@ -1106,20 +1105,20 @@ Cohesion: 0.29
 Nodes (6): Final: Tam Test Süiti + Bot Restart, Self-Review, Stop Kalibrasyon + ETH-NO Quarantine + NO Exact MAE Implementation Plan, Task 1: STOP_LOSS_MAX=0.25 + MIN_HOLD_SECS=15, Task 2: ETH-NO Geçici Quarantine, Task 3: NO Exact MAE Fix (complement → WS no_token_id bid)
 
 ### Community 217 - "Community 217"
-Cohesion: 0.18
-Nodes (11): Açık pozisyon fixture'ı., DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz., DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz., DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz., DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz., DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz., DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz., DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz. (+3 more)
+Cohesion: 0.20
+Nodes (10): DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz., DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz., DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz., DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz., DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz., DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz., DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz., DRY_RUN=True → _run_council'a daily_loss_usd=0 geçilir, kayıp limiti uygulanmaz. (+2 more)
 
 ### Community 218 - "Community 218"
-Cohesion: 0.33
-Nodes (6): WS cache'de fiyat varsa REST çağrısı yapılmaz., WS cache'de fiyat varsa REST çağrısı yapılmaz., WS cache'de fiyat varsa REST çağrısı yapılmaz., WS cache'de fiyat varsa REST çağrısı yapılmaz., WS cache'de fiyat varsa REST çağrısı yapılmaz., test_process_market_uses_ws_cache_when_available()
+Cohesion: 0.20
+Nodes (10): fetch_resolved None döndürürse notify_resolved_late çağrılmaz., DRY_RUN=False iken sell_position None → pozisyon AÇIK kalır, kapatılmaz.      FA, DRY_RUN=False iken sell_position None → pozisyon AÇIK kalır, kapatılmaz.      FA, DRY_RUN=False iken sell_position None → pozisyon AÇIK kalır, kapatılmaz.      FA, DRY_RUN=False iken sell_position None → pozisyon AÇIK kalır, kapatılmaz.      FA, DRY_RUN=False iken sell_position None → pozisyon AÇIK kalır, kapatılmaz.      FA, DRY_RUN=False iken sell_position None → pozisyon AÇIK kalır, kapatılmaz.      FA, DRY_RUN=False iken sell_position None → pozisyon AÇIK kalır, kapatılmaz.      FA (+2 more)
 
 ### Community 219 - "Community 219"
 Cohesion: 0.22
 Nodes (9): profit_target_hit → slug failed_slugs'a EKLENMEZ (yüksek-edge re-entry serbest)., profit_target_hit → slug failed_slugs'a EKLENMEZ (yüksek-edge re-entry serbest)., profit_target_hit → slug failed_slugs'a EKLENMEZ (yüksek-edge re-entry serbest)., profit_target_hit → slug failed_slugs'a EKLENMEZ (yüksek-edge re-entry serbest)., profit_target_hit → slug failed_slugs'a EKLENMEZ (yüksek-edge re-entry serbest)., profit_target_hit → slug failed_slugs'a EKLENMEZ (yüksek-edge re-entry serbest)., profit_target_hit → slug failed_slugs'a EKLENMEZ (yüksek-edge re-entry serbest)., profit_target_hit → slug failed_slugs'a EKLENMEZ (yüksek-edge re-entry serbest). (+1 more)
 
 ### Community 220 - "Community 220"
-Cohesion: 0.09
-Nodes (27): is_final_join(), make_tracking_key_v2(), EVENT-LEVEL UNIQUE tracking_key = slug|signal_ts_ms|action|event_uid.     action, Calibration join standardı. Öncelik: paper_id > tracking_key > slug_action_fallb, FINAL rapor: paper_id veya tracking_key. slug_action_fallback DIŞLANIR., resolve_join_method(), tests/test_outcome_identity.py — tracking_key / paper_id outcome-link fix TDD., paper_tracker shadow_positions'a tracking_key + paper_id yazar. (+19 more)
+Cohesion: 0.13
+Nodes (20): is_final_join(), make_tracking_key_v2(), EVENT-LEVEL UNIQUE tracking_key = slug|signal_ts_ms|action|event_uid.     action, Calibration join standardı. Öncelik: paper_id > tracking_key > slug_action_fallb, FINAL rapor: paper_id veya tracking_key. slug_action_fallback DIŞLANIR., resolve_join_method(), tests/test_telemetry_identity_coverage.py — Telemetry Identity & Coverage Fix TD, test_duplicate_tracking_key_counts_collision_no_crash() (+12 more)
 
 ### Community 221 - "Community 221"
 Cohesion: 0.17
@@ -1142,8 +1141,8 @@ Cohesion: 0.40
 Nodes (4): DB / latency yükünü düşük tutma (kritik), En küçük güvenli patch, Kapsam ve veri kaynağı, Telemetry V3 — Minimal Tick-Level Lifecycle Design
 
 ### Community 226 - "Community 226"
-Cohesion: 0.06
-Nodes (39): Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner., Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner., Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner., Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner., Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner., Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner., Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner.     Market listesi, Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner.     Market listesi (+31 more)
+Cohesion: 0.05
+Nodes (44): Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner., Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner., Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner., Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner., Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner., Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner., Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner.     Market listesi, Tüm kısa vadeli marketleri tarar, gerçek edge olanları döner.     Market listesi (+36 more)
 
 ### Community 229 - "Community 229"
 Cohesion: 0.29
@@ -1162,8 +1161,8 @@ Cohesion: 0.18
 Nodes (11): NO + WS no_bid None + CLOB None → complement, price_source='complement', estimat, NO + WS no_bid None + CLOB None → complement, price_source='complement', estimat, LIVE: sell_position() None dönerse _closing=False reset edilir, pozisyon listede, LIVE: sell_position() None dönerse _closing=False reset edilir, pozisyon listede, NO + WS no_bid None + CLOB None → complement, price_source='complement', estimat, WS event anında gelirse True döner ve current_price/fetch_by_slug çağrılmaz., LIVE: sell_position() None dönerse _closing=False reset edilir, pozisyon listede, LIVE: sell_position() None dönerse _closing=False reset edilir, pozisyon listede (+3 more)
 
 ### Community 234 - "Community 234"
-Cohesion: 0.50
-Nodes (4): TP size-ladder ölçümü (INSERT OR IGNORE — UNIQUE(paper_id,tp_level,notional) ide, TP size-ladder ölçümü (INSERT OR IGNORE — UNIQUE(paper_id,tp_level,notional) ide, TP size-ladder ölçümü (INSERT OR IGNORE — UNIQUE(paper_id,tp_level,notional) ide, _write_tp_ladder()
+Cohesion: 0.20
+Nodes (10): fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır., fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır., fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır., fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır., fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır., fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır., fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır., fetch_by_slug=None VE fetch_resolved=None → pozisyon kapatılmaz, atlanır. (+2 more)
 
 ### Community 235 - "Community 235"
 Cohesion: 0.13
@@ -1182,12 +1181,12 @@ Cohesion: 0.50
 Nodes (4): asks[0] ince → book_too_thin veto., asks[0] ince → book_too_thin veto., asks[0] ince → book_too_thin veto., test_book_too_thin_veto_when_depth_below_threshold()
 
 ### Community 239 - "Community 239"
-Cohesion: 0.18
-Nodes (12): current_price(), fetch_candles(), main(), data/hl_candles.py — Hyperliquid'den GERCEK gecmis fiyat (candle) ceker. Uydurma, Şimdiki HL fiyatını döner (son 1m mumun close fiyatı)., Belirli zaman aralığında mum çeker (ms epoch)., Şimdiki HL fiyatını döner (son 1m mumun close fiyatı)., Şimdiki HL fiyatını döner (son 1m mumun close fiyatı). (+4 more)
+Cohesion: 0.20
+Nodes (10): NO pozisyon + 'No' kazanınca pm_exit=1.0 ile kapanmalı., NO pozisyon + 'No' kazanınca pm_exit=1.0 ile kapanmalı., NO pozisyon + 'No' kazanınca pm_exit=1.0 ile kapanmalı., NO pozisyon + 'No' kazanınca pm_exit=1.0 ile kapanmalı., NO pozisyon + 'No' kazanınca pm_exit=1.0 ile kapanmalı., NO pozisyon + 'No' kazanınca pm_exit=1.0 ile kapanmalı., NO pozisyon + 'No' kazanınca pm_exit=1.0 ile kapanmalı., NO pozisyon + 'No' kazanınca pm_exit=1.0 ile kapanmalı. (+2 more)
 
 ### Community 240 - "Community 240"
-Cohesion: 0.25
-Nodes (8): _qbid(), YES + WS bid None → CLOB REST fallback → price_source='clob_rest_bid', mae_data_, YES + WS bid None → CLOB REST fallback → price_source='clob_rest_bid', mae_data_, YES + WS bid None → CLOB REST fallback → price_source='clob_rest_bid', mae_data_, YES + WS bid None → CLOB REST fallback → price_source='clob_rest_bid', mae_data_, YES + WS bid None → CLOB REST fallback → price_source='clob_rest_bid', mae_data_, YES + WS bid None → CLOB REST fallback → price_source='clob_rest_bid', mae_data_, test_monitor_sets_price_source_clob_rest_bid_for_yes_rest_fallback()
+Cohesion: 0.20
+Nodes (9): tests/test_outcome_identity.py — tracking_key / paper_id outcome-link fix TDD., paper_tracker shadow_positions'a tracking_key + paper_id yazar., schedule_paper_open paper_id param kabul eder (non-blocking korunur)., join_method önceliği: paper_id > tracking_key > slug_action_fallback., test_make_tracking_key_v2_unique(), test_paper_open_writes_tracking_key(), test_resolve_join_method(), test_schedule_accepts_paper_id() (+1 more)
 
 ### Community 241 - "Community 241"
 Cohesion: 0.50
@@ -1202,32 +1201,32 @@ Cohesion: 0.50
 Nodes (4): positions tablosu realized_pnl sütununa sahip olmalı., positions tablosu realized_pnl sütununa sahip olmalı., positions tablosu realized_pnl sütununa sahip olmalı., test_positions_schema_has_realized_pnl()
 
 ### Community 244 - "Community 244"
-Cohesion: 0.50
-Nodes (4): pm_exit_price=None (market_expired) → realized_pnl=None., pm_exit_price=None (market_expired) → realized_pnl=None., pm_exit_price=None (market_expired) → realized_pnl=None., test_log_position_close_realized_pnl_none_when_no_exit_price()
+Cohesion: 0.25
+Nodes (8): fetch_resolved(), _parse_token_ids(), str, Kapanmış market için resolution fiyatlarını döndürür.      Returns: {"yes_exit":, Kapanmış market için resolution fiyatlarını döndürür.      Returns: {"yes_exit":, Kapanmış market için resolution fiyatlarını döndürür.      Returns: {"yes_exit":, clobTokenIds alanını her zaman list[str] döndür. JSON string veya list kabul ede, clobTokenIds alanını her zaman list[str] döndür. JSON string veya list kabul ede
 
 ### Community 245 - "Community 245"
-Cohesion: 0.50
-Nodes (4): patch_position_resolution sonrası DB'de pm_exit_price, realized_pnl, exit_reason, patch_position_resolution sonrası DB'de pm_exit_price, realized_pnl, exit_reason, patch_position_resolution sonrası DB'de pm_exit_price, realized_pnl, exit_reason, test_patch_position_resolution_writes_db()
+Cohesion: 0.25
+Nodes (8): 4h market snapshot — shadow log, hiçbir zaman execute'a gitmez.      trade_enabl, 4h market snapshot — shadow log, hiçbir zaman execute'a gitmez.      trade_enabl, 4h market snapshot — shadow log, hiçbir zaman execute'a gitmez.      trade_enabl, _run_shadow_4h_scan(), 4h shadow scan execute()/clob_executor'a asla erişmemeli., 4h shadow scan her zaman trade_enabled=0 yazar., test_shadow_4h_loop_never_calls_execute(), test_shadow_4h_scan_writes_trade_enabled_false()
 
 ### Community 246 - "Community 246"
-Cohesion: 0.50
-Nodes (4): conn=None → sessizce atlanır, exception yok., conn=None → sessizce atlanır, exception yok., conn=None → sessizce atlanır, exception yok., test_patch_position_resolution_conn_none_is_noop()
+Cohesion: 0.25
+Nodes (8): findings listesinde aynı slug iki kez varsa yalnızca bir pozisyon açılır., findings listesinde aynı slug iki kez varsa yalnızca bir pozisyon açılır., findings listesinde aynı slug iki kez varsa yalnızca bir pozisyon açılır., findings listesinde aynı slug iki kez varsa yalnızca bir pozisyon açılır., findings listesinde aynı slug iki kez varsa yalnızca bir pozisyon açılır., findings listesinde aynı slug iki kez varsa yalnızca bir pozisyon açılır., findings listesinde aynı slug iki kez varsa yalnızca bir pozisyon açılır., test_scan_does_not_open_same_slug_twice_in_one_scan()
 
 ### Community 247 - "Community 247"
 Cohesion: 0.10
 Nodes (16): tests/test_tp_exit_measure.py — Peak-time TP depth-walk telemetrisi TDD.  MFE +1, dd < +15% → hiçbir tp tetiklenmez., dd < +15% → hiçbir tp tetiklenmez., Aynı paper_id+tp_level iki kez yazılsa → tek kayıt (restart-safe idempotency)., Bids ezerek (pahalı→ucuz) ağırlıklı satış fiyatı (4-tuple)., dd>=+15% ilk kez → tp15 ölçüm task'ı fırlatılır, state'e işlenir., dd>=+15% ilk kez → tp15 ölçüm task'ı fırlatılır, state'e işlenir., tp15 bir kez hit olunca tekrar dd>=+15%'te YENİDEN tetiklenmez (idempotent state (+8 more)
 
 ### Community 248 - "Community 248"
-Cohesion: 0.18
-Nodes (11): _monitor_positions exit anındaki HL fiyatını closed dict'e eklemeli., _monitor_positions exit anındaki HL fiyatını closed dict'e eklemeli., _monitor_positions exit anındaki HL fiyatını closed dict'e eklemeli., _monitor_positions exit anındaki HL fiyatını closed dict'e eklemeli., _monitor_positions exit anındaki HL fiyatını closed dict'e eklemeli., _monitor_positions exit anındaki HL fiyatını closed dict'e eklemeli., DB'den yüklenen pozisyonda entry_hl_price alanı olmalı., _monitor_positions exit anındaki HL fiyatını closed dict'e eklemeli. (+3 more)
+Cohesion: 0.17
+Nodes (12): _monitor_positions exit anındaki HL fiyatını closed dict'e eklemeli., _monitor_positions exit anındaki HL fiyatını closed dict'e eklemeli., fetch_resolved None döndürürse notify_resolved_late çağrılmaz., _monitor_positions exit anındaki HL fiyatını closed dict'e eklemeli., _monitor_positions exit anındaki HL fiyatını closed dict'e eklemeli., _monitor_positions exit anındaki HL fiyatını closed dict'e eklemeli., _monitor_positions exit anındaki HL fiyatını closed dict'e eklemeli., _monitor_positions exit anındaki HL fiyatını closed dict'e eklemeli. (+4 more)
 
 ### Community 249 - "Community 249"
-Cohesion: 0.20
-Nodes (10): _ask_buffer_price(), build_entry_snapshot(), float, T=0 entry snapshot — sinyal görüldüğü anda fiyat/EV dondurur (temporal sync)., T=0 entry snapshot — sinyal görüldüğü anda fiyat/EV dondurur (temporal sync)., T=0 entry snapshot — sinyal görüldüğü anda fiyat/EV dondurur (temporal sync)., Fallback: best_ask + taker_buffer (execute() worst_price ile simetrik)., Fallback: best_ask + taker_buffer (execute() worst_price ile simetrik). (+2 more)
+Cohesion: 0.25
+Nodes (8): Başarılı fill (execute→position) olan slug failed_slugs'a eklenmez., Başarılı fill (execute→position) olan slug failed_slugs'a eklenmez., Başarılı fill (execute→position) olan slug failed_slugs'a eklenmez., Başarılı fill (execute→position) olan slug failed_slugs'a eklenmez., Başarılı fill (execute→position) olan slug failed_slugs'a eklenmez., Başarılı fill (execute→position) olan slug failed_slugs'a eklenmez., Başarılı fill (execute→position) olan slug failed_slugs'a eklenmez., test_successful_fill_not_added_to_failed_slugs()
 
 ### Community 250 - "Community 250"
-Cohesion: 0.27
-Nodes (6): positions tablosu ref_price ve edge sütunlarına sahip olmalı., positions tablosu ref_price ve edge sütunlarına sahip olmalı., Açılan pozisyon: positions tablosuna status='open' ile yazılır., Açılan pozisyon: positions tablosuna status='open' ile yazılır., test_log_position_open(), test_positions_schema_has_ref_price_and_edge()
+Cohesion: 0.67
+Nodes (3): Açılan pozisyon: positions tablosuna status='open' ile yazılır., Açılan pozisyon: positions tablosuna status='open' ile yazılır., test_log_position_open()
 
 ### Community 252 - "Community 252"
 Cohesion: 0.33
@@ -1242,16 +1241,16 @@ Cohesion: 0.50
 Nodes (4): Başarılı fill: fill_ts, sl_fill_px, sl_fill_pct, trigger_fill_gap_pct, trigger_t, Başarılı fill: fill_ts, sl_fill_px, sl_fill_pct, trigger_fill_gap_pct, trigger_t, Başarılı fill: fill_ts, sl_fill_px, sl_fill_pct, trigger_fill_gap_pct, trigger_t, test_sell_captures_fill_timing_and_sl_metrics()
 
 ### Community 255 - "Community 255"
-Cohesion: 0.67
-Nodes (3): Kapanan pozisyon: status='closed', exit_reason ve pm_exit_price güncellenir., Kapanan pozisyon: status='closed', exit_reason ve pm_exit_price güncellenir., test_log_position_close()
+Cohesion: 0.25
+Nodes (8): verify() fail → _run_council None döner., verify() fail → _run_council None döner., verify() fail → _run_council None döner., verify() fail → _run_council None döner., verify() fail → _run_council None döner., verify() fail → _run_council None döner., verify() fail → _run_council None döner., test_run_council_returns_none_when_verify_fails()
 
 ### Community 256 - "Community 256"
 Cohesion: 0.40
 Nodes (5): fee_adj_edge her zaman fresh_edge'den küçük veya eşit., fee_adj_edge her zaman fresh_edge'den küçük veya eşit., fee_adj_edge her zaman fresh_edge'den küçük veya eşit., fee_adj_edge her zaman fresh_edge'den küçük veya eşit., test_fee_adj_edge_lte_gross_edge()
 
 ### Community 257 - "Community 257"
-Cohesion: 0.25
-Nodes (8): _paper_monitor_loop(), Background paper monitor — live loop'u ASLA yavaşlatmaz (ayrı task+cadence)., Background paper monitor — live loop'u ASLA yavaşlatmaz (ayrı task+cadence)., Background paper monitor — live loop'u ASLA yavaşlatmaz (ayrı task+cadence)., Background paper monitor — live loop'u ASLA yavaşlatmaz (ayrı task+cadence)., Background paper monitor — live loop'u ASLA yavaşlatmaz (ayrı task+cadence)., Background paper monitor — live loop'u ASLA yavaşlatmaz (ayrı task+cadence)., Background paper monitor — live loop'u ASLA yavaşlatmaz (ayrı task+cadence).
+Cohesion: 0.29
+Nodes (7): find_shortterm_4h(), 4h Up/Down marketleri çeker. Shadow scan içindir — canlı trade'e gitmez., 4h Up/Down marketleri çeker. Shadow scan içindir — canlı trade'e gitmez., HTTP miss → boş liste., HTTP mock: 1 market bulunur, 1 None (miss) → 1 döner., test_find_shortterm_4h_returns_empty_on_no_match(), test_find_shortterm_4h_returns_found_markets()
 
 ### Community 258 - "Community 258"
 Cohesion: 0.40
@@ -1266,24 +1265,24 @@ Cohesion: 0.50
 Nodes (4): fetch_error dışındaki sonuçlarda fresh_cur_price > 0., fetch_error dışındaki sonuçlarda fresh_cur_price > 0., fetch_error dışındaki sonuçlarda fresh_cur_price > 0., test_verify_fresh_prices_positive_on_non_fetch_error()
 
 ### Community 262 - "Community 262"
-Cohesion: 0.29
-Nodes (7): _closing=True olan pozisyon flatten'da atlanır., _closing=True olan pozisyon flatten'da atlanır., _closing=True olan pozisyon flatten'da atlanır., _closing=True olan pozisyon flatten'da atlanır., _closing=True olan pozisyon flatten'da atlanır., _closing=True olan pozisyon flatten'da atlanır., test_do_flatten_skips_already_closing()
+Cohesion: 0.33
+Nodes (6): _scan_and_execute [scan_perf] timing satırı basmalı., _scan_and_execute [scan_perf] timing satırı basmalı., _scan_and_execute [scan_perf] timing satırı basmalı., _scan_and_execute [scan_perf] timing satırı basmalı., _scan_and_execute [scan_perf] timing satırı basmalı., test_scan_and_execute_prints_scan_perf()
 
 ### Community 263 - "Community 263"
 Cohesion: 0.33
-Nodes (6): Pozisyon kapanınca ws_prices.unsubscribe() yes/no token'larıyla çağrılır., Pozisyon kapanınca ws_prices.unsubscribe() yes/no token'larıyla çağrılır., Pozisyon kapanınca ws_prices.unsubscribe() yes/no token'larıyla çağrılır., Pozisyon kapanınca ws_prices.unsubscribe() yes/no token'larıyla çağrılır., Pozisyon kapanınca ws_prices.unsubscribe() yes/no token'larıyla çağrılır., test_monitor_calls_ws_unsubscribe_on_position_close()
+Nodes (6): [scan_perf] council ve execute timing içermeli., [scan_perf] council ve execute timing içermeli., [scan_perf] council ve execute timing içermeli., [scan_perf] council ve execute timing içermeli., [scan_perf] council ve execute timing içermeli., test_scan_perf_includes_council_and_execute_timing()
 
 ### Community 264 - "Community 264"
-Cohesion: 0.33
-Nodes (6): _monitor_positions başlangıçta [monitor_perf] satırı basmalı., _monitor_positions başlangıçta [monitor_perf] satırı basmalı., _monitor_positions başlangıçta [monitor_perf] satırı basmalı., _monitor_positions başlangıçta [monitor_perf] satırı basmalı., _monitor_positions başlangıçta [monitor_perf] satırı basmalı., test_monitor_positions_prints_monitor_perf()
+Cohesion: 0.50
+Nodes (4): Sıfır p_now ValueError fırlatır., Sıfır p_ref ValueError fırlatır., test_fair_yes_invalid_zero_price(), test_fair_yes_invalid_zero_ref()
 
 ### Community 265 - "Community 265"
-Cohesion: 0.33
-Nodes (6): check_exit sinyal verince pos['first_exit_decision_ts'] set edilmeli., check_exit sinyal verince pos['first_exit_decision_ts'] set edilmeli., check_exit sinyal verince pos['first_exit_decision_ts'] set edilmeli., check_exit sinyal verince pos['first_exit_decision_ts'] set edilmeli., check_exit sinyal verince pos['first_exit_decision_ts'] set edilmeli., test_monitor_sets_first_exit_decision_ts_on_exit()
+Cohesion: 0.50
+Nodes (4): endDate yoksa None döner., bestAsk yoksa None döner., test_parse_market_window_missing_best_ask_returns_none(), test_parse_market_window_missing_end_date_returns_none()
 
 ### Community 266 - "Community 266"
-Cohesion: 0.33
-Nodes (6): WS cache miss → REST get_clob_price çağrılır., WS cache miss → REST get_clob_price çağrılır., WS cache miss → REST get_clob_price çağrılır., WS cache miss → REST get_clob_price çağrılır., WS cache miss → REST get_clob_price çağrılır., test_process_market_falls_back_to_rest_when_ws_miss()
+Cohesion: 0.50
+Nodes (4): Gelecekteki bir market için seconds_remaining > 0., Geçmişteki bir market için seconds_remaining < 0., test_parse_market_window_seconds_remaining_future(), test_parse_market_window_seconds_remaining_past()
 
 ### Community 267 - "Community 267"
 Cohesion: 0.40
@@ -1311,7 +1310,7 @@ Nodes (4): Başarılı SELL → takingAmount/makingAmount'tan fill fiyatı hesap
 
 ### Community 273 - "Community 273"
 Cohesion: 0.67
-Nodes (3): WS cache'de taze veri varsa REST çağrısı yapılmamalı., WS cache'de taze veri varsa REST çağrısı yapılmamalı., test_shadow_quote_uses_ws_cache_first()
+Nodes (3): _paper_shadow_scan_loop(), Edge bucket paper scan — düşük-edge (fee_adj>=0.03) adayları paper'a besler., Edge bucket paper scan — düşük-edge (fee_adj>=0.03) adayları paper'a besler.
 
 ### Community 274 - "Community 274"
 Cohesion: 0.50
@@ -1323,31 +1322,27 @@ Nodes (4): CLOB bid=None ve current_bid=0 → likidite yok → None döner., CLO
 
 ### Community 276 - "Community 276"
 Cohesion: 0.67
-Nodes (3): fresh_fee_adj < min_edge → would_retry_passed=False., fresh_fee_adj < min_edge → would_retry_passed=False., test_shadow_quote_would_retry_false_when_edge_fails()
-
-### Community 277 - "Community 277"
-Cohesion: 0.67
-Nodes (3): Tablo kritik sütunları içermeli., Tablo kritik sütunları içermeli., test_entry_air_pocket_table_has_required_columns()
+Nodes (3): /pause → SOFT_PAUSED=True, monitor devam ettiği mesajda belirtilmeli., /pause → SOFT_PAUSED=True, monitor devam ettiği mesajda belirtilmeli., test_pause_sets_soft_paused()
 
 ## Knowledge Gaps
-- **464 isolated node(s):** `restart.sh script`, `str`, `int`, `float`, `bool` (+459 more)
+- **474 isolated node(s):** `restart.sh script`, `str`, `int`, `float`, `bool` (+469 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **17 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `init_schema()` connect `Community 138` to `Community 0`, `Community 3`, `Community 150`, `Community 151`, `Community 27`, `Community 159`, `Community 68`, `Community 76`, `Community 84`, `Community 220`, `Community 97`, `Community 107`, `Community 117`, `Community 118`, `Community 247`, `Community 253`, `Community 123`, `Community 252`, `Community 125`, `Community 126`?**
-  _High betweenness centrality (0.104) - this node is a cross-community bridge._
-- **Why does `check_exit()` connect `Community 37` to `Community 96`, `Community 5`, `Community 166`, `Community 167`, `Community 103`, `Community 9`, `Community 74`, `Community 267`, `Community 268`, `Community 269`, `Community 142`, `Community 79`, `Community 143`, `Community 146`, `Community 182`, `Community 124`, `Community 158`?**
-  _High betweenness centrality (0.102) - this node is a cross-community bridge._
-- **Why does `_monitor_positions()` connect `Community 124` to `Community 0`, `Community 129`, `Community 4`, `Community 263`, `Community 135`, `Community 137`, `Community 9`, `Community 264`, `Community 265`, `Community 19`, `Community 150`, `Community 154`, `Community 155`, `Community 157`, `Community 37`, `Community 38`, `Community 169`, `Community 172`, `Community 173`, `Community 175`, `Community 191`, `Community 63`, `Community 194`, `Community 72`, `Community 73`, `Community 74`, `Community 205`, `Community 80`, `Community 85`, `Community 219`, `Community 94`, `Community 224`, `Community 102`, `Community 233`, `Community 239`, `Community 240`, `Community 111`, `Community 248`?**
-  _High betweenness centrality (0.080) - this node is a cross-community bridge._
+- **Why does `init_schema()` connect `Community 151` to `Community 0`, `Community 3`, `Community 150`, `Community 27`, `Community 159`, `Community 68`, `Community 76`, `Community 84`, `Community 220`, `Community 97`, `Community 107`, `Community 240`, `Community 117`, `Community 245`, `Community 247`, `Community 253`, `Community 123`, `Community 252`, `Community 125`, `Community 126`?**
+  _High betweenness centrality (0.118) - this node is a cross-community bridge._
+- **Why does `OrderbookSnapshot` connect `Community 99` to `Community 0`, `Community 193`, `Community 1`, `Community 6`, `Community 137`, `Community 171`, `Community 17`, `Community 118`, `Community 150`, `Community 152`, `Community 26`, `Community 88`, `Community 125`?**
+  _High betweenness centrality (0.086) - this node is a cross-community bridge._
+- **Why does `_monitor_positions()` connect `Community 124` to `Community 0`, `Community 129`, `Community 4`, `Community 7`, `Community 135`, `Community 137`, `Community 9`, `Community 144`, `Community 150`, `Community 154`, `Community 155`, `Community 157`, `Community 37`, `Community 169`, `Community 172`, `Community 175`, `Community 191`, `Community 63`, `Community 194`, `Community 72`, `Community 73`, `Community 74`, `Community 205`, `Community 80`, `Community 218`, `Community 219`, `Community 94`, `Community 224`, `Community 102`, `Community 233`, `Community 234`, `Community 111`, `Community 244`, `Community 248`?**
+  _High betweenness centrality (0.076) - this node is a cross-community bridge._
 - **What connects `restart.sh script`, `main_loop.py — Scout→Konsey→Execute→Monitor ana döngüsü.`, `DB'deki status=open pozisyonları yükler — restart sonrası memory'yi geri dolduru` to the rest of the system?**
-  _2291 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _2308 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
-  _Cohesion score 0.11428571428571428 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.09057971014492754 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
-  _Cohesion score 0.08333333333333333 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.12681159420289856 - nodes in this community are weakly interconnected._
 - **Should `Community 2` be split into smaller, more focused modules?**
   _Cohesion score 0.047619047619047616 - nodes in this community are weakly interconnected._
