@@ -489,6 +489,11 @@ async def _paper_shadow_scan_loop(conn) -> None:
                         _raw = await model_telemetry.get_raw_vol(f.get("asset"))
                         _tf = "5m" if "-5m-" in (f.get("slug") or "") else "15m"
                         _w = f.get("_window") or {}
+                        # V3.1: snapshot_age + hl_drift (flag'e bağlı; salt-gözlem, karar değişmez)
+                        _v31 = config.TELEMETRY_V31_ENABLED
+                        _snap_age = (int(time.time()*1000) - _sig_ms) if (_v31 and _sig_ms) else None
+                        _hl_drift = ((f.get("cur_price") - f.get("ref_price")) / f.get("ref_price")
+                                     if (_v31 and f.get("ref_price")) else None)
                         _rec = model_telemetry.compute_legacy_telemetry_v2(
                             asset=f.get("asset"), action=f.get("action"),
                             slug=f.get("slug"), timeframe=_tf,
@@ -498,7 +503,7 @@ async def _paper_shadow_scan_loop(conn) -> None:
                             no_ask_observed=f.get("no_ask"),
                             fair_yes_val=f.get("fair_value"), net_ev=f.get("fee_adj_edge"),
                             fair_gap=f.get("edge"), edge_bin=f.get("edge_bucket"),
-                            would_enter=True,
+                            would_enter=True, snapshot_age_ms=_snap_age, hl_drift_at_entry=_hl_drift,
                             snapshot_id=(_tracking_key or f"{f.get('slug')}|nosnapshot"),
                             fee_adjustment=0.02, decision_threshold=config.MIN_EDGE_PCT,
                             window_open_ts=str(_w.get("start_ms")) if _w.get("start_ms") else None,
@@ -527,6 +532,8 @@ async def _paper_shadow_scan_loop(conn) -> None:
                         no_ask_observed=rf.get("no_ask"),
                         fair_yes_val=rf.get("fair_value"), net_ev=rf.get("fee_adj_edge"),
                         fair_gap=rf.get("edge"), edge_bin=None, would_enter=False,
+                        hl_drift_at_entry=(((rf.get("cur_price") - rf.get("ref_price")) / rf.get("ref_price"))
+                                           if (config.TELEMETRY_V31_ENABLED and rf.get("ref_price")) else None),
                         snapshot_id=_rtk, fee_adjustment=0.02,
                         decision_threshold=config.MIN_EDGE_PCT,
                         window_open_ts=str(_rw.get("start_ms")) if _rw.get("start_ms") else None,
@@ -863,6 +870,9 @@ async def main() -> None:
         for tid in (pos.get("yes_token_id"), pos.get("no_token_id"))
         if tid
     ]
+    # V3.1 Fix4.1: restart recovery — önceki process'ten kalan orphan open paper'ların
+    # MFE/MAE zaman sayaçlarını invalid işaretle (sahte timestamp önleme).
+    await paper_tracker.recover_orphan_open_paper()
     asyncio.create_task(ws_prices.run(initial_tids))
     asyncio.create_task(_shadow_4h_scan_loop(conn))  # 4h shadow — ayrı cadence, live loop'a dokunmaz
     asyncio.create_task(paper_tracker._paper_monitor_loop())  # paper monitor — ayrı cadence, live loop'a dokunmaz

@@ -35,6 +35,10 @@ HUMAN_APPROVAL_USD   = 50     # Bu tutar uzeri pozisyon insan onayi ister
 # GECICI: Epoch 3 kanama — yeni entry durduruldu (2026-06-08, insan komutu)
 NEW_ENTRIES_ENABLED  = False
 
+# Telemetry V3.1 feature flag (salt-gözlem; guardrail DEĞİL, karar mantığına dokunmaz).
+# False → V3.1 alanları NULL, eski V2 davranışı. Tek-bayrak kill switch.
+TELEMETRY_V31_ENABLED = True
+
 # ── Anti-hallucination kurallari ──
 REQUIRE_FRESH_API_DATA = True  # Her sayi API'den taze cekilir, hafizadan asla
 HALT_ON_API_MISMATCH   = True  # API ile ajan celisirse islem durur

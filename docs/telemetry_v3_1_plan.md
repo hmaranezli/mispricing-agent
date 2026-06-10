@@ -28,7 +28,22 @@
 ## Fix 4 — lifecycle min alanlar (post-exit tick serisi FAZ 2)
 - **Dosya:** `execution/paper_tracker.py` (`_update_position_models` + kapanış INSERT).
 - **Hesap:** in-memory `_mfe_peak`/`_mae_trough` GÜNCELLENDİĞİ an `elapsed = monotonic − _opened_monotonic` damgala (`_t_mfe`/`_t_mae`). `resolve_ts` = close anı (close_reason='expired'/'resolved' ise resolve, değilse NULL).
-- **DB:** `shadow_positions` +3 kolon: `time_to_mfe_s REAL`, `time_to_mae_s REAL`, `resolve_ts TEXT`. Tick serisi (paper_tick_series tablosu) = **FAZ 2**, bu plana DAHİL DEĞİL.
+- **DB:** `shadow_positions` +5 kolon: `time_to_mfe_s REAL`, `time_to_mae_s REAL`, `resolve_ts TEXT`, `mfe_mae_time_valid INTEGER`, `mfe_mae_time_invalid_reason TEXT`. Tick serisi (paper_tick_series tablosu) = **FAZ 2**, bu plana DAHİL DEĞİL.
+- Yeni paper açılışı (aynı process izliyor): `mfe_mae_time_valid=1`, invalid_reason=NULL.
+
+## Fix 4.1 — Restart Recovery (KRİTİK: sahte timestamp önleme)
+**Problem:** time_to_mfe_s/mae_s in-memory `_opened_monotonic`'e bağlı. Bot restart/crash → `_active` dict boşalır → önceki process'te açılmış paper'lar için monotonic SIFIRDAN başlarsa SAHTE time üretir, lifecycle/stop analizini zehirler.
+- **Dosya:** `execution/paper_tracker.py` (yeni `recover_orphan_open_paper(db_path)`) + `main_loop.py` (startup'ta çağır).
+- **Kural:** Bot startup/init anında DB'de `status='open'` kalan paper'lar = ORPHAN (önceki process). Bunlar GERÇEKMİŞ GİBİ yeniden başlatılmaz; açıkça INVALID işaretlenir:
+  ```sql
+  UPDATE shadow_positions
+     SET time_to_mfe_s=NULL, time_to_mae_s=NULL,
+         mfe_mae_time_valid=0, mfe_mae_time_invalid_reason='process_restart'
+   WHERE status='open'
+  ```
+- Yeni açılan + aynı process içinde izlenen paper → valid=1, reason=NULL.
+- **Kapanış kuralı:** paper'ın in-memory state'i bu process'te varsa → time damgala (valid=1). Yoksa (orphan, state yok) → time YAZILMAZ, valid=0 korunur.
+- **Analiz kuralı:** sonraki MFE/MAE-zaman analizlerinde YALNIZCA `mfe_mae_time_valid=1` satırlar kullanılır.
 
 ---
 
@@ -59,6 +74,10 @@ ALTER ADD COLUMN → eski 73 satır yeni kolonlarda NULL. Otopsi/calibration sor
 9. **decision logic regression:** aynı finding → schedule_paper_open/council kararı V3.1 öncesi/sonrası AYNI (model/entry değişmedi kanıtı).
 10. NEW_ENTRIES_ENABLED=False regression.
 11. collision_error_count + telemetry_error sayaçları çalışmaya devam ediyor.
+12. **Restart Recovery:** açık paper simüle → recover_orphan_open_paper çalışır → time_to_mfe_s/mae_s NULL, mfe_mae_time_valid=0, reason='process_restart'.
+13. **No False Timestamp:** restart sonrası orphan open trade için sıfırdan sayaç başlatılıp sahte time_to_mfe/mae DB'ye YAZILAMAZ (in-memory state yok → damga yok).
+14. **Clean New Trade:** restart sonrası aynı process'te yeni açılan trade normal izlenir, kapanışta valid=1.
+15. **Backward Compatibility:** eski N=60 cohort korunur (yeni kolonlar NULL); analiz `mfe_mae_time_valid=1` filtreler → valid olmayan zamanlar kullanılmaz.
 
 ## Canlı/paper karar mantığına dokunulmadığı doğrulama
 - Test 9 (decision regression) + grep audit: `fair_value.py`, `council/*`, `MIN_EDGE_PCT`, stop/TP sabitleri DIFF'te YOK.
@@ -100,7 +119,9 @@ SELECT 'collision', COUNT(*) FROM ... ; -- log grep COLLISION / telemetry error
 - [ ] lifecycle 3 kolon yeni paper'da dolu (resolve_ts close_reason'a uygun)
 - [ ] TELEMETRY_V31_ENABLED=False ile tek-bayrak kapatılabilir
 - [ ] Rollback 89f14c4'e N=60 cohort kaybetmeden mümkün (test: bak DB + git tag)
-- [ ] Full suite 712 + 11 yeni test PASS
+- [ ] **Restart Recovery:** orphan open paper → valid=0/reason='process_restart', sahte timestamp YOK (test 12-13)
+- [ ] **Clean new trade** restart sonrası valid=1 (test 14); eski N=60 cohort korunur + analiz valid=1 filtreler (test 15)
+- [ ] Full suite 712 + 15 yeni test PASS
 
 ## Faz ayrımı
 - **Bu plan (V3.1):** Fix 1-4 (snapshot_age + spread-fix + hl_drift + lifecycle-min). Salt telemetri.

@@ -155,7 +155,7 @@ def compute_legacy_telemetry_v2(asset, action, slug, timeframe, p_now, p_ref,
                                 snapshot_id, fee_adjustment, decision_threshold,
                                 window_open_ts=None, window_close_ts=None,
                                 snapshot_age_ms=None, skip_reason=None, paper_id=None,
-                                tracking_key=None,
+                                tracking_key=None, hl_drift_at_entry=None,
                                 vol_source="realized_1m_60m", vol_window="60m"):
     """V2 telemetri: NO türetim + TTE izolasyonu + counterfactual_supported + tracking_key.
 
@@ -185,6 +185,11 @@ def compute_legacy_telemetry_v2(asset, action, slug, timeframe, p_now, p_ref,
     else:
         action_bid, action_ask = no_bid, no_ask
     action_spread = (action_ask - action_bid) if (action_ask is not None and action_bid is not None) else None
+    # V3.1 Fix2: crossed (ask<bid karışık kaynak) tespiti + tutarlı spread (her iki taraf YES book).
+    # net_ev/edge ETKİLENMEZ (finding'den gelir) — sadece telemetri kalite işareti.
+    spread_crossed_flag = 1 if (action_spread is not None and action_spread < 0) else 0
+    bid_ask_consistent_spread = (round(yes_ask - yes_bid, 4)
+                                 if (yes_ask is not None and yes_bid is not None) else None)
 
     # TTE izolasyonu
     tte_years = (tte_seconds / _SECONDS_PER_YEAR) if (tte_seconds and tte_seconds > 0) else None
@@ -221,6 +226,10 @@ def compute_legacy_telemetry_v2(asset, action, slug, timeframe, p_now, p_ref,
         "outcome_link_supported": True,
         "tracking_key": tracking_key,
         "paper_id": paper_id, "shadow_candidate_id": None,
+        # V3.1 Data Integrity
+        "spread_crossed_flag": spread_crossed_flag,
+        "bid_ask_consistent_spread": bid_ask_consistent_spread,
+        "hl_drift_at_entry": hl_drift_at_entry,
     })
     return base
 
@@ -323,8 +332,9 @@ async def _write_telemetry_v2(rec, db_path=None):
                        time_to_expiry_seconds, time_to_expiry_ms, pricing_tte_years,
                        pricing_model_tte_input, window_open_ts, window_close_ts,
                        counterfactual_supported, counterfactual_missing_reason,
-                       outcome_link_supported, tracking_key, paper_id, shadow_candidate_id
-                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       outcome_link_supported, tracking_key, paper_id, shadow_candidate_id,
+                       spread_crossed_flag, bid_ask_consistent_spread, hl_drift_at_entry
+                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (rec["event_id"], rec.get("snapshot_id"), rec.get("timestamp"), rec.get("slug"),
                  rec.get("asset"), rec.get("timeframe"), rec.get("action"), rec.get("model_version"),
                  rec.get("ref_price"), rec.get("p_now"), rec.get("best_bid"), rec.get("best_ask"),
@@ -347,7 +357,9 @@ async def _write_telemetry_v2(rec, db_path=None):
                  1 if rec.get("counterfactual_supported") else 0,
                  rec.get("counterfactual_missing_reason"),
                  1 if rec.get("outcome_link_supported") else 0, rec.get("tracking_key"),
-                 rec.get("paper_id"), rec.get("shadow_candidate_id")),
+                 rec.get("paper_id"), rec.get("shadow_candidate_id"),
+                 rec.get("spread_crossed_flag"), rec.get("bid_ask_consistent_spread"),
+                 rec.get("hl_drift_at_entry")),
             )
             await conn.commit()
     import sqlite3

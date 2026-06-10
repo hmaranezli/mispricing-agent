@@ -422,6 +422,16 @@ _MIGRATIONS = [
     "ALTER TABLE shadow_positions ADD COLUMN tracking_key TEXT",
     # tracking_key EVENT-LEVEL UNIQUE (eski 4-parça duplicate'ler önce bad_v1: ile karantina edilir)
     "CREATE UNIQUE INDEX IF NOT EXISTS ix_mde_tracking_key ON model_decision_events(tracking_key)",
+    # Telemetry V3.1 — Data Integrity (Fix2 spread / Fix3 hl_drift)
+    "ALTER TABLE model_decision_events ADD COLUMN spread_crossed_flag INTEGER",
+    "ALTER TABLE model_decision_events ADD COLUMN bid_ask_consistent_spread REAL",
+    "ALTER TABLE model_decision_events ADD COLUMN hl_drift_at_entry REAL",
+    # Telemetry V3.1 — Lifecycle (Fix4 + 4.1 restart recovery)
+    "ALTER TABLE shadow_positions ADD COLUMN time_to_mfe_s REAL",
+    "ALTER TABLE shadow_positions ADD COLUMN time_to_mae_s REAL",
+    "ALTER TABLE shadow_positions ADD COLUMN resolve_ts TEXT",
+    "ALTER TABLE shadow_positions ADD COLUMN mfe_mae_time_valid INTEGER",
+    "ALTER TABLE shadow_positions ADD COLUMN mfe_mae_time_invalid_reason TEXT",
 ]
 
 

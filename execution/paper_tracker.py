@@ -560,12 +560,12 @@ async def update_paper_position(state, pm_price, hl_price, secs, db_path=None):
     t0 = time.perf_counter()
     entry = state.get("entry_price") or 0.0
     dd = (pm_price - entry) / entry if entry > 0 else 0.0
-    state["_mfe_peak"]   = max(state.get("_mfe_peak", 0.0), dd)
-    state["_mae_trough"] = min(state.get("_mae_trough", 0.0), dd)
+    elapsed = time.monotonic() - state.get("_opened_monotonic", time.monotonic())
+    # V3.1 Fix4: peak/trough damgalanırken zamanını da kaydet (time_to_mfe/mae)
+    _stamp_mfe_mae_time(state, dd, elapsed)
 
     ref = state.get("ref_price")
     hl_drift = (hl_price - ref) / ref if (ref and hl_price) else 0.0
-    elapsed = time.monotonic() - state.get("_opened_monotonic", time.monotonic())
     total = elapsed + max(secs or 1, 1)
     frac = elapsed / total
 
@@ -716,12 +716,18 @@ async def _close_and_finalize(key, state, reason, exit_price, resolve_exit, db_p
     """Paper kapat: DB güncelle + model_pnl yaz + memory map'ten çıkar (leak önleme)."""
     state["status"] = "closed"
     try:
+        # V3.1 Fix4: resolve_ts sadece resolve/expiry'de (stop'ta NULL); time_to_* in-memory
+        _resolve_ts = (datetime.now(timezone.utc).isoformat()
+                       if reason in ("market_resolved", "expired", "resolved") else None)
         await _close_paper_position(
             state["paper_id"], reason, exit_price, resolve_exit,
             round(state.get("_mae_trough", 0.0), 4),
             round(state.get("_mfe_peak", 0.0), 4),
             round(state.get("_mfe_peak", 0.0), 4),
             db_path,
+            time_to_mfe_s=state.get("_t_mfe"),
+            time_to_mae_s=state.get("_t_mae"),
+            resolve_ts=_resolve_ts,
         )
         await _finalize_models(state, exit_price if exit_price is not None else 0.0,
                                reason, db_path)
@@ -743,6 +749,43 @@ async def _paper_monitor_loop(db_path=None):
         await asyncio.sleep(PAPER_MONITOR_SECS)
 
 
+def _stamp_mfe_mae_time(state, dd, elapsed):
+    """V3.1 Fix4 — peak/trough YENİ rekor yapınca o anın elapsed'ini damgala.
+    Sadece in-memory state (bu process). Karar mantığına dokunmaz."""
+    if dd > state.get("_mfe_peak", 0.0):
+        state["_mfe_peak"] = dd
+        state["_t_mfe"] = elapsed
+    elif "_mfe_peak" not in state:
+        state["_mfe_peak"] = max(0.0, dd)
+    if dd < state.get("_mae_trough", 0.0):
+        state["_mae_trough"] = dd
+        state["_t_mae"] = elapsed
+    elif "_mae_trough" not in state:
+        state["_mae_trough"] = min(0.0, dd)
+
+
+async def recover_orphan_open_paper(db_path=None):
+    """V3.1 Fix4.1 — Restart Recovery. Bot startup'ta DB'de status='open' kalan paper'lar
+    önceki process'ten ORPHAN. in-memory _opened_monotonic kaybolduğu için MFE/MAE zaman
+    sayaçları GÜVENİLMEZ → invalid işaretle (sahte timestamp üretme). Hata→log+devam."""
+    path = db_path or DB_FILE
+    try:
+        async with aiosqlite.connect(str(path)) as conn:
+            cur = await conn.execute(
+                """UPDATE shadow_positions
+                      SET time_to_mfe_s=NULL, time_to_mae_s=NULL,
+                          mfe_mae_time_valid=0, mfe_mae_time_invalid_reason='process_restart'
+                    WHERE status='open'""")
+            await conn.commit()
+            n = cur.rowcount
+        if n:
+            print(f"[paper] restart recovery: {n} orphan open paper → mfe_mae_time_valid=0 (process_restart)")
+        return n
+    except Exception as e:
+        print(f"[paper] recover_orphan_open_paper fail-open: {e}")
+        return 0
+
+
 async def _insert_paper_position(rec, db_path=None):
     path = db_path or DB_FILE
     async def _do():
@@ -758,8 +801,8 @@ async def _insert_paper_position(rec, db_path=None):
                        paper_viability, yes_fair, no_fair, action_fair, entry_source,
                        snapshot_age_ms, seconds_remaining_at_signal, seconds_remaining_at_open,
                        late_entry_flag, collapse_timing_flag, signal_timestamp_ms,
-                       tracking_key, created_at
-                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'open',?,'low',?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       tracking_key, mfe_mae_time_valid, created_at
+                   ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'open',?,'low',?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?)""",
                 (rec["paper_id"], rec["source_event_id"], rec["ts_open"], rec["slug"],
                  rec["asset"], rec["action"], rec["entry_price_estimated"], rec["entry_method"],
                  rec["position_usd_paper"], rec["shares_paper"], rec["fair_value"], rec["edge"],
@@ -890,7 +933,8 @@ async def _record_model_pnl(rec, db_path=None):
 
 
 async def _close_paper_position(paper_id, close_reason, pm_exit, resolve_exit,
-                                mae_pct, mfe_pct, mfe_peak, db_path=None):
+                                mae_pct, mfe_pct, mfe_peak, db_path=None,
+                                time_to_mfe_s=None, time_to_mae_s=None, resolve_ts=None):
     path = db_path or DB_FILE
     async def _do():
         async with aiosqlite.connect(str(path)) as conn:
@@ -898,10 +942,12 @@ async def _close_paper_position(paper_id, close_reason, pm_exit, resolve_exit,
                 """UPDATE shadow_positions SET
                        status='closed', ts_close=?, close_reason=?,
                        pm_exit_estimated=?, resolve_exit=?,
-                       mae_pct=?, mfe_pct=?, mfe_peak=?
+                       mae_pct=?, mfe_pct=?, mfe_peak=?,
+                       time_to_mfe_s=?, time_to_mae_s=?, resolve_ts=?
                    WHERE paper_id=?""",
                 (datetime.now(timezone.utc).isoformat(), close_reason, pm_exit,
-                 resolve_exit, mae_pct, mfe_pct, mfe_peak, paper_id),
+                 resolve_exit, mae_pct, mfe_pct, mfe_peak,
+                 time_to_mfe_s, time_to_mae_s, resolve_ts, paper_id),
             )
             await conn.commit()
     await asyncio.wait_for(_do(), timeout=DB_TIMEOUT)
