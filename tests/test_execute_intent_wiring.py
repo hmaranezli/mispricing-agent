@@ -407,3 +407,47 @@ async def test_transition_fail_hard_aborts_intent_stays_created(caplog):
     blob = " ".join(r.getMessage() for r in errs)
     assert "INTENT_CREATED" in blob or "never" in blob.lower(), \
         f"log 'never submitted' / INTENT_CREATED işaretlemeli: {blob}"
+
+
+# ── Fail-Closed Hardening: has_unresolved_intent DB-read fail → fail-closed ──
+
+@pytest.mark.asyncio
+async def test_unresolved_check_db_fail_is_fail_closed(caplog):
+    """has_unresolved_intent DB-read'de raise ederse execute() FAIL-CLOSED durur: crash YOK,
+    None döner, hiçbir aşamaya (quote/prevalidation/create_intent/submit) girilmez, anlamlı log.
+    RED: guard çağrısı try/except'siz → execute raise eder."""
+    check_boom = AsyncMock(side_effect=sqlite3.OperationalError("db unreadable"))
+    get_quote_spy = AsyncMock(return_value=_qask(0.35))
+    clp_spy = MagicMock(return_value=(Decimal("0.36"), None))
+    create_intent_spy = AsyncMock(return_value="should-not-be-created")
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.return_value = _fake_matched_resp()
+
+    raised = None
+    with caplog.at_level(logging.ERROR, logger="execution.clob_executor"), \
+         patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock,
+               return_value=False), \
+         patch("execution.order_intent.has_unresolved_intent", check_boom), \
+         patch("execution.clob_executor.get_quote", get_quote_spy), \
+         patch("execution.clob_executor.compute_limit_price", clp_spy), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.order_intent.create_intent", create_intent_spy):
+        from execution.clob_executor import execute
+        try:
+            result = await execute(_finding("YES"), _gate(), _risk(), [])
+        except Exception as ex:
+            raised, result = ex, "RAISED"
+
+    assert raised is None, f"unresolved-check fail → fail-closed (None) olmalı, raise ETMEMELİ: {raised}"
+    assert result is None
+    get_quote_spy.assert_not_called()                  # quote'a girilmedi
+    clp_spy.assert_not_called()                        # compute_limit_price'a girilmedi
+    create_intent_spy.assert_not_called()              # yeni intent yok
+    fake_client.create_market_order.assert_not_called()
+    fake_client.post_order.assert_not_called()          # submit YOK
+    errs = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert errs, "unresolved-check fail → ERROR/CRITICAL log basılmalı"
+    blob = " ".join(r.getMessage() for r in errs).lower()
+    assert "unresolved" in blob and "fail-closed" in blob and "abort" in blob, \
+        f"log 'unresolved intent check failed / fail-closed / aborting' anlamı içermeli: {blob}"

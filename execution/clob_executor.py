@@ -226,7 +226,15 @@ async def execute(
     # Faz 2c-3 Task A: EARLY-STOP. Aynı token için çözülmemiş intent (SUBMITTED_UNKNOWN/
     # RECOVERY_REQUIRED) varsa hiçbir şey yapma — quote/prevalidation/yeni intent/submit YOK.
     # Timeout sonrası otomatik 2. submit YASAK; durum 2c-4 reconcile'a aittir.
-    if await order_intent.has_unresolved_intent(None, token_id):
+    # Fail-Closed Hardening: kontrol DB-read'de hata atarsa emin değiliz → FAIL-CLOSED dur.
+    try:
+        _has_unresolved = await order_intent.has_unresolved_intent(None, token_id)
+    except Exception as e:
+        logger.critical(
+            "[clob] %s: unresolved intent check FAILED — FAIL-CLOSED, aborting execution "
+            "(order GÖNDERİLMEDİ): %s", finding.get("slug"), e)
+        return None
+    if _has_unresolved:
         print(f"[clob] {finding['slug']}: UNRESOLVED_INTENT ({token_id}) — execute DURDU "
               f"(quote/order YOK, 2c-4 reconcile bekliyor)")
         return None
