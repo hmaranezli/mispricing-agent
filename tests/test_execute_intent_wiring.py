@@ -9,10 +9,47 @@ import os
 import tempfile
 from pathlib import Path
 
+from decimal import Decimal
+from unittest.mock import patch, MagicMock, AsyncMock
+
 import aiosqlite
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+# ── execute() test helper'ları (test_clob_executor deseni, lokal kopya) ──────
+
+def _qask(p):
+    """Entry quote (ask). p=ask, bid=p-0.02."""
+    from data.orderbook_snapshot import OrderbookSnapshot
+    import time as _t
+    return OrderbookSnapshot(bid=round(p - 0.02, 4), ask=p, bid_size=1e4, ask_size=1e4,
+                             source="rest_book", ts=_t.time())
+
+
+def _finding(action="YES"):
+    return {
+        "question": "Will BTC go up?", "asset": "BTC", "action": action,
+        "fair_value": 0.55, "ref_price": 95000.0, "cur_price": 96000.0,
+        "best_ask": 0.35, "best_bid": 0.33, "seconds_remaining": 900,
+        "edge": 0.20, "slug": "btc-up-5m-test", "neg_risk": False,
+        "yes_token_id": "yes-tok-111", "no_token_id": "no-tok-222",
+    }
+
+
+def _gate():
+    return {"pass": True, "confidence_score": 82.5, "action_taken": "open"}
+
+
+def _risk():
+    return {"pass": True, "position_usd": 25.0, "kelly_f": 0.15,
+            "kelly_fraction_applied": 0.25, "reason": ""}
+
+
+def _fake_matched_resp():
+    return {"status": "matched", "success": True, "orderID": "ord-abc",
+            "takingAmount": "71.43", "makingAmount": "25.00"}
 
 
 async def _fresh_db() -> Path:
@@ -146,3 +183,93 @@ async def test_execution_state_singleton_survives_reinit():
     rec = await get_pause_record(dbp)
     assert rec is not None and rec["emergency_paused"] == 1
     assert rec["reason"] == "test-trip" and rec["source"] == "unit"
+
+
+# ── Task A: has_unresolved_intent EARLY-STOP guard ──────────────────────────
+
+@pytest.mark.asyncio
+async def test_unresolved_intent_early_stops_before_quote_and_submit():
+    """Aynı token için çözülmemiş intent varsa execute() EN ERKEN None döner:
+    quote/prevalidation YOK, yeni intent YOK, create_market_order/post_order YOK."""
+    import execution.order_intent as oi
+    from execution.order_intent import create_intent, transition
+
+    dbp = await _fresh_db()
+    finding = _finding("YES")
+    token_id = finding["yes_token_id"]
+    # Bu token için çözülmemiş (SUBMITTED_UNKNOWN) intent seed et
+    iid = await create_intent(dbp, token_id=token_id, side="BUY",
+                              intended_price=0.35, intended_size=25.0, slug=finding["slug"])
+    await transition(dbp, iid, "SUBMITTED_UNKNOWN")
+
+    get_quote_spy = AsyncMock(return_value=_qask(0.35))
+    clp_spy = MagicMock(return_value=(Decimal("0.36"), None))
+    create_intent_spy = AsyncMock(return_value="should-not-be-created")
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.return_value = _fake_matched_resp()
+
+    with patch.object(oi, "DB_FILE", str(dbp)), \
+         patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock,
+               return_value=False), \
+         patch("execution.clob_executor.get_quote", get_quote_spy), \
+         patch("execution.clob_executor.compute_limit_price", clp_spy), \
+         patch("execution.clob_executor.get_client", return_value=fake_client), \
+         patch("execution.order_intent.create_intent", create_intent_spy):
+        from execution.clob_executor import execute
+        result = await execute(finding, _gate(), _risk(), [])
+
+    assert result is None, "unresolved intent → execute None dönmeli (position yok)"
+    get_quote_spy.assert_not_called()                 # quote/prevalidation'a girilmedi
+    clp_spy.assert_not_called()                       # compute_limit_price'a girilmedi
+    create_intent_spy.assert_not_called()             # yeni intent yaratılmadı
+    fake_client.create_market_order.assert_not_called()
+    fake_client.post_order.assert_not_called()         # submit YOK
+
+
+@pytest.mark.asyncio
+async def test_execute_default_path_is_isolated_never_live():
+    """KANIT: DB_FILE'ı manuel patch'lemeyen execute() (test_clob_executor deseni) CANLI
+    logs/mispricing.db'yi ASLA okumaz — conftest izole tmp'ye yönlendirir. execute() içindeki
+    tüm aiosqlite.connect path'leri kaydedilir; canlı path görülürse test FAIL eder."""
+    import execution.order_intent as oi
+    import db.logger
+    from execution.order_intent import create_intent, transition
+
+    # conftest oi.DB_FILE'ı izole tmp'ye yönlendirdi; gerçek canlı path db.logger'da (patch'siz).
+    isolated = os.path.abspath(str(oi.DB_FILE))
+    live = os.path.abspath(str(db.logger.DB_FILE))
+    assert isolated != live, "conftest default-path'i izole tmp'ye yönlendirmeli"
+    assert live.endswith("logs/mispricing.db"), f"canlı path beklenen değil: {live}"
+
+    finding = _finding("YES")
+    token_id = finding["yes_token_id"]
+    # Default path'in (oi.DB_FILE = izole tmp) işaret ettiği DB'ye unresolved intent seed et
+    iid = await create_intent(None, token_id=token_id, side="BUY",
+                              intended_price=0.35, intended_size=25.0, slug=finding["slug"])
+    await transition(None, iid, "SUBMITTED_UNKNOWN")
+
+    opened: list[str] = []
+    real_connect = aiosqlite.connect
+
+    def _recording_connect(database, *a, **k):
+        opened.append(os.path.abspath(str(database)))
+        return real_connect(database, *a, **k)
+
+    get_quote_spy = AsyncMock(return_value=_qask(0.35))
+    fake_client = MagicMock()
+    fake_client.post_order.return_value = _fake_matched_resp()
+
+    with patch("aiosqlite.connect", _recording_connect), \
+         patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock,
+               return_value=False), \
+         patch("execution.clob_executor.get_quote", get_quote_spy), \
+         patch("execution.clob_executor.get_client", return_value=fake_client):
+        from execution.clob_executor import execute
+        result = await execute(finding, _gate(), _risk(), [])
+
+    assert result is None
+    assert live not in opened, f"CANLI DB OKUNDU — KABUL EDİLEMEZ: {live} ∈ {opened}"
+    assert isolated in opened, f"izole tmp DB okunmalıydı (non-vacuous): {opened}"
+    get_quote_spy.assert_not_called()                  # Task A invariant: quote yok
+    fake_client.post_order.assert_not_called()          # Task A invariant: submit yok

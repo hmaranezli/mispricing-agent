@@ -21,6 +21,7 @@ from py_clob_client_v2.order_builder.constants import BUY
 from data.clob_price import get_quote
 from execution.order_pricing import compute_limit_price
 from execution.emergency_pause import is_emergency_paused
+from execution import order_intent
 from data.shadow_quote import get_shadow_quote
 from db.logger import log_entry_air_pocket, update_entry_air_pocket_delayed
 import config
@@ -217,6 +218,14 @@ async def execute(
 
     if not token_id:
         print(f"[clob] {finding['slug']}: token_id yok, order gönderilmedi")
+        return None
+
+    # Faz 2c-3 Task A: EARLY-STOP. Aynı token için çözülmemiş intent (SUBMITTED_UNKNOWN/
+    # RECOVERY_REQUIRED) varsa hiçbir şey yapma — quote/prevalidation/yeni intent/submit YOK.
+    # Timeout sonrası otomatik 2. submit YASAK; durum 2c-4 reconcile'a aittir.
+    if await order_intent.has_unresolved_intent(None, token_id):
+        print(f"[clob] {finding['slug']}: UNRESOLVED_INTENT ({token_id}) — execute DURDU "
+              f"(quote/order YOK, 2c-4 reconcile bekliyor)")
         return None
 
     position_usd = risk_result["position_usd"]
