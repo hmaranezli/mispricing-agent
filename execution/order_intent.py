@@ -23,6 +23,37 @@ STATES = (
 )
 OPEN_STATES = frozenset({"FILLED", "PARTIAL_FILLED"})        # position açık SAYILIR
 UNRESOLVED_STATES = frozenset({"SUBMITTED_UNKNOWN", "RECOVERY_REQUIRED"})  # yeni emir BLOK
+# Faz 2b FAK/IOC final execution states — terminal'e ULAŞAN intent GERİ ÇEKİLEMEZ (monotonic).
+TERMINAL_STATES = frozenset({"FILLED", "PARTIAL_FILLED", "CANCELLED", "REJECTED"})
+
+
+def is_terminal(status: str) -> bool:
+    return status in TERMINAL_STATES
+
+
+def classify_fill(status, taking_amount, requested_size, order_id=None, exception=False):
+    """FAK/IOC response → (state, executed_size, reason). Fill kesin değilse position açılmaz.
+      - exception (timeout/network) → SUBMITTED_UNKNOWN (araf, 2c reconcile)
+      - matched + taking>0: >=requested → FILLED, else PARTIAL_FILLED (kalan FAK gereği ölü)
+      - matched/unmatched + taking==0 → CANCELLED (FAK_ZERO_FILL) — reject DEĞİL
+      - accepted/live + fill kanıtı yok → ACCEPTED (no_fill_proof; position YOK, 2c reconcile)
+    """
+    if exception:
+        return ("SUBMITTED_UNKNOWN", 0.0, "timeout")
+    s = (status or "").lower()
+    taking = float(taking_amount or 0)
+    if s == "matched" and taking > 0:
+        # FAK kısmi: executed < requested → PARTIAL_FILLED (kalan hayali değil, ölü)
+        if taking >= float(requested_size) * 0.999:
+            return ("FILLED", taking, None)
+        return ("PARTIAL_FILLED", taking, None)
+    if s in ("matched", "unmatched") or taking == 0:
+        if s in ("live", "delayed", "accepted") or order_id:
+            return ("ACCEPTED", 0.0, "no_fill_proof")
+        return ("CANCELLED", 0.0, "FAK_ZERO_FILL")
+    if s in ("live", "delayed", "accepted") or order_id:
+        return ("ACCEPTED", 0.0, "no_fill_proof")
+    return ("CANCELLED", 0.0, "FAK_ZERO_FILL")
 
 
 def make_order_intent_id() -> str:
@@ -68,6 +99,16 @@ async def transition(db_path, order_intent_id, new_state, server_order_id=None,
     if new_state not in STATES:
         raise ValueError(f"geçersiz state: {new_state}")
     now = datetime.now(timezone.utc).isoformat()
+    # MONOTONIC GUARD: terminal state'e ulaşmış intent GERİ ÇEKİLEMEZ (geç REST/ACCEPTED/WS).
+    # FILLED/PARTIAL_FILLED/CANCELLED/REJECTED → yeni transition strict BLOK.
+    async with aiosqlite.connect(str(db_path or DB_FILE)) as conn:
+        async with conn.execute(
+            "SELECT status FROM order_intents WHERE order_intent_id=?", (order_intent_id,)) as cur:
+            cur_row = await cur.fetchone()
+    if cur_row and is_terminal(cur_row[0]) and cur_row[0] != new_state:
+        print(f"[order_intent] MONOTONIC BLOCK: {cur_row[0]} (terminal) → {new_state} reddedildi "
+              f"(intent={order_intent_id})")
+        return
     sets = ["status=?", "updated_at=?"]
     vals = [new_state, now]
     if server_order_id is not None:
