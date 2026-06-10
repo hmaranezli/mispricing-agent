@@ -18,7 +18,7 @@ from uuid import uuid4
 from execution.clob_client import get_client
 from py_clob_client_v2 import MarketOrderArgs, OrderType, PartialCreateOrderOptions
 from py_clob_client_v2.order_builder.constants import BUY
-from data.clob_price import get_clob_price as _get_clob_price
+from data.clob_price import get_quote
 from data.shadow_quote import get_shadow_quote
 from db.logger import log_entry_air_pocket, update_entry_air_pocket_delayed
 import config
@@ -214,10 +214,10 @@ async def execute(
         print(f"[clob] {finding['slug']}: position_usd={position_usd:.2f} < $1 minimum, atlandı")
         return None
 
-    # CLOB'dan anlık fiyat — council gecikmesini (~5s) kompanse et
-    clob_price  = await _get_clob_price(token_id)
-    live_ask    = clob_price if clob_price else finding["best_ask"]
-    worst_price = round(live_ask + PRICE_PREMIUM, 4)  # slippage limit
+    # P0 QuoteProvider: AL→ask (book-derived). /price BUY (=bid, TERS) YASAK. council gecikmesi (~5s) komp.
+    _q = await get_quote(token_id)
+    live_ask    = _q.ask if (_q and _q.ask) else finding["best_ask"]
+    worst_price = round(live_ask + PRICE_PREMIUM, 4)  # slippage limit (entry ask + buffer)
 
     print(f"[clob] {finding['slug']}: FAK BUY amount=${position_usd:.2f} worst_price={worst_price:.4f} (live={live_ask:.4f}+{PRICE_PREMIUM})")
 

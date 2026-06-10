@@ -15,6 +15,21 @@ API docs (https://docs.polymarket.com/api-reference/introduction):
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+def _qask(p):
+    """Test helper — entry quote (ask). p=ask, bid=p-0.02. None→None."""
+    if p is None: return None
+    from data.orderbook_snapshot import OrderbookSnapshot
+    import time as _t
+    return OrderbookSnapshot(bid=round(p-0.02,4), ask=p, bid_size=1e4, ask_size=1e4, source="rest_book", ts=_t.time())
+
+def _qbid(p):
+    """Test helper — exit quote (bid). p=bid, ask=p+0.02. None→None."""
+    if p is None: return None
+    from data.orderbook_snapshot import OrderbookSnapshot
+    import time as _t
+    return OrderbookSnapshot(bid=p, ask=round(p+0.02,4), bid_size=1e4, ask_size=1e4, source="rest_book", ts=_t.time())
+
+
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
@@ -40,7 +55,7 @@ def _matched_resp(taking="1.17", making="1.3"):
 
 def _clob_patch(bid=0.90):
     """get_clob_price(side='SELL') mock — CLOB gerçek zamanlı bid."""
-    return patch("execution.position_store.get_clob_price", new_callable=AsyncMock, return_value=bid)
+    return patch("execution.position_store.get_quote", new_callable=AsyncMock, return_value=_qbid(bid))
 
 
 @pytest.mark.asyncio
@@ -169,7 +184,7 @@ async def test_sell_position_returns_floor_when_amounts_missing():
 @pytest.mark.asyncio
 async def test_sell_position_returns_none_when_clob_bid_zero_and_no_stale():
     """CLOB bid=None ve current_bid=0 → likidite yok → None döner."""
-    with patch("execution.position_store.get_clob_price", new_callable=AsyncMock, return_value=None):
+    with patch("execution.position_store.get_quote", new_callable=AsyncMock, return_value=None):
         from execution.position_store import sell_position
         pos = _open_pos("YES", bid=0.0)
         fill = await sell_position(pos)
@@ -184,7 +199,7 @@ async def test_sell_position_falls_back_to_stale_bid_when_clob_unavailable():
     fake_client.create_and_post_order.return_value = _matched_resp()
     stale_bid = 0.85
     with patch("execution.position_store.get_client", return_value=fake_client), \
-         patch("execution.position_store.get_clob_price", new_callable=AsyncMock, return_value=None):
+         patch("execution.position_store.get_quote", new_callable=AsyncMock, return_value=None):
         from execution.position_store import sell_position
         await sell_position(_open_pos("YES", bid=stale_bid))
     call = fake_client.create_and_post_order.call_args[0][0]

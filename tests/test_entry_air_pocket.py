@@ -5,6 +5,12 @@ DB schema, shadow quote hesabı, log fonksiyonları ve executor entegrasyonu.
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+def _qask(p):
+    if p is None: return None
+    from data.orderbook_snapshot import OrderbookSnapshot
+    import time as _t
+    return OrderbookSnapshot(bid=round(p-0.02,4), ask=p, bid_size=1e4, ask_size=1e4, source="rest_book", ts=_t.time())
+
 import asyncio
 import time
 import pytest
@@ -406,7 +412,7 @@ async def test_fak_no_match_detected_and_logged():
     mock_conn = MagicMock()
 
     with patch("execution.clob_executor.get_client", return_value=fake_client), \
-         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.580), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.580)), \
          patch("execution.clob_executor.log_entry_air_pocket", mock_log), \
          patch("execution.clob_executor.get_shadow_quote", mock_shadow), \
          patch("asyncio.create_task", return_value=MagicMock()):
@@ -441,7 +447,7 @@ async def test_fak_no_match_fires_delayed_task():
     mock_conn = MagicMock()
 
     with patch("execution.clob_executor.get_client", return_value=fake_client), \
-         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.580), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.580)), \
          patch("execution.clob_executor.log_entry_air_pocket", mock_log), \
          patch("execution.clob_executor.get_shadow_quote", mock_shadow), \
          patch("asyncio.create_task", return_value=MagicMock()) as mock_create_task:
@@ -460,7 +466,7 @@ async def test_fak_no_match_returns_none():
     fake_client.post_order.side_effect = Exception(FAK_NO_MATCH_MSG)
 
     with patch("execution.clob_executor.get_client", return_value=fake_client), \
-         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.580), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.580)), \
          patch("execution.clob_executor.log_entry_air_pocket", AsyncMock(return_value=1)), \
          patch("execution.clob_executor.get_shadow_quote", AsyncMock(return_value={
              "ask": None, "no_ask": None, "book_age_ms": None,
@@ -482,7 +488,7 @@ async def test_fak_no_match_no_crash_when_shadow_fails():
     fake_client.post_order.side_effect = Exception(FAK_NO_MATCH_MSG)
 
     with patch("execution.clob_executor.get_client", return_value=fake_client), \
-         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.580), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.580)), \
          patch("execution.clob_executor.log_entry_air_pocket", AsyncMock(return_value=1)), \
          patch("execution.clob_executor.get_shadow_quote", AsyncMock(side_effect=Exception("net fail"))), \
          patch("asyncio.create_task", return_value=MagicMock()):
@@ -501,7 +507,7 @@ async def test_fak_no_match_no_log_when_conn_none():
     mock_log = AsyncMock(return_value=1)
 
     with patch("execution.clob_executor.get_client", return_value=fake_client), \
-         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.580), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.580)), \
          patch("execution.clob_executor.log_entry_air_pocket", mock_log), \
          patch("execution.clob_executor.get_shadow_quote", AsyncMock(return_value={
              "ask": None, "no_ask": None, "book_age_ms": None,
@@ -527,7 +533,7 @@ async def test_non_fak_exception_does_not_log_air_pocket():
     mock_log = AsyncMock(return_value=1)
 
     with patch("execution.clob_executor.get_client", return_value=fake_client), \
-         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.580), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.580)), \
          patch("execution.clob_executor.log_entry_air_pocket", mock_log), \
          patch("asyncio.create_task", return_value=MagicMock()):
         result = await execute(_finding("YES"), _gate(), _risk(), [], conn=MagicMock())
@@ -553,7 +559,7 @@ async def test_fak_no_match_stores_council_pass_ts():
     })
 
     with patch("execution.clob_executor.get_client", return_value=fake_client), \
-         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.580), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.580)), \
          patch("execution.clob_executor.log_entry_air_pocket", mock_log), \
          patch("execution.clob_executor.get_shadow_quote", mock_shadow), \
          patch("asyncio.create_task", return_value=MagicMock()):
@@ -577,7 +583,7 @@ async def test_fak_no_match_gate_fee_adj_in_event():
     mock_log = AsyncMock(return_value=1)
 
     with patch("execution.clob_executor.get_client", return_value=fake_client), \
-         patch("execution.clob_executor._get_clob_price", new_callable=AsyncMock, return_value=0.580), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.580)), \
          patch("execution.clob_executor.log_entry_air_pocket", mock_log), \
          patch("execution.clob_executor.get_shadow_quote", AsyncMock(return_value={
              "ask": None, "no_ask": None, "book_age_ms": None,

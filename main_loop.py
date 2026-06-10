@@ -28,7 +28,7 @@ from position.manager import check_exit, close_position
 from data.hl_candles import current_price, price_at_timestamp
 from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window, find_shortterm_4h
 from data.fair_value import fair_yes, ASSET_VOL
-from data.clob_price import get_clob_price
+from data.clob_price import get_quote
 from data.depth_enricher import enrich_entry_depth
 from monitor.notifier import notify_open, notify_close, notify_halt, notify_restart, notify_soft_stop, notify_hard_stop, notify_resolved_late, send_telegram
 from monitor.kill_switch import check as kill_switch_check
@@ -721,8 +721,10 @@ async def _monitor_positions(
                 if pos["action"] == "YES":
                     pm_yes_price = ws_prices.get_bid(yes_tid)
                     if pm_yes_price is None:
-                        pm_yes_price = await get_clob_price(yes_tid, "SELL")
-                        _price_source, _data_quality = "clob_rest_bid", "exact"
+                        # P0: mark-to-market SAT→bid (book-derived). /price SELL (=ask, TERS) YASAK.
+                        _yq = await get_quote(yes_tid)
+                        pm_yes_price = _yq.bid if _yq else None
+                        _price_source, _data_quality = "book_bid", "exact"
                     else:
                         _price_source, _data_quality = "ws_bid", "exact"
                 else:
@@ -732,16 +734,19 @@ async def _monitor_positions(
                     if _no_bid is not None:
                         _price_source, _data_quality = "ws_bid", "exact"
                     else:
-                        _no_clob = await get_clob_price(_no_tid, "SELL") if _no_tid else None
+                        # P0: NO token SAT→bid (book-derived). /price SELL (=ask, TERS) YASAK.
+                        _nq = await get_quote(_no_tid) if _no_tid else None
+                        _no_clob = _nq.bid if _nq else None
                         if _no_clob is not None:
                             pos["_no_clob_bid"] = _no_clob
-                            _price_source, _data_quality = "clob_rest_bid", "clob_fallback"
+                            _price_source, _data_quality = "book_bid", "clob_fallback"
                         else:
                             _price_source, _data_quality = "complement", "estimated"
-                    # YES ask: check_exit complement fallback + exit price calculation
+                    # YES ask: check_exit complement fallback (AL→ask, book-derived; /price BUY=bid TERS YASAK)
                     pm_yes_price = ws_prices.get_ask(yes_tid)
                     if pm_yes_price is None:
-                        pm_yes_price = await get_clob_price(yes_tid, "BUY")
+                        _yq2 = await get_quote(yes_tid)
+                        pm_yes_price = _yq2.ask if _yq2 else None
                     # Synthetic fallback: no_bid/clob varsa YES ask'ı türet — gerçek fiyat
                     # elimizdeyken YES ask yok diye monitor'ı körleştirme
                     if pm_yes_price is None:
