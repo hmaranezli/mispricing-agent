@@ -30,8 +30,8 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/.claude/settings.local.json": {
-    "mtime": 1781113217.648632,
-    "ast_hash": "7470244d030762ad16057a143211470e",
+    "mtime": 1781116770.2973216,
+    "ast_hash": "7e80d230b28c89025f3341d0fa7a5e43",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/execution/__init__.py": {
@@ -155,13 +155,13 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/db/schema.py": {
-    "mtime": 1781111682.083515,
-    "ast_hash": "341e228247cf243b9e4e8b936700830e",
+    "mtime": 1781117811.387402,
+    "ast_hash": "063d08b90709a4f79aac90a4909733e4",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/db/logger.py": {
-    "mtime": 1780943562.8826346,
-    "ast_hash": "d5f0053fd9f5ec3c444487a1e2eb3c02",
+    "mtime": 1781117825.2375226,
+    "ast_hash": "e5f52ae06fd7ffd11fb3b8d51a560590",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/council/risk.py": {
@@ -365,8 +365,8 @@
     "semantic_hash": ""
   },
   "/root/mispricing_agent/execution/clob_executor.py": {
-    "mtime": 1781111731.7729402,
-    "ast_hash": "5f908c1f96d9e4b25baec736a00dd9fa",
+    "mtime": 1781122369.7316055,
+    "ast_hash": "af2a7170adeb749b667a53f6a2fc893b",
     "semantic_hash": ""
   },
   "/root/mispricing_agent/execution/clob_client.py": {
@@ -822,6 +822,21 @@
   "/root/mispricing_agent/execution/reconciliation.py": {
     "mtime": 1781110739.0664425,
     "ast_hash": "b4787bd8f3926a1e2d4fb32c9ea7e62f",
+    "semantic_hash": ""
+  },
+  "/root/mispricing_agent/tests/conftest.py": {
+    "mtime": 1781119941.1451437,
+    "ast_hash": "d692a0f7ee1392f8cc4f7279db7d75af",
+    "semantic_hash": ""
+  },
+  "/root/mispricing_agent/tests/test_execute_intent_wiring.py": {
+    "mtime": 1781122928.6513731,
+    "ast_hash": "8f824df1aa322767f53f7ebaa4d4d064",
+    "semantic_hash": ""
+  },
+  "/root/mispricing_agent/docs/superpowers/plans/2026-06-10-faz2c3-execute-intent-wiring.md": {
+    "mtime": 1781116601.2998466,
+    "ast_hash": "680dfb304d7a6ef9947ee8d951297473",
     "semantic_hash": ""
   }
 }
