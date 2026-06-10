@@ -516,3 +516,72 @@ async def test_timeout_leaves_submitted_unknown_no_resubmit_and_blocks_next(capl
     get_quote_spy2.assert_not_called()                      # quote'a bile gelmedi (early-stop)
     fake_client2.create_market_order.assert_not_called()
     fake_client2.post_order.assert_not_called()             # ikinci submit YOK
+
+
+# ── Task F: ConnectionError / generic unknown submit errors → SUBMITTED_UNKNOWN ─
+
+@pytest.mark.parametrize("exc, needle", [
+    (ConnectionError("connection reset by peer"), "connection reset"),
+    (RuntimeError("exchange 502 gateway"), "502 gateway"),
+])
+@pytest.mark.asyncio
+async def test_unknown_submit_errors_keep_submitted_unknown_no_resubmit(caplog, exc, needle):
+    """Task F: 'no orders found' İÇERMEYEN submit hataları (ConnectionError/generic) → fail-safe:
+    execute None, intent SUBMITTED_UNKNOWN kalır, tek submit (resubmit yok), raw error loglanır,
+    'no orders found' özel path'ine GİRİLMEZ; 2. execute guard'la bloklanır."""
+    import execution.order_intent as oi
+    finding = _finding("YES")
+    token_id = finding["yes_token_id"]
+    db_path = str(oi.DB_FILE)
+
+    fak_spy = AsyncMock()  # "no orders found" path'i — çağrılmamalı
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.side_effect = exc
+
+    raised = None
+    with caplog.at_level(logging.WARNING, logger="execution.clob_executor"), \
+         patch("execution.clob_executor._handle_fak_no_match", fak_spy), \
+         patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock,
+               return_value=False), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock,
+               return_value=_qask(0.35)), \
+         patch("execution.clob_executor.get_client", return_value=fake_client):
+        from execution.clob_executor import execute
+        try:
+            result = await execute(finding, _gate(), _risk(), [])
+        except Exception as ex:
+            raised, result = ex, "RAISED"
+
+    assert raised is None, f"{type(exc).__name__} → None dönmeli, raise ETMEMELİ: {raised}"
+    assert result is None
+    fak_spy.assert_not_called()                             # 'no orders found' path'ine GİRİLMEDİ
+    assert fake_client.post_order.call_count == 1, \
+        f"tek submit, resubmit YOK: {fake_client.post_order.call_count}"
+    c = sqlite3.connect(db_path)
+    try:
+        rows = c.execute(
+            "SELECT status FROM order_intents WHERE market_token_id=?", (token_id,)).fetchall()
+    finally:
+        c.close()
+    assert rows == [("SUBMITTED_UNKNOWN",)], \
+        f"{type(exc).__name__} → intent SUBMITTED_UNKNOWN kalmalı: {rows}"
+    logs = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert logs, "raw error loglanmalı"
+    blob = " ".join(r.getMessage() for r in logs).lower()
+    assert needle in blob, f"raw error mesajı ({needle}) loglanmalı: {blob}"
+
+    # İkinci çağrı: aynı token → guard early-stop
+    fake_client2 = MagicMock()
+    fake_client2.create_market_order.return_value = MagicMock()
+    fake_client2.post_order.return_value = _fake_matched_resp()
+    get_quote_spy2 = AsyncMock(return_value=_qask(0.35))
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock,
+               return_value=False), \
+         patch("execution.clob_executor.get_quote", get_quote_spy2), \
+         patch("execution.clob_executor.get_client", return_value=fake_client2):
+        from execution.clob_executor import execute
+        result2 = await execute(finding, _gate(), _risk(), [])
+    assert result2 is None
+    get_quote_spy2.assert_not_called()
+    fake_client2.post_order.assert_not_called()
