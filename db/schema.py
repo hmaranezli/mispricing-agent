@@ -418,6 +418,27 @@ _MIGRATIONS = [
     "ALTER TABLE model_decision_events ADD COLUMN tracking_key TEXT",
     "ALTER TABLE model_decision_events ADD COLUMN paper_id TEXT",
     "ALTER TABLE model_decision_events ADD COLUMN shadow_candidate_id TEXT",
+    # Live Execution Faz 2a — order_intents (local idempotency + state machine)
+    """CREATE TABLE IF NOT EXISTS order_intents (
+        order_intent_id      TEXT PRIMARY KEY,
+        slug                 TEXT,
+        market_token_id      TEXT,
+        side                 TEXT,
+        intended_price       REAL,
+        intended_size        REAL,
+        payload_hash         TEXT,
+        status               TEXT NOT NULL,
+        intent_timestamp     TEXT,
+        submitted_at         TEXT,
+        wallet_address       TEXT,
+        exchange_order_id    TEXT,
+        matched_trade_id     TEXT,
+        size_matched         REAL,
+        reconciliation_status TEXT,
+        reconciliation_reason TEXT,
+        created_at           TEXT,
+        updated_at           TEXT
+    )""",
     # Outcome link: paper'lara tracking_key (V2 telemetri ↔ shadow_positions join)
     "ALTER TABLE shadow_positions ADD COLUMN tracking_key TEXT",
     # tracking_key EVENT-LEVEL UNIQUE (eski 4-parça duplicate'ler önce bad_v1: ile karantina edilir)
