@@ -451,3 +451,68 @@ async def test_unresolved_check_db_fail_is_fail_closed(caplog):
     blob = " ".join(r.getMessage() for r in errs).lower()
     assert "unresolved" in blob and "fail-closed" in blob and "abort" in blob, \
         f"log 'unresolved intent check failed / fail-closed / aborting' anlamı içermeli: {blob}"
+
+
+# ── Task E: post_order timeout → SUBMITTED_UNKNOWN kal, resubmit yok ─────────
+
+@pytest.mark.asyncio
+async def test_timeout_leaves_submitted_unknown_no_resubmit_and_blocks_next(caplog):
+    """Task E: post_order TimeoutError → execute None, intent SUBMITTED_UNKNOWN'da KALIR,
+    tek submit (resubmit yok), raw timeout loglanır; aynı token için 2. execute guard'la
+    post_order'a ulaşmadan bloklanır. RED: timeout yalnız print'leniyor (logging yok)."""
+    import execution.order_intent as oi
+    finding = _finding("YES")
+    token_id = finding["yes_token_id"]
+    db_path = str(oi.DB_FILE)  # conftest izole tmp
+
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.side_effect = TimeoutError("Read timed out after 10s")
+
+    raised = None
+    with caplog.at_level(logging.WARNING, logger="execution.clob_executor"), \
+         patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock,
+               return_value=False), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock,
+               return_value=_qask(0.35)), \
+         patch("execution.clob_executor.get_client", return_value=fake_client):
+        from execution.clob_executor import execute
+        try:
+            result = await execute(finding, _gate(), _risk(), [])
+        except Exception as ex:
+            raised, result = ex, "RAISED"
+
+    assert raised is None, f"timeout → None dönmeli, raise ETMEMELİ: {raised}"
+    assert result is None                                   # position yok (no-fill-proof)
+    assert fake_client.post_order.call_count == 1, \
+        f"tek submit olmalı, resubmit YOK: {fake_client.post_order.call_count}"
+    # Intent SUBMITTED_UNKNOWN'da kalmalı ("emir gitmedi" VARSAYILMAZ)
+    c = sqlite3.connect(db_path)
+    try:
+        rows = c.execute(
+            "SELECT status FROM order_intents WHERE market_token_id=?", (token_id,)).fetchall()
+    finally:
+        c.close()
+    assert rows == [("SUBMITTED_UNKNOWN",)], f"timeout → intent SUBMITTED_UNKNOWN kalmalı: {rows}"
+    # Raw timeout bilgisi log'da (ERROR/WARNING/CRITICAL)
+    logs = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert logs, "timeout → log basılmalı (print değil)"
+    blob = " ".join(r.getMessage() for r in logs).lower()
+    assert "timed out" in blob or "timeout" in blob, f"raw timeout bilgisi loglanmalı: {blob}"
+
+    # ── İKİNCİ çağrı: aynı token → has_unresolved_intent guard early-stop ───────
+    fake_client2 = MagicMock()
+    fake_client2.create_market_order.return_value = MagicMock()
+    fake_client2.post_order.return_value = _fake_matched_resp()
+    get_quote_spy2 = AsyncMock(return_value=_qask(0.35))
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock,
+               return_value=False), \
+         patch("execution.clob_executor.get_quote", get_quote_spy2), \
+         patch("execution.clob_executor.get_client", return_value=fake_client2):
+        from execution.clob_executor import execute
+        result2 = await execute(finding, _gate(), _risk(), [])
+
+    assert result2 is None                                  # guard erken durdurdu
+    get_quote_spy2.assert_not_called()                      # quote'a bile gelmedi (early-stop)
+    fake_client2.create_market_order.assert_not_called()
+    fake_client2.post_order.assert_not_called()             # ikinci submit YOK

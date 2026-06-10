@@ -325,6 +325,12 @@ async def execute(
                 e_str=e_str,
                 conn=conn,
             )
+        else:
+            # Faz 2c-3 Task E: timeout/connection/unknown — "emir GİTMEDİ" VARSAYILMAZ.
+            # intent SUBMITTED_UNKNOWN'da KALIR (transition YOK), resubmit YOK → 2c-4 reconcile.
+            logger.error(
+                "[clob] %s: order submit FAILED (no-fill-proof) — intent SUBMITTED_UNKNOWN "
+                "korunuyor, resubmit YOK (2c-4 reconcile): %s", finding.get("slug"), e_str)
         return None
 
     if not resp:
