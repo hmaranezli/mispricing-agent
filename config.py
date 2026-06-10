@@ -39,6 +39,12 @@ NEW_ENTRIES_ENABLED  = False
 # False → V3.1 alanları NULL, eski V2 davranışı. Tek-bayrak kill switch.
 TELEMETRY_V31_ENABLED = True
 
+# Orderbook data-integrity (P0). Dust/depth eşiği — top-of-book'ta işlem yapılamayacak
+# kadar küçük (notional < eşik) emirler best fiyat olarak KULLANILMAZ. Bu bir VERİ-KALİTE
+# eşiğidir, trading karar parametresi DEĞİL (fair/edge/threshold ile karıştırılmaz).
+MIN_EXECUTABLE_NOTIONAL_USD = 5.0
+WS_SNAPSHOT_MAX_AGE_S = 10.0
+
 # ── Anti-hallucination kurallari ──
 REQUIRE_FRESH_API_DATA = True  # Her sayi API'den taze cekilir, hafizadan asla
 HALT_ON_API_MISMATCH   = True  # API ile ajan celisirse islem durur

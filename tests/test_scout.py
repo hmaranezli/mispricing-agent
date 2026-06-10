@@ -12,6 +12,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
 from council.scout import scan_edges, _asset_of, _edge_signal, _drift_ok, _process_market, MIN_SECONDS
 
+
+def _snap(ask, bid=None):
+    """Test helper — P0 single-source snapshot. bid varsayılan ask-0.02 (non-crossed)."""
+    from data.orderbook_snapshot import OrderbookSnapshot
+    if ask is None:
+        return None
+    import time as _t
+    return OrderbookSnapshot(bid=(bid if bid is not None else round(ask - 0.02, 4)), ask=ask,
+                             bid_size=10000.0, ask_size=10000.0, source="rest_book", ts=_t.time())
+
 # ── Unit testler ──────────────────────────────────────────────────────────────
 
 def test_asset_of_bitcoin():
@@ -378,6 +388,7 @@ async def test_finding_contains_token_ids():
          patch("council.scout.current_price", new_callable=AsyncMock) as mock_cur, \
          patch("council.scout.fair_yes", return_value=0.65), \
          patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+         patch("council.scout.fetch_book_snapshot", new_callable=AsyncMock, return_value=_snap(0.35)), \
          patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02), \
          patch("council.scout.fetch_candles", new_callable=AsyncMock,
                return_value=[{"c": "95000"}, {"c": "95100"}]), \
@@ -453,6 +464,7 @@ async def test_finding_token_ids_single_element_no_crash():
          patch("council.scout.current_price", new_callable=AsyncMock) as mock_cur, \
          patch("council.scout.fair_yes", return_value=0.60), \
          patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+         patch("council.scout.fetch_book_snapshot", new_callable=AsyncMock, return_value=_snap(0.35)), \
          patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02), \
          patch("council.scout.fetch_candles", new_callable=AsyncMock,
                return_value=[{"c": "95000"}, {"c": "95100"}]), \
@@ -490,6 +502,7 @@ async def test_process_market_uses_clob_price_not_market_api():
     }
     # CLOB real price = 0.55, fair = 0.65 → YES edge = 0.65 - 0.55 = 0.10 ≥ 0.05
     with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.55), \
+ patch("council.scout.fetch_book_snapshot", new_callable=AsyncMock, return_value=_snap(0.55)), \
          patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=100_000.0), \
          patch("council.scout.current_price", new_callable=AsyncMock, return_value=104_000.0), \
          patch("council.scout.fair_yes", return_value=0.65), \
@@ -592,7 +605,13 @@ def test_process_market_falls_back_to_rest_when_ws_miss(monkeypatch):
     async def fake_fee(token_id):
         return 0.02
 
+    # P0 single-source: WS miss → REST /book snapshot (fetch_book_snapshot), Frankenstein yok
+    async def fake_book_snap(token_id, min_notional=0.0):
+        rest_called.append(token_id)
+        return _snap(0.54)
+
     monkeypatch.setattr("council.scout.get_clob_price", fake_clob)
+    monkeypatch.setattr("council.scout.fetch_book_snapshot", fake_book_snap)
     monkeypatch.setattr("council.scout.price_at_timestamp", fake_price_at)
     monkeypatch.setattr("council.scout.current_price", fake_current)
     monkeypatch.setattr("council.scout.fetch_fee_rate", fake_fee)
@@ -610,43 +629,45 @@ def test_process_market_falls_back_to_rest_when_ws_miss(monkeypatch):
     }
 
     asyncio.run(_process_market(market, {}))
-    assert "yes_tok_rest" in rest_called, "WS miss'te REST çağrılmalı"
+    assert "yes_tok_rest" in rest_called, "WS miss'te REST /book snapshot çağrılmalı"
 
 
 # ── YES_bid REST fallback testleri ───────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_yes_bid_uses_sell_endpoint_when_ws_bid_is_none():
-    """WS get_bid None → /price?side=SELL çağrılır; clob_ask kullanılmaz."""
+async def test_single_source_ws_snapshot_no_frankenstein():
+    """P0 KURAL 2 — WS valid snapshot → bid+ask AYNI snapshot'tan (Frankenstein SELL yasak).
+    Eski 'yes_bid SELL endpoint' davranışı kaldırıldı: single-source."""
     from council.scout import _process_market
     from unittest.mock import patch, AsyncMock
     import data.ws_prices as ws_mod
+    import time as _t
 
     fake_window = {
         "neg_risk": False, "seconds_remaining": 300.0,
         "best_ask": 0.50, "best_bid": 0.49, "start_ms": 0,
     }
-    # fair=0.65, YES_ask=0.50 → YES edge=0.15 → YES action
-    # YES_bid: WS=None → REST SELL endpoint=0.48
+    # WS cache'de VALID snapshot (bid=0.49, ask=0.50, non-crossed) → tek kaynak WS
+    ws_mod._cache.clear()
+    ws_mod._cache["tok-yes"] = {"best_bid": 0.49, "best_ask": 0.50, "bid_size": 1e4,
+                                "ask_size": 1e4, "spread": 0.01, "ts": _t.time()}
     with patch("council.scout.parse_market_window", return_value=fake_window), \
          patch("council.scout._parse_token_ids", return_value=["tok-yes", "tok-no"]), \
-         patch.object(ws_mod, "get_ask", return_value=0.50), \
-         patch.object(ws_mod, "get_bid", return_value=None), \
-         patch("council.scout.get_clob_price", new_callable=AsyncMock,
-               side_effect=lambda tid, side="BUY": 0.48 if side == "SELL" else None) as mock_price, \
+         patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=None) as mock_price, \
+         patch("council.scout.fetch_book_snapshot", new_callable=AsyncMock, return_value=None) as mock_book, \
          patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=50000.0), \
          patch("council.scout.current_price", new_callable=AsyncMock, return_value=50000.0), \
          patch("council.scout.fair_yes", return_value=0.65), \
          patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02):
         result = await _process_market({"question": "Bitcoin Up or Down 5m", "slug": "btc-test"}, {})
 
-    # SELL endpoint çağrılmış olmalı
-    mock_price.assert_any_call("tok-yes", "SELL")
-    # best_bid = 0.48 (SELL endpoint), NOT 0.50 (ask)
+    # YES bid için SELL endpoint ÇAĞRILMAMALI (Frankenstein yok) + REST book'a düşülmemeli (WS valid)
+    for call in mock_price.call_args_list:
+        assert not (len(call.args) > 1 and call.args[1] == "SELL"), "Frankenstein SELL çağrısı yasak"
+    mock_book.assert_not_called()  # WS valid → REST book'a düşme
     if result and result.get("action") == "YES":
-        assert result["best_bid"] == 0.48, (
-            f"YES_bid REST fallback hatalı: beklenen 0.48, gelen {result['best_bid']}"
-        )
+        assert result["best_bid"] == 0.49 and result["best_ask"] == 0.50  # ikisi de WS snapshot
+    ws_mod._cache.clear()
 
 
 # ── NO_ask gerçek fiyat testleri ─────────────────────────────────────────────
@@ -670,6 +691,7 @@ async def test_no_false_positive_filtered_by_real_no_ask():
                side_effect=lambda tid: 0.51 if tid == "tok-yes" else 0.55), \
          patch.object(ws_mod, "get_bid", return_value=None), \
          patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=None), \
+         patch("council.scout.fetch_book_snapshot", new_callable=AsyncMock, return_value=None), \
          patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=50000.0), \
          patch("council.scout.current_price", new_callable=AsyncMock, return_value=50000.0), \
          patch("council.scout.fair_yes", return_value=0.45), \
@@ -689,16 +711,21 @@ async def test_no_edge_uses_real_no_ask_and_correct_formula():
     from unittest.mock import patch, AsyncMock
     import data.ws_prices as ws_mod
 
+    import time as _t
     fake_window = {
         "neg_risk": False, "seconds_remaining": 300.0,
         "best_ask": 0.50, "best_bid": 0.49, "start_ms": 0,
     }
     # fair=0.30, YES_ask=0.65, NO_ask=0.38
-    # real_no_edge = (1-0.30) - 0.38 = 0.70 - 0.38 = 0.32 ≥ MIN_EDGE_PCT
+    # P0: YES fiyatı WS snapshot'tan (clob_ask=0.65, yes_bid=0.64 non-crossed)
+    # no_ask hâlâ get_ask(no_token)=0.38 (NO edge doğrulaması, değişmedi)
+    ws_mod._cache.clear()
+    ws_mod._cache["tok-yes"] = {"best_bid": 0.64, "best_ask": 0.65, "bid_size": 1e4,
+                                "ask_size": 1e4, "spread": 0.01, "ts": _t.time()}
     with patch("council.scout.parse_market_window", return_value=fake_window), \
          patch("council.scout._parse_token_ids", return_value=["tok-yes", "tok-no"]), \
          patch.object(ws_mod, "get_ask",
-               side_effect=lambda tid: 0.65 if tid == "tok-yes" else 0.38), \
+               side_effect=lambda tid: 0.38 if tid == "tok-no" else None), \
          patch.object(ws_mod, "get_bid", return_value=None), \
          patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=None), \
          patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=50000.0), \
@@ -706,6 +733,7 @@ async def test_no_edge_uses_real_no_ask_and_correct_formula():
          patch("council.scout.fair_yes", return_value=0.30), \
          patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02):
         result = await _process_market({"question": "Bitcoin Up or Down 5m", "slug": "btc-test"}, {})
+    ws_mod._cache.clear()
 
     assert result is not None, "Gerçek NO edge 0.32 → bulgu dönmeli"
     assert result["action"] == "NO"
@@ -752,6 +780,7 @@ async def test_process_market_includes_oracle_px():
         "BTC": {"oracle_px": 60938.0, "funding_rate": 4.8e-6, "basis_pct": 0.00035}
     }
     with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+ patch("council.scout.fetch_book_snapshot", new_callable=AsyncMock, return_value=_snap(0.35)), \
          patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=60_000.0), \
          patch("council.scout.current_price", new_callable=AsyncMock, return_value=61_000.0), \
          patch("council.scout.fair_yes", return_value=0.70), \
@@ -774,6 +803,7 @@ async def test_process_market_includes_funding_rate():
         "BTC": {"oracle_px": 60938.0, "funding_rate": 4.8e-6, "basis_pct": 0.00035}
     }
     with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+ patch("council.scout.fetch_book_snapshot", new_callable=AsyncMock, return_value=_snap(0.35)), \
          patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=60_000.0), \
          patch("council.scout.current_price", new_callable=AsyncMock, return_value=61_000.0), \
          patch("council.scout.fair_yes", return_value=0.70), \
@@ -796,6 +826,7 @@ async def test_process_market_includes_basis_pct():
         "BTC": {"oracle_px": 60938.0, "funding_rate": 4.8e-6, "basis_pct": 0.00035}
     }
     with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+ patch("council.scout.fetch_book_snapshot", new_callable=AsyncMock, return_value=_snap(0.35)), \
          patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=60_000.0), \
          patch("council.scout.current_price", new_callable=AsyncMock, return_value=61_000.0), \
          patch("council.scout.fair_yes", return_value=0.70), \
@@ -815,6 +846,7 @@ async def test_process_market_no_market_state_oracle_fields_none():
     from unittest.mock import AsyncMock, patch
 
     with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+ patch("council.scout.fetch_book_snapshot", new_callable=AsyncMock, return_value=_snap(0.35)), \
          patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=60_000.0), \
          patch("council.scout.current_price", new_callable=AsyncMock, return_value=61_000.0), \
          patch("council.scout.fair_yes", return_value=0.70), \
@@ -880,6 +912,7 @@ async def test_process_market_uses_prefetched_cur_price():
 
     mock_cur = AsyncMock(return_value=99_999.0)
     with patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+ patch("council.scout.fetch_book_snapshot", new_callable=AsyncMock, return_value=_snap(0.35)), \
          patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=60_000.0), \
          patch("council.scout.current_price", mock_cur), \
          patch("council.scout.fair_yes", return_value=0.70), \
@@ -905,6 +938,7 @@ async def test_scan_edges_prefetches_current_price_once_per_asset(capsys):
          patch.object(_mod, "_markets_cache_ts", 1e18), \
          patch("council.scout.current_price", mock_cur), \
          patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+         patch("council.scout.fetch_book_snapshot", new_callable=AsyncMock, return_value=_snap(0.35)), \
          patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=60_000.0), \
          patch("council.scout.fair_yes", return_value=0.55), \
          patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02), \
@@ -930,6 +964,7 @@ async def test_scan_edges_prints_scan_audit(capsys):
          patch.object(_mod, "_markets_cache_ts", 1e18), \
          patch("council.scout.current_price", new_callable=AsyncMock, return_value=61_000.0), \
          patch("council.scout.get_clob_price", new_callable=AsyncMock, return_value=0.35), \
+         patch("council.scout.fetch_book_snapshot", new_callable=AsyncMock, return_value=_snap(0.35)), \
          patch("council.scout.price_at_timestamp", new_callable=AsyncMock, return_value=60_000.0), \
          patch("council.scout.fair_yes", return_value=0.55), \
          patch("council.scout.fetch_fee_rate", new_callable=AsyncMock, return_value=0.02), \
@@ -966,6 +1001,7 @@ async def test_process_market_eth_no_quarantined(monkeypatch):
         "best_bid": 0.44, "best_ask": 0.56, "neg_risk": False,
     })
     mock_ws = MagicMock()
+    mock_ws.get_snapshot.return_value = None
     mock_ws.get_ask.return_value = 0.56
     mock_ws.get_bid.return_value = 0.44
     monkeypatch.setattr(scout, "_ws_prices", mock_ws)
@@ -976,6 +1012,7 @@ async def test_process_market_eth_no_quarantined(monkeypatch):
     monkeypatch.setattr(scout, "fair_yes", lambda *a, **kw: 0.35)
     monkeypatch.setattr(scout, "fetch_fee_rate", AsyncMock(return_value=0.02))
     monkeypatch.setattr(scout, "get_clob_price", AsyncMock(return_value=0.41))
+    monkeypatch.setattr(scout, "fetch_book_snapshot", AsyncMock(return_value=_snap(0.41)))
 
     result = await scout._process_market(m, {"ETH": 0.80})
     assert result is None, f"ETH-NO quarantine: None bekleniyor, {result!r} geldi"
@@ -1000,6 +1037,7 @@ async def test_process_market_eth_yes_not_quarantined(monkeypatch):
         "best_bid": 0.54, "best_ask": 0.56, "neg_risk": False,
     })
     mock_ws = MagicMock()
+    mock_ws.get_snapshot.return_value = None
     mock_ws.get_ask.return_value = 0.56
     mock_ws.get_bid.return_value = 0.54
     monkeypatch.setattr(scout, "_ws_prices", mock_ws)
@@ -1010,6 +1048,7 @@ async def test_process_market_eth_yes_not_quarantined(monkeypatch):
     monkeypatch.setattr(scout, "fair_yes", lambda *a, **kw: 0.72)
     monkeypatch.setattr(scout, "fetch_fee_rate", AsyncMock(return_value=0.02))
     monkeypatch.setattr(scout, "get_clob_price", AsyncMock(return_value=0.56))
+    monkeypatch.setattr(scout, "fetch_book_snapshot", AsyncMock(return_value=_snap(0.56)))
 
     result = await scout._process_market(m, {"ETH": 0.80})
     assert result is not None, "ETH-YES quarantine dışında — sinyal bekleniyor"

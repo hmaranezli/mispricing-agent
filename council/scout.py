@@ -25,7 +25,7 @@ from data.shortterm import find_shortterm, parse_market_window, _parse_token_ids
 from data.hl_candles import price_at_timestamp, current_price, fetch_candles, calculate_realized_volatility
 from data.fair_value import fair_yes, ASSET_VOL
 from data.fee_rate import fetch_fee_rate
-from data.clob_price import get_clob_price
+from data.clob_price import get_clob_price, fetch_book_snapshot
 from data.hyperliquid import fetch_market_state
 from data import ws_prices as _ws_prices
 import config
@@ -153,6 +153,17 @@ def _shadow_fee_adj(finding: dict) -> float:
     return (1 - fair) * (1 - fee) - (no_ask + slip)
 
 
+def _crossed_orderbook_skip(yes_bid: float | None, yes_ask: float | None) -> str | None:
+    """P0 KURAL 4 — Crossed guard. yes_bid >= yes_ask ise orderbook crossed/stale →
+    edge hesabına stale fiyat sokmak yasak. Returns 'crossed_orderbook' (skip) veya None (geçer).
+    Karar mantığını değiştirmez; yalnızca bozuk snapshot'ı edge öncesi eler."""
+    if yes_bid is None or yes_ask is None:
+        return None
+    if yes_bid >= yes_ask:
+        return "crossed_orderbook"
+    return None
+
+
 def _edge_signal(fair: float, best_ask: float, best_bid: float,
                  min_edge: float | None = None) -> dict | None:
     """
@@ -232,27 +243,32 @@ async def _process_market(
     yes_token = _tids[0] if _tids else None
     no_token  = _tids[1] if len(_tids) > 1 else None
 
-    # WS cache'den anlık fiyat al; miss veya stale ise REST fallback
-    clob_ask = _ws_prices.get_ask(yes_token) if yes_token else None
-    if clob_ask is None:
-        clob_ask = await get_clob_price(yes_token) if yes_token else None
-        if audit is not None:
-            audit["pm_rest"] = audit.get("pm_rest", 0) + 1
-    else:
+    # P0 SINGLE-SOURCE ATOMİK snapshot (KURAL 1+2): WS valid → WS; değilse REST /book.
+    # Frankenstein (WS ask + REST bid karışımı) YASAK; bid+ask AYNI snapshot'tan.
+    _mn_notional = getattr(config, "MIN_EXECUTABLE_NOTIONAL_USD", 0.0)
+    _max_age = getattr(config, "WS_SNAPSHOT_MAX_AGE_S", 10.0)
+    _snap = _ws_prices.get_snapshot(yes_token) if yes_token else None
+    if _snap and _snap.valid(_mn_notional, _max_age):
+        clob_ask, yes_bid = _snap.ask, _snap.bid
         if audit is not None:
             audit["ws_hit"] = audit.get("ws_hit", 0) + 1
+    else:
+        _snap = await fetch_book_snapshot(yes_token, _mn_notional) if yes_token else None
+        if audit is not None:
+            audit["pm_rest"] = audit.get("pm_rest", 0) + 1
+        if _snap and _snap.valid(_mn_notional):
+            clob_ask, yes_bid = _snap.ask, _snap.bid
+        else:
+            clob_ask, yes_bid = None, None
     if clob_ask is None:
         _inc("skipped_no_price")
-        return None  # Likidite yok → atla
-
-    # YES bid: WS'den gerçek değer; yoksa /price?side=SELL; son çare ask
-    _raw_yes_bid = _ws_prices.get_bid(yes_token)
-    if _raw_yes_bid is not None:
-        yes_bid = _raw_yes_bid
-    else:
-        yes_bid = await get_clob_price(yes_token, "SELL") or clob_ask
+        return None  # Likidite yok / geçerli snapshot yok → atla
 
     _inc("api_reached")
+    # P0 KURAL 4 — Crossed guard: bozuk (bid>=ask) snapshot edge hesabına GİREMEZ.
+    if _crossed_orderbook_skip(yes_bid, clob_ask):
+        _inc("skipped_crossed_orderbook")
+        return None
     try:
         ref_price = await price_at_timestamp(asset, window["start_ms"])
         # Pre-fetch'ten al; yoksa canlı çek (geriye dönük uyumluluk)

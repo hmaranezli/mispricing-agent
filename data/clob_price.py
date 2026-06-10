@@ -68,6 +68,28 @@ def best_bid_from_book(book: dict | None) -> float | None:
     return max(lv, key=lambda x: x[0])[0] if lv else None
 
 
+async def fetch_book_snapshot(token_id: str, min_notional: float = 0.0):
+    """P0 single-source REST snapshot: /book → OrderbookSnapshot (bid+ask AYNI book'tan,
+    dust-filtreli). WS miss/invalid'de fallback. Frankenstein (WS+REST karışım) yasak."""
+    from data.orderbook_snapshot import OrderbookSnapshot
+    import time as _t
+    book = await get_book(token_id)
+    if not book:
+        return None
+    bids = sorted_bids(book)   # pahalı→ucuz, best=ilk
+    asks = sorted_asks(book)   # ucuz→pahalı, best=ilk
+    # dust: best seviyesi notional eşiğinin altındaysa bir alt seviyeye in (executable best)
+    def _best(levels):
+        for px, sz in levels:
+            if min_notional <= 0 or px * sz >= min_notional:
+                return px, sz
+        return (None, None)
+    bid, bid_sz = _best(bids)
+    ask, ask_sz = _best(asks)
+    return OrderbookSnapshot(bid=bid, ask=ask, bid_size=bid_sz, ask_size=ask_sz,
+                             source="rest_book", ts=_t.time())
+
+
 async def get_book(token_id: str) -> dict | None:
     """CLOB GET /book?token_id=<id> → tam OrderBookSummary.
 

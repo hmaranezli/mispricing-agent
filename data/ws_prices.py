@@ -46,6 +46,24 @@ def get_bid(token_id: str) -> float | None:
     return None
 
 
+def get_snapshot(token_id: str):
+    """P0: ATOMİK OrderbookSnapshot — bid+ask+size+ts AYNI cache entry'den (tek kaynak).
+    Frankenstein (WS ask + REST bid) engellenir. None → kayıt yok. valid()/is_crossed
+    ile çağıran kalite kontrolü yapar (crossed/dust/stale skip)."""
+    from data.orderbook_snapshot import OrderbookSnapshot
+    entry = _cache.get(token_id)
+    if not entry:
+        return None
+    return OrderbookSnapshot(
+        bid=entry.get("best_bid") or None,
+        ask=entry.get("best_ask") or None,
+        bid_size=entry.get("bid_size"),
+        ask_size=entry.get("ask_size"),
+        source="ws",
+        ts=entry.get("ts", 0),
+    )
+
+
 def get_spread(token_id: str) -> float | None:
     entry = _cache.get(token_id)
     if entry and (time.time() - entry["ts"]) < STALE_SECS:
@@ -119,18 +137,22 @@ def _warn_ws_circuit_breaker(count: int) -> None:
 # ── İç fonksiyonlar ───────────────────────────────────────────────────────────
 
 def _update_cache(token_id: str, best_bid: float | None, best_ask: float | None,
-                  spread: float | None = None) -> None:
+                  spread: float | None = None,
+                  bid_size: float | None = None, ask_size: float | None = None) -> None:
     if not token_id:
         return
     # Nothing meaningful to store — don't create or touch the entry
     if best_bid is None and best_ask is None and spread is None:
         return
     entry = _cache.setdefault(token_id,
-                               {"best_bid": 0.0, "best_ask": 0.0, "spread": None, "ts": 0})
+                               {"best_bid": 0.0, "best_ask": 0.0, "spread": None,
+                                "bid_size": None, "ask_size": None, "ts": 0})
     if best_bid is not None and best_bid > 0:
         entry["best_bid"] = best_bid
+        entry["bid_size"] = bid_size  # best değişti → size de o seviyeninki (price_change'de None)
     if best_ask is not None and best_ask > 0:
         entry["best_ask"] = best_ask
+        entry["ask_size"] = ask_size
     if spread is not None:
         entry["spread"] = spread
     entry["ts"] = time.time()
@@ -142,9 +164,13 @@ def _handle_book(event: dict) -> None:
     token_id = event.get("asset_id")
     bids = event.get("bids", [])
     asks = event.get("asks", [])
-    best_bid = float(max(bids, key=lambda x: float(x["price"]))["price"]) if bids else None
-    best_ask = float(min(asks, key=lambda x: float(x["price"]))["price"]) if asks else None
-    _update_cache(token_id, best_bid, best_ask)
+    bid_lvl = max(bids, key=lambda x: float(x["price"])) if bids else None
+    ask_lvl = min(asks, key=lambda x: float(x["price"])) if asks else None
+    best_bid = float(bid_lvl["price"]) if bid_lvl else None
+    best_ask = float(ask_lvl["price"]) if ask_lvl else None
+    bid_size = float(bid_lvl.get("size", 0) or 0) if bid_lvl else None
+    ask_size = float(ask_lvl.get("size", 0) or 0) if ask_lvl else None
+    _update_cache(token_id, best_bid, best_ask, bid_size=bid_size, ask_size=ask_size)
 
 
 def _handle_price_change(event: dict) -> None:
