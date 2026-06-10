@@ -45,6 +45,12 @@ TELEMETRY_V31_ENABLED = True
 MIN_EXECUTABLE_NOTIONAL_USD = 5.0
 WS_SNAPSHOT_MAX_AGE_S = 10.0
 
+# Live execution tick/slippage bounds (Faz 2b). Polymarket binary fiyat aralığı + taker cap.
+# Veri-kalite/risk sabitleri; out-of-bounds/cap aşımı → SESSİZ clamp YOK, intent REJECTED.
+PRICE_MIN = "0.01"
+PRICE_MAX = "0.99"
+MAX_SLIPPAGE_CAP = "0.03"   # taker limit, quote'tan max %3 sapma (aşarsa network call YOK)
+
 # ── Anti-hallucination kurallari ──
 REQUIRE_FRESH_API_DATA = True  # Her sayi API'den taze cekilir, hafizadan asla
 HALT_ON_API_MISMATCH   = True  # API ile ajan celisirse islem durur

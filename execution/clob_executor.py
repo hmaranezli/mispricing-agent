@@ -19,6 +19,7 @@ from execution.clob_client import get_client
 from py_clob_client_v2 import MarketOrderArgs, OrderType, PartialCreateOrderOptions
 from py_clob_client_v2.order_builder.constants import BUY
 from data.clob_price import get_quote
+from execution.order_pricing import compute_limit_price
 from data.shadow_quote import get_shadow_quote
 from db.logger import log_entry_air_pocket, update_entry_air_pocket_delayed
 import config
@@ -217,7 +218,20 @@ async def execute(
     # P0 QuoteProvider: AL→ask (book-derived). /price BUY (=bid, TERS) YASAK. council gecikmesi (~5s) komp.
     _q = await get_quote(token_id)
     live_ask    = _q.ask if (_q and _q.ask) else finding["best_ask"]
-    worst_price = round(live_ask + PRICE_PREMIUM, 4)  # slippage limit (entry ask + buffer)
+    # Faz 2b: TAKER_BUY tick-safe limit (ask+buffer → ceil_to_tick), bounds/cap pre-validation.
+    # Float YASAK → Decimal. Reject → SESSİZ clamp YOK → network call YAPILMAZ (FATAL_PREVALIDATION).
+    from decimal import Decimal
+    _limit, _reject = compute_limit_price(
+        "TAKER_BUY", Decimal(str(live_ask)), Decimal(str(PRICE_PREMIUM)),
+        Decimal(str(TICK_SIZE)),
+        price_min=Decimal(str(getattr(config, "PRICE_MIN", "0.01"))),
+        price_max=Decimal(str(getattr(config, "PRICE_MAX", "0.99"))),
+        max_slippage_cap=Decimal(str(getattr(config, "MAX_SLIPPAGE_CAP", "0.03"))))
+    if _reject:
+        print(f"[clob] {finding['slug']}: FATAL_PREVALIDATION {_reject} — order GÖNDERİLMEDİ "
+              f"(ask={live_ask}+{PRICE_PREMIUM})")
+        return None  # network call YOK
+    worst_price = float(_limit)  # API uyumu (hesap Decimal'di)
 
     print(f"[clob] {finding['slug']}: FAK BUY amount=${position_usd:.2f} worst_price={worst_price:.4f} (live={live_ask:.4f}+{PRICE_PREMIUM})")
 
