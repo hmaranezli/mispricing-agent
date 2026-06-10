@@ -465,6 +465,9 @@ _MIGRATIONS = [
     "ALTER TABLE shadow_positions ADD COLUMN resolve_ts TEXT",
     "ALTER TABLE shadow_positions ADD COLUMN mfe_mae_time_valid INTEGER",
     "ALTER TABLE shadow_positions ADD COLUMN mfe_mae_time_invalid_reason TEXT",
+    # Live Execution Faz 2c-3 — lineage: position ↔ order_intent bağlantısı
+    # 2c-4 reconcile join'i için (positions.order_intent_id ↔ order_intents.order_intent_id).
+    "ALTER TABLE positions ADD COLUMN order_intent_id TEXT",
 ]
 
 

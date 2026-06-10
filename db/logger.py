@@ -119,8 +119,8 @@ async def log_position_open(conn, position: dict) -> None:
                 fair_value, ref_price, edge, position_usd, kelly_f,
                 confidence_score, status, dry_run,
                 shares, order_id, yes_token_id, no_token_id, seq_no,
-                entry_hl_price, ask_at_decision, slippage_pct)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                entry_hl_price, ask_at_decision, slippage_pct, order_intent_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             position["position_id"],
             position.get("opened_at", datetime.now(timezone.utc).isoformat()),
@@ -143,6 +143,7 @@ async def log_position_open(conn, position: dict) -> None:
             position.get("entry_hl_price"),
             position.get("ask_at_decision"),
             position.get("slippage_pct"),
+            position.get("order_intent_id"),
         ),
     )
     await conn.commit()
