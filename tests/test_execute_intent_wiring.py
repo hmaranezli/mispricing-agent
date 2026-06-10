@@ -273,3 +273,55 @@ async def test_execute_default_path_is_isolated_never_live():
     assert isolated in opened, f"izole tmp DB okunmalıydı (non-vacuous): {opened}"
     get_quote_spy.assert_not_called()                  # Task A invariant: quote yok
     fake_client.post_order.assert_not_called()          # Task A invariant: submit yok
+
+
+# ── Task B: network öncesi create_intent + SUBMITTED_UNKNOWN commit sınırı ───
+
+@pytest.mark.asyncio
+async def test_intent_committed_submitted_unknown_before_post_order():
+    """COMMIT SINIRI KANITI: post_order mock'u çağrıldığı AN, AYRI bir sqlite3 connection ile
+    readback yapılır; intent'in DB'ye SUBMITTED_UNKNOWN olarak commit edilmiş olduğu görülmeli.
+    RED: mevcut kodda network öncesi intent lifecycle bağlı değil → readback'te satır yok."""
+    import sqlite3
+    import execution.order_intent as oi
+
+    finding = _finding("YES")
+    token_id = finding["yes_token_id"]
+    db_path = str(oi.DB_FILE)  # conftest izole tmp (order_intents tablosu mevcut)
+
+    captured = {"readback_ran": False, "status_at_network": "NO_ROW", "rows_at_network": -1}
+
+    def _post_order_readback(*a, **k):
+        # NETWORK SINIRI — bu noktada intent SUBMITTED_UNKNOWN olarak commit edilmiş OLMALI.
+        c = sqlite3.connect(db_path)  # AYRI connection (commit görünürlüğü kanıtı)
+        try:
+            rows = c.execute(
+                "SELECT status FROM order_intents WHERE market_token_id=?", (token_id,)
+            ).fetchall()
+        finally:
+            c.close()
+        captured["readback_ran"] = True
+        captured["rows_at_network"] = len(rows)
+        captured["status_at_network"] = rows[0][0] if rows else None
+        return _fake_matched_resp()
+
+    fake_client = MagicMock()
+    fake_client.create_market_order.return_value = MagicMock()
+    fake_client.post_order.side_effect = _post_order_readback
+
+    with patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock,
+               return_value=False), \
+         patch("execution.clob_executor.get_quote", new_callable=AsyncMock,
+               return_value=_qask(0.35)), \
+         patch("execution.clob_executor.get_client", return_value=fake_client):
+        from execution.clob_executor import execute
+        await execute(finding, _gate(), _risk(), [])
+
+    # Non-vacuous: readback gerçekten çalıştı + post_order sınırına gelindi
+    assert captured["readback_ran"] is True, "post_order readback çalışmadı (sınıra gelinmedi)"
+    fake_client.post_order.assert_called_once()
+    # Commit sınırı: network anında intent SUBMITTED_UNKNOWN olarak DB'de görünür olmalı
+    assert captured["rows_at_network"] == 1, \
+        f"network öncesi tam 1 intent commit edilmeli: rows={captured['rows_at_network']}"
+    assert captured["status_at_network"] == "SUBMITTED_UNKNOWN", \
+        f"network anında intent SUBMITTED_UNKNOWN commit'li olmalı: {captured['status_at_network']}"

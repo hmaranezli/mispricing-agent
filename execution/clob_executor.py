@@ -254,6 +254,16 @@ async def execute(
     print(f"[clob] {finding['slug']}: FAK BUY amount=${position_usd:.2f} worst_price={worst_price:.4f} (live={live_ask:.4f}+{PRICE_PREMIUM})")
 
     order_submit_ts = datetime.now(timezone.utc).isoformat()
+
+    # Faz 2c-3 Task B: NETWORK ÖNCESİ intent lifecycle. create_intent (INTENT_CREATED) +
+    # transition SUBMITTED_UNKNOWN — ikisi de commit edilir. post_order ANCAK bu commit'ten
+    # SONRA çağrılır; süreç burada ölürse intent SUBMITTED_UNKNOWN'da kalır (2c-4 reconcile).
+    # (DB-fail hard-abort ve fill→classify/transition wiring sonraki task'larda eklenecek.)
+    order_intent_id = await order_intent.create_intent(
+        None, token_id, BUY, worst_price, position_usd, slug=finding.get("slug"))
+    await order_intent.transition(None, order_intent_id, "SUBMITTED_UNKNOWN",
+                                  submitted_at=order_submit_ts)
+
     try:
         client = get_client()
         market_order = client.create_market_order(
