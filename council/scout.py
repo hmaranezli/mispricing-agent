@@ -25,7 +25,7 @@ from data.shortterm import find_shortterm, parse_market_window, _parse_token_ids
 from data.hl_candles import price_at_timestamp, current_price, fetch_candles, calculate_realized_volatility
 from data.fair_value import fair_yes, ASSET_VOL
 from data.fee_rate import fetch_fee_rate
-from data.clob_price import get_clob_price, fetch_book_snapshot
+from data.clob_price import get_quote, fetch_book_snapshot
 from data.hyperliquid import fetch_market_state
 from data import ws_prices as _ws_prices
 import config
@@ -243,26 +243,18 @@ async def _process_market(
     yes_token = _tids[0] if _tids else None
     no_token  = _tids[1] if len(_tids) > 1 else None
 
-    # P0 SINGLE-SOURCE ATOMİK snapshot (KURAL 1+2): WS valid → WS; değilse REST /book.
-    # Frankenstein (WS ask + REST bid karışımı) YASAK; bid+ask AYNI snapshot'tan.
+    # P0 QuoteProvider (KURAL 1+2): TEK quote — /price ASLA (BUY/SELL semantiği TERS).
+    # explicit bid/ask; AL→ask, SAT→bid. WS valid → WS; değilse REST /book. Frankenstein yasak.
     _mn_notional = getattr(config, "MIN_EXECUTABLE_NOTIONAL_USD", 0.0)
     _max_age = getattr(config, "WS_SNAPSHOT_MAX_AGE_S", 10.0)
-    _snap = _ws_prices.get_snapshot(yes_token) if yes_token else None
-    if _snap and _snap.valid(_mn_notional, _max_age):
-        clob_ask, yes_bid = _snap.ask, _snap.bid
-        if audit is not None:
-            audit["ws_hit"] = audit.get("ws_hit", 0) + 1
-    else:
-        _snap = await fetch_book_snapshot(yes_token, _mn_notional) if yes_token else None
-        if audit is not None:
-            audit["pm_rest"] = audit.get("pm_rest", 0) + 1
-        if _snap and _snap.valid(_mn_notional):
-            clob_ask, yes_bid = _snap.ask, _snap.bid
-        else:
-            clob_ask, yes_bid = None, None
-    if clob_ask is None:
+    _q = await get_quote(yes_token, _mn_notional, _max_age) if yes_token else None
+    if _q is None:
         _inc("skipped_no_price")
-        return None  # Likidite yok / geçerli snapshot yok → atla
+        return None  # Geçerli snapshot yok → atla
+    clob_ask, yes_bid = _q.ask, _q.bid   # AL→ask (decision), SAT→bid
+    if audit is not None:
+        audit["ws_hit" if _q.source == "ws" else "pm_rest"] = \
+            audit.get("ws_hit" if _q.source == "ws" else "pm_rest", 0) + 1
 
     _inc("api_reached")
     # P0 KURAL 4 — Crossed guard: bozuk (bid>=ask) snapshot edge hesabına GİREMEZ.
@@ -301,9 +293,9 @@ async def _process_market(
     # NO işlem: WS veya REST'ten gerçek NO_ask ile edge'i doğrula
     no_ask = None
     if signal["action"] == "NO" and no_token:
-        no_ask = _ws_prices.get_ask(no_token)
-        if no_ask is None:
-            no_ask = await get_clob_price(no_token, "BUY")
+        # P0: NO token ASK (AL→ask) quote'tan; /price BUY (=bid, TERS) YASAK
+        _nq = await get_quote(no_token, _mn_notional, _max_age)
+        no_ask = _nq.ask if _nq else None
         if no_ask is not None:
             if no_ask > MAX_ENTRY_PRICE:
                 return None  # pahalı NO token → reversal riski yüksek

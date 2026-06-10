@@ -870,8 +870,10 @@ async def main() -> None:
         for tid in (pos.get("yes_token_id"), pos.get("no_token_id"))
         if tid
     ]
-    # V3.1 Fix4.1: restart recovery — önceki process'ten kalan orphan open paper'ların
-    # MFE/MAE zaman sayaçlarını invalid işaretle (sahte timestamp önleme).
+    # P0 API-contract migration: patch öncesi /price-ters semantiğiyle açılmış open paper'ları
+    # invalidated_api_contract ile kapat (eski-kirli cohort yeni temiz quote rejimine karışmasın).
+    await paper_tracker.invalidate_pre_patch_open_paper()
+    # V3.1 Fix4.1: restart recovery — orphan open paper MFE/MAE zaman sayaçları invalid (sahte ts önleme).
     await paper_tracker.recover_orphan_open_paper()
     asyncio.create_task(ws_prices.run(initial_tids))
     asyncio.create_task(_shadow_4h_scan_loop(conn))  # 4h shadow — ayrı cadence, live loop'a dokunmaz

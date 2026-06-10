@@ -659,7 +659,6 @@ async def _paper_monitor_cycle(db_path=None):
     Live monitor'dan TAMAMEN ayrı. Her pozisyon hatası izole (fail-open)."""
     from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window
     from data.hl_candles import current_price
-    from data.clob_price import get_clob_price
 
     now_m = time.monotonic()
     for key, state in list(_active.items()):
@@ -685,8 +684,8 @@ async def _paper_monitor_cycle(db_path=None):
                 continue
 
             secs = window["seconds_remaining"]
-            # NO artefaktından kaçın: tuttuğumuz token'ın GERÇEK bid'i (1-best_ask değil)
-            bid = await get_clob_price(token, "SELL") if token else None
+            # P0: SAT tarafı = BID (exit). /price SELL (=ask, TERS) YASAK → quote.bid (book-derived)
+            bid = await _exit_quote_price(token) if token else None
             if bid is None:
                 # fallback: YES için window.best_bid, NO için 1-best_ask
                 bid = (window.get("best_bid") if state["action"] == "YES"
@@ -762,6 +761,37 @@ def _stamp_mfe_mae_time(state, dd, elapsed):
         state["_t_mae"] = elapsed
     elif "_mae_trough" not in state:
         state["_mae_trough"] = min(0.0, dd)
+
+
+async def _exit_quote_price(token_id):
+    """P0 QuoteProvider — paper EXIT (SAT) action-side BID. /price SELL (=ask, TERS semantik)
+    YASAK. book-derived explicit bid (alış=ask, satış=bid). None → quote yok."""
+    from data.clob_price import get_quote
+    q = await get_quote(token_id)
+    return q.bid if q else None
+
+
+async def invalidate_pre_patch_open_paper(db_path=None):
+    """P0 OPEN PAPER MIGRATION — patch öncesi açık paper'lar eski /price-ters semantiğiyle
+    kirlenmiş (entry iyimser + exit yanlış-taraf karışık). Yeni temiz quote rejimine SOKULMAZ:
+    invalidated_api_contract ile kapat, cohort DIŞI. Hata→log+devam."""
+    path = db_path or DB_FILE
+    try:
+        async with aiosqlite.connect(str(path)) as conn:
+            cur = await conn.execute(
+                """UPDATE shadow_positions
+                      SET status='closed', close_reason='invalidated_api_contract',
+                          resolve_exit=NULL, mfe_mae_time_valid=0,
+                          mfe_mae_time_invalid_reason='pre_quote_provider_api_contract_bug'
+                    WHERE status='open'""")
+            await conn.commit()
+            n = cur.rowcount
+        if n:
+            print(f"[paper] API-contract migration: {n} pre-patch open paper → invalidated_api_contract")
+        return n
+    except Exception as e:
+        print(f"[paper] invalidate_pre_patch_open_paper fail-open: {e}")
+        return 0
 
 
 async def recover_orphan_open_paper(db_path=None):

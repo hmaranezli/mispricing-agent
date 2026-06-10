@@ -68,6 +68,20 @@ def best_bid_from_book(book: dict | None) -> float | None:
     return max(lv, key=lambda x: x[0])[0] if lv else None
 
 
+async def get_quote(token_id: str, min_notional: float = 0.0, max_age_s: float | None = None):
+    """P0 QuoteProvider — TEK quote abstraction. /price ASLA (BUY/SELL semantiği ters).
+    WS valid snapshot → WS; değilse REST /book. Explicit bid/ask (SAT→bid, AL→ask).
+    Returns OrderbookSnapshot (source ws|rest_book) veya None. Kritik karar/PnL/MFE/MAE yolu bunu kullanır."""
+    from data import ws_prices
+    snap = ws_prices.get_snapshot(token_id)
+    if snap and snap.valid(min_notional, max_age_s):
+        return snap
+    snap = await fetch_book_snapshot(token_id, min_notional)
+    if snap and snap.valid(min_notional):
+        return snap
+    return None
+
+
 async def fetch_book_snapshot(token_id: str, min_notional: float = 0.0):
     """P0 single-source REST snapshot: /book → OrderbookSnapshot (bid+ask AYNI book'tan,
     dust-filtreli). WS miss/invalid'de fallback. Frankenstein (WS+REST karışım) yasak."""
