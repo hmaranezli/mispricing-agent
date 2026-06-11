@@ -58,13 +58,22 @@ async def test_execute_returns_position_on_matched_fak():
          patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
         from execution.clob_executor import execute
         result = await execute(_finding("YES"), _gate(), _risk(), [])
+    # H4+H5 envelope contract: success → {accounting_persisted, accounting_result:"OPENED", position}
     assert result is not None
-    assert result["asset"] == "BTC"
-    assert result["action"] == "YES"
-    assert result["yes_token_id"] == "yes-tok-111"
-    assert abs(result["shares"] - 71.43) < 0.01
-    assert result["order_id"] == "ord-abc"
-    assert result["dry_run"] is False
+    assert result["accounting_persisted"] is True
+    assert result["accounting_result"] == "OPENED"
+    assert isinstance(result["position"], dict)
+    # accounting metadata position objesine SIZMAMALI (clean envelope)
+    assert "accounting_persisted" not in result["position"]
+    assert "accounting_result" not in result["position"]
+    # Orijinal değer doğrulamaları KORUNUR — yalnız okuma yeri result["position"]'a taşındı
+    pos = result["position"]
+    assert pos["asset"] == "BTC"
+    assert pos["action"] == "YES"
+    assert pos["yes_token_id"] == "yes-tok-111"
+    assert abs(pos["shares"] - 71.43) < 0.01
+    assert pos["order_id"] == "ord-abc"
+    assert pos["dry_run"] is False
 
 
 @pytest.mark.asyncio
@@ -209,8 +218,14 @@ async def test_execute_position_includes_entry_hl_price():
          patch("execution.clob_executor.get_quote", new_callable=AsyncMock, return_value=_qask(0.35)):
         from execution.clob_executor import execute
         result = await execute(finding, _gate(), _risk(), [])
+    # H4+H5 envelope contract: entry_hl_price artık result["position"] içinde
     assert result is not None
-    assert result.get("entry_hl_price") == 66500.0
+    assert result["accounting_persisted"] is True
+    assert result["accounting_result"] == "OPENED"
+    assert isinstance(result["position"], dict)
+    assert "accounting_persisted" not in result["position"]
+    assert "accounting_result" not in result["position"]
+    assert result["position"].get("entry_hl_price") == 66500.0
 
 
 @pytest.mark.asyncio

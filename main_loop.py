@@ -1,5 +1,6 @@
 """main_loop.py — Scout→Konsey→Execute→Monitor ana döngüsü."""
 import asyncio
+import logging
 import sys
 import os
 import time
@@ -238,8 +239,36 @@ async def _scan_and_execute(
         position = await execute(finding, gate_result, risk_result, open_positions,
                                  conn=conn, council_pass_ts=council_pass_ts)
         t_execute_total += time.time() - t2
-        if position:
-            # Entry execution telemetri: karar anındaki ask vs gerçek fill
+        res = position
+        _acct = res.get("accounting_result") if isinstance(res, dict) else None
+        if isinstance(res, dict) and (res.get("accounting_persisted") is True
+                                      or _acct in ("DUPLICATE", "RECOVERY_REQUIRED")):
+            # Faz 2c H4+H5: explicit accounting ENVELOPE (execute() atomik yazdı/recovery sahiplendi).
+            if _acct == "OPENED" and res.get("accounting_persisted") is True:
+                pos = res["position"]          # PURE position (accounting metadata YOK)
+                # log_position_open ÇAĞRILMAZ — DB accounting execute() içinde atomik yapıldı.
+                open_positions.append(pos)
+                open_slugs.add(slug)
+                _exit_tok = (pos.get("yes_token_id") if pos.get("action") == "YES"
+                             else pos.get("no_token_id"))
+                if _exit_tok:
+                    asyncio.create_task(enrich_entry_depth(
+                        pos["position_id"], _exit_tok, pos["shares"], pos["pm_entry_price"]))
+                ws_prices.subscribe([
+                    t for t in (pos.get("yes_token_id"), pos.get("no_token_id")) if t])
+                print(f"[main_loop] açıldı (atomic): {pos.get('slug')} shares={pos.get('shares')}")
+            elif _acct == "DUPLICATE":
+                # Idempotent — append/ws/write YOK; forensic WARNING.
+                logging.getLogger("main_loop").warning(
+                    "[main_loop] %s: DUPLICATE — order_intent_id=%s existing_position_id=%s "
+                    "(append/ws/write YOK)", slug, res.get("order_intent_id"),
+                    res.get("existing_position_id"))
+            else:  # RECOVERY_REQUIRED — execute() sahiplendi; phantom position YOK
+                logging.getLogger("main_loop").error(
+                    "[main_loop] %s: RECOVERY_REQUIRED (%s) — append/ws/write YOK",
+                    slug, res.get("recovery_reason"))
+        elif position:
+            # Legacy/dry path: flat dict (accounting_persisted YOK) → eski davranış KORUNUR.
             ask_at_decision = finding.get("best_ask")
             position["ask_at_decision"] = ask_at_decision
             fill_price = position.get("pm_entry_price")

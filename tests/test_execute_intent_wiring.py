@@ -762,3 +762,407 @@ async def test_no_match_cancelled_transition_db_fail_is_fail_closed(caplog):
     blob = " ".join(r.getMessage() for r in errs).lower()
     assert "cancelled transition failed" in blob, \
         f"log no-match CANCELLED transition fail işaretlemeli: {blob}"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Faz 2c Task H4 (producer) — execute() wiring RED testleri.
+# Birleşik H4+H5 sözleşmesi: execute() success → explicit accounting contract
+# {accounting_persisted, accounting_result, position_id, order_intent_id} + atomik
+# position+telemetry yazımı (confirm_fill_atomic). Recovery owner = execute()._recovery_ladder.
+#
+# ORGANİK RED: mevcut execute() classify_fak_fill/confirm_fill_atomic'e bağlı DEĞİL,
+# cost UYDURUYOR (pos_usd = making or position_usd), position YAZMIYOR, intent'i terminal
+# yapmıyor → contract alanları yok, DB'de satır yok → davranış-eksikliği fail'i.
+# (NOT: stub yok; execute zaten mevcut, eski inline mantıkla çalışıyor.)
+# GREEN seam notları: confirm_fill_atomic → execution.order_intent.confirm_fill_atomic (module
+# attr) patch'lenir; set_emergency_pause → execution.emergency_pause.set_emergency_pause (module
+# attr) çağrılmalı ki bu patch görünür olsun.
+# ════════════════════════════════════════════════════════════════════════════
+
+def _resp(status="matched", taking="71.43", making="25.00", oid="ord-abc", success=True):
+    return {"status": status, "success": success, "orderID": oid,
+            "takingAmount": taking, "makingAmount": making}
+
+
+def _exec_patches(fc):
+    return (
+        patch("execution.clob_executor.is_emergency_paused", new_callable=AsyncMock,
+              return_value=False),
+        patch("execution.clob_executor.get_quote", new_callable=AsyncMock,
+              return_value=_qask(0.35)),
+        patch("execution.clob_executor.get_client", return_value=fc),
+    )
+
+
+def _client(resp):
+    fc = MagicMock()
+    fc.create_market_order.return_value = MagicMock()
+    fc.post_order.return_value = resp
+    return fc
+
+
+# H4-1) FULL_FILL → explicit accounting contract + lineage
+@pytest.mark.asyncio
+async def test_full_fill_returns_accounting_persisted_opened_with_lineage():
+    import execution.order_intent as oi
+    finding = _finding("YES"); token_id = finding["yes_token_id"]; db_path = str(oi.DB_FILE)
+    fc = _client(_resp(making="25.00", taking="71.43"))
+    p1, p2, p3 = _exec_patches(fc)
+    with p1, p2, p3:
+        from execution.clob_executor import execute
+        pos = await execute(finding, _gate(), _risk(), [])
+    assert pos is not None
+    assert pos.get("accounting_persisted") is True, "explicit accounting_persisted=True olmalı"
+    assert pos.get("accounting_result") == "OPENED"
+    position = pos.get("position")
+    assert isinstance(position, dict), "OPENED envelope 'position' objesi taşımalı (flat DEĞİL)"
+    oiid = position.get("order_intent_id")
+    assert oiid, "lineage order_intent_id position objesinde olmalı"
+    assert position.get("position_id"), "position_id position objesinde olmalı"
+    # Metadata leakage YASAK: accounting alanları position objesine sızmamalı
+    assert "accounting_persisted" not in position, "accounting metadata position'a sızmamalı"
+    assert "accounting_result" not in position, "accounting metadata position'a sızmamalı"
+    c = sqlite3.connect(db_path)
+    prow = c.execute("SELECT order_intent_id, shares FROM positions WHERE order_intent_id=?",
+                     (oiid,)).fetchone()
+    irow = c.execute("SELECT status FROM order_intents WHERE market_token_id=?",
+                     (token_id,)).fetchone()
+    c.close()
+    assert prow is not None and prow[0] == oiid
+    assert irow[0] == "FILLED"
+
+
+# H4-2) PARTIAL_FILL → PARTIAL_FILLED; slippage AGGREGATE decision.fill_price üzerinden (BUY adverse → +)
+@pytest.mark.asyncio
+async def test_partial_fill_persists_partial_filled_with_aggregate_slippage():
+    import execution.order_intent as oi
+    finding = _finding("YES"); db_path = str(oi.DB_FILE)
+    finding["best_ask"] = 0.30                            # karar-anı ask; fill 0.35 → BUY adverse
+    fc = _client(_resp(making="14.00", taking="40.00"))  # aggregate fill_price = 14/40 = 0.35
+    p1, p2, p3 = _exec_patches(fc)
+    with p1, p2, p3:
+        from execution.clob_executor import execute
+        pos = await execute(finding, _gate(), _risk(), [])
+    assert pos is not None and pos.get("accounting_result") == "OPENED"
+    position = pos.get("position"); assert isinstance(position, dict)
+    oiid = position["order_intent_id"]
+    c = sqlite3.connect(db_path)
+    prow = c.execute("SELECT shares, position_usd, slippage_pct FROM positions "
+                     "WHERE order_intent_id=?", (oiid,)).fetchone()
+    irow = c.execute("SELECT status FROM order_intents WHERE order_intent_id=?",
+                     (oiid,)).fetchone()
+    c.close()
+    assert irow[0] == "PARTIAL_FILLED"
+    assert prow[0] == 40.0 and prow[1] == 14.0           # gerçek fill (uydurma cost YOK)
+    # slippage AGGREGATE decision.fill_price (0.35) üzerinden, son-fill DEĞİL; BUY adverse → POZİTİF
+    assert prow[2] == pytest.approx((0.35 - 0.30) / 0.30, abs=1e-6), \
+        "partial slippage aggregate fill_price + direction-normalized BUY olmalı"
+
+
+# H4-3) Single-source lineage: return position_id == DB position_id == confirm'e geçen
+@pytest.mark.asyncio
+async def test_position_id_single_source_confirm_and_return_match():
+    import execution.order_intent as oi
+    finding = _finding("YES"); db_path = str(oi.DB_FILE)
+    fc = _client(_resp(making="25.00", taking="71.43"))
+    p1, p2, p3 = _exec_patches(fc)
+    with p1, p2, p3:
+        from execution.clob_executor import execute
+        pos = await execute(finding, _gate(), _risk(), [])
+    position = pos.get("position") if pos else None
+    assert isinstance(position, dict), "OPENED envelope 'position' objesi taşımalı"
+    oiid = position.get("order_intent_id")
+    assert oiid, "lineage order_intent_id position objesinde olmalı"
+    assert position.get("position_id"), "position_id position objesinde olmalı"
+    c = sqlite3.connect(db_path)
+    db_pid = c.execute("SELECT position_id FROM positions WHERE order_intent_id=?",
+                       (oiid,)).fetchone()
+    c.close()
+    assert db_pid is not None, "position DB'ye yazılmalı"
+    assert position["position_id"] == db_pid[0], "position.position_id == DB position_id (tek kaynak)"
+
+
+# H4-4) Atomic telemetry: ask_at_decision + slippage_pct position ile aynı yazımda persist;
+#        BUY adverse fill (0.40 > ask 0.35) → slippage POZİTİF (direction-normalized)
+@pytest.mark.asyncio
+async def test_ask_at_decision_and_slippage_persisted_atomically():
+    import execution.order_intent as oi
+    finding = _finding("YES"); db_path = str(oi.DB_FILE)   # best_ask=0.35
+    fc = _client(_resp(making="20.00", taking="50.00"))    # fill_price = 0.40 → BUY adverse
+    p1, p2, p3 = _exec_patches(fc)
+    with p1, p2, p3:
+        from execution.clob_executor import execute
+        pos = await execute(finding, _gate(), _risk(), [])
+    position = pos.get("position") if pos else None
+    assert isinstance(position, dict), "OPENED envelope 'position' objesi taşımalı"
+    oiid = position["order_intent_id"]
+    c = sqlite3.connect(db_path)
+    row = c.execute("SELECT ask_at_decision, slippage_pct FROM positions WHERE order_intent_id=?",
+                    (oiid,)).fetchone()
+    c.close()
+    assert row is not None
+    assert row[0] == pytest.approx(0.35), "ask_at_decision = finding best_ask, atomik persist"
+    # BUY adverse: (fill - ask)/ask = (0.40-0.35)/0.35 > 0 → POZİTİF = adverse (direction-normalized)
+    assert row[1] == pytest.approx((0.40 - 0.35) / 0.35, abs=1e-6), \
+        "slippage_pct direction-normalized BUY (adverse → pozitif), atomik persist"
+
+
+# H4-5) Telemetry missing → RECOVERY_REQUIRED + TELEMETRY_DATA_MISSING (None 0'a cast YASAK)
+@pytest.mark.asyncio
+async def test_telemetry_missing_triggers_recovery():
+    import execution.order_intent as oi
+    finding = _finding("YES"); token_id = finding["yes_token_id"]; db_path = str(oi.DB_FILE)
+    finding["best_ask"] = None                              # karar-anı ask YOK → telemetri eksik
+    fc = _client(_resp(making="25.00", taking="71.43"))
+    p1, p2, p3 = _exec_patches(fc)
+    with p1, p2, p3:
+        from execution.clob_executor import execute
+        pos = await execute(finding, _gate(), _risk(), [])
+    assert not (pos and pos.get("accounting_result") == "OPENED"), "telemetri eksikken OPEN YASAK"
+    c = sqlite3.connect(db_path)
+    irow = c.execute("SELECT status, reconciliation_reason FROM order_intents "
+                     "WHERE market_token_id=?", (token_id,)).fetchone()
+    n = c.execute("SELECT COUNT(*) FROM positions").fetchone()[0]
+    c.close()
+    assert irow[0] == "RECOVERY_REQUIRED" and irow[1] == "TELEMETRY_DATA_MISSING"
+    assert n == 0, "telemetri eksik → position YAZILMAZ"
+
+
+# H4-6) confirm_fill_atomic fail → RECOVERY_REQUIRED → kill-switch (set_emergency_pause)
+@pytest.mark.asyncio
+async def test_confirm_db_fail_returns_recovery_required_and_killswitch():
+    import execution.order_intent as oi
+    finding = _finding("YES"); db_path = str(oi.DB_FILE)
+    fc = _client(_resp(making="25.00", taking="71.43"))
+    pause_spy = AsyncMock()
+    # Testin amacı: confirm SONRASI RECOVERY_REQUIRED yazımı fail olursa kill-switch tetikleniyor mu?
+    # PASSTHROUGH-SELECTIVE mock: yalnız state=="RECOVERY_REQUIRED" patlar; diğer state'ler (pre-submit
+    # SUBMITTED_UNKNOWN dahil) GERÇEK transition'a passthrough → Task-D HARD-ABORT yanlışlıkla tetiklenmez.
+    _real_transition = oi.transition
+
+    async def _transition_passthrough(db_path_, oiid_, new_state, *a, **k):
+        if new_state == "RECOVERY_REQUIRED":
+            raise sqlite3.OperationalError("recovery write fail")
+        return await _real_transition(db_path_, oiid_, new_state, *a, **k)
+
+    p1, p2, p3 = _exec_patches(fc)
+    with p1, p2, p3, \
+         patch("execution.order_intent.confirm_fill_atomic", new_callable=AsyncMock,
+               side_effect=sqlite3.OperationalError("disk I/O error")), \
+         patch("execution.order_intent.transition", _transition_passthrough), \
+         patch("execution.emergency_pause.set_emergency_pause", pause_spy):
+        from execution.clob_executor import execute
+        pos = await execute(finding, _gate(), _risk(), [])
+    assert not (pos and pos.get("accounting_result") == "OPENED")
+    pause_spy.assert_awaited()                              # son kilit denendi
+    c = sqlite3.connect(db_path)
+    n = c.execute("SELECT COUNT(*) FROM positions").fetchone()[0]
+    c.close()
+    assert n == 0, "confirm fail → position YAZILMAZ"
+
+
+# H4-7) Mapping/build fail (eksik finding alanı) → RECOVERY_REQUIRED + POSITION_ROW_BUILD_FAILED
+@pytest.mark.asyncio
+async def test_mapping_keyerror_routes_position_row_build_failed():
+    import execution.order_intent as oi
+    finding = _finding("YES"); token_id = finding["yes_token_id"]; db_path = str(oi.DB_FILE)
+    finding.pop("asset")                                   # mapping required alan eksik
+    fc = _client(_resp(making="25.00", taking="71.43"))
+    p1, p2, p3 = _exec_patches(fc)
+    raised = None
+    with p1, p2, p3:
+        from execution.clob_executor import execute
+        try:
+            pos = await execute(finding, _gate(), _risk(), [])
+        except Exception as e:                             # build-fail GRACEFUL handle edilmeli
+            pos = None; raised = e
+    assert raised is None, f"mapping/build-fail RECOVERY'e route edilmeli, RAISE etmemeli: {raised!r}"
+    assert not (pos and pos.get("accounting_result") == "OPENED")
+    c = sqlite3.connect(db_path)
+    irow = c.execute("SELECT status, reconciliation_reason FROM order_intents "
+                     "WHERE market_token_id=?", (token_id,)).fetchone()
+    n = c.execute("SELECT COUNT(*) FROM positions").fetchone()[0]
+    c.close()
+    assert irow[0] == "RECOVERY_REQUIRED"
+    assert irow[1] == "POSITION_ROW_BUILD_FAILED"          # CONFIRM_TX_FAILED'den AYRI
+    assert n == 0
+
+
+# H4-8) DUPLICATE → existing position_id readback (candidate uuid DÖNDÜRMEK YASAK)
+@pytest.mark.asyncio
+async def test_duplicate_returns_existing_position_id_not_candidate_uuid():
+    import execution.order_intent as oi
+    finding = _finding("YES"); db_path = str(oi.DB_FILE)
+    fixed_iid = "intent-dup-fixed"
+    existing_pid = "existing-pos-from-prior-pass"
+    # Prior-pass position'ı seed (bu order_intent_id ile)
+    s = sqlite3.connect(db_path)
+    s.execute("INSERT INTO positions (position_id, ts_open, slug, asset, action, status, dry_run, "
+              "order_intent_id) VALUES (?,?,?,?,?,?,?,?)",
+              (existing_pid, "2026-06-10T00:00:00", finding["slug"], "BTC", "YES", "open", 0,
+               fixed_iid))
+    s.commit(); s.close()
+    fc = _client(_resp(making="25.00", taking="71.43"))
+    p1, p2, p3 = _exec_patches(fc)
+    with p1, p2, p3, \
+         patch("execution.order_intent.create_intent", new_callable=AsyncMock,
+               return_value=fixed_iid), \
+         patch("execution.order_intent.confirm_fill_atomic", new_callable=AsyncMock,
+               return_value="DUPLICATE"):
+        from execution.clob_executor import execute
+        pos = await execute(finding, _gate(), _risk(), [])
+    assert pos is not None and pos.get("accounting_result") == "DUPLICATE"
+    assert pos.get("accounting_persisted") is True          # satır zaten persist
+    # DUPLICATE envelope: partial 'position' objesi DÖNMEK YASAK; existing_position_id readback'ten
+    assert "position" not in pos, "DUPLICATE'te partial position objesi YASAK (KeyError riski)"
+    assert pos.get("existing_position_id") == existing_pid, "existing_position_id DB readback'ten"
+    assert pos.get("order_intent_id") == fixed_iid
+    assert pos.get("existing_position_id") != _resp()["orderID"]   # candidate/yeni uuid DEĞİL
+
+
+# H4-9) DUPLICATE ama readback boş → DB_INCONSISTENCY / RECOVERY_REQUIRED
+@pytest.mark.asyncio
+async def test_duplicate_missing_readback_routes_db_inconsistency():
+    import execution.order_intent as oi
+    finding = _finding("YES"); token_id = finding["yes_token_id"]; db_path = str(oi.DB_FILE)
+    fc = _client(_resp(making="25.00", taking="71.43"))
+    p1, p2, p3 = _exec_patches(fc)
+    with p1, p2, p3, \
+         patch("execution.order_intent.confirm_fill_atomic", new_callable=AsyncMock,
+               return_value="DUPLICATE"):                  # ama hiçbir position seed edilmedi
+        from execution.clob_executor import execute
+        pos = await execute(finding, _gate(), _risk(), [])
+    assert not (pos and pos.get("accounting_result") == "OPENED")
+    c = sqlite3.connect(db_path)
+    irow = c.execute("SELECT status, reconciliation_reason FROM order_intents "
+                     "WHERE market_token_id=?", (token_id,)).fetchone()
+    c.close()
+    assert irow[0] == "RECOVERY_REQUIRED"
+    assert irow[1] in ("DB_INCONSISTENCY", "DUPLICATE_READBACK_MISSING")
+
+
+# H4-10) no-fill-proof (taking=0, order_id var) → SUBMITTED_UNKNOWN, position 0, confirm YOK
+@pytest.mark.asyncio
+async def test_no_fill_proof_blocks_submitted_unknown_no_position():
+    import execution.order_intent as oi
+    finding = _finding("YES"); token_id = finding["yes_token_id"]; db_path = str(oi.DB_FILE)
+    fc = _client(_resp(status="matched", taking="0", making="0", oid="ord-x"))
+    confirm_spy = AsyncMock(return_value="OPENED")
+    p1, p2, p3 = _exec_patches(fc)
+    with p1, p2, p3, patch("execution.order_intent.confirm_fill_atomic", confirm_spy):
+        from execution.clob_executor import execute
+        pos = await execute(finding, _gate(), _risk(), [])
+    assert pos is None or pos.get("accounting_result") != "OPENED"
+    confirm_spy.assert_not_awaited()                       # H3 ASLA çağrılmaz
+    c = sqlite3.connect(db_path)
+    irow = c.execute("SELECT status FROM order_intents WHERE market_token_id=?",
+                     (token_id,)).fetchone()
+    n = c.execute("SELECT COUNT(*) FROM positions").fetchone()[0]
+    c.close()
+    assert irow[0] == "SUBMITTED_UNKNOWN" and n == 0
+
+
+# H4-11) cost_missing (shares var, making yok) → RECOVERY_REQUIRED + FILL_COST_MISSING, confirm YOK
+@pytest.mark.asyncio
+async def test_cost_missing_recovery_no_position():
+    import execution.order_intent as oi
+    finding = _finding("YES"); token_id = finding["yes_token_id"]; db_path = str(oi.DB_FILE)
+    fc = _client(_resp(taking="40.00", making=None))       # cost UYDURULMAZ (D3)
+    confirm_spy = AsyncMock(return_value="OPENED")
+    p1, p2, p3 = _exec_patches(fc)
+    with p1, p2, p3, patch("execution.order_intent.confirm_fill_atomic", confirm_spy):
+        from execution.clob_executor import execute
+        pos = await execute(finding, _gate(), _risk(), [])
+    assert not (pos and pos.get("accounting_result") == "OPENED")
+    confirm_spy.assert_not_awaited()
+    c = sqlite3.connect(db_path)
+    irow = c.execute("SELECT status, reconciliation_reason FROM order_intents "
+                     "WHERE market_token_id=?", (token_id,)).fetchone()
+    n = c.execute("SELECT COUNT(*) FROM positions").fetchone()[0]
+    c.close()
+    assert irow[0] == "RECOVERY_REQUIRED" and irow[1] == "FILL_COST_MISSING" and n == 0
+
+
+# H4-12) invariant breach (status live/resting) → RECOVERY_REQUIRED, position 0, confirm YOK
+@pytest.mark.asyncio
+async def test_invariant_breach_recovery_no_position():
+    import execution.order_intent as oi
+    finding = _finding("YES"); token_id = finding["yes_token_id"]; db_path = str(oi.DB_FILE)
+    fc = _client(_resp(status="live", taking="0", making="0", oid="ord-x"))
+    confirm_spy = AsyncMock(return_value="OPENED")
+    p1, p2, p3 = _exec_patches(fc)
+    with p1, p2, p3, patch("execution.order_intent.confirm_fill_atomic", confirm_spy):
+        from execution.clob_executor import execute
+        pos = await execute(finding, _gate(), _risk(), [])
+    assert not (pos and pos.get("accounting_result") == "OPENED")
+    confirm_spy.assert_not_awaited()
+    c = sqlite3.connect(db_path)
+    irow = c.execute("SELECT status FROM order_intents WHERE market_token_id=?",
+                     (token_id,)).fetchone()
+    n = c.execute("SELECT COUNT(*) FROM positions").fetchone()[0]
+    c.close()
+    assert irow[0] == "RECOVERY_REQUIRED" and n == 0
+
+
+# ── Direction-normalized slippage (amendment 3) — saf helper (BUY entry + future SELL exit) ──
+# Pozitif slippage = ADVERSE. Yön kaynağı GERÇEK order side (BUY/SELL); action/outcome YES/NO
+# slippage yönü için KULLANILMAZ. Side missing/unknown → default BUY YASAK (raise → execute recovery).
+# getattr ile temiz RED: GREEN'de execution.clob_executor._compute_slippage(side, expected, fill).
+
+def _slip_fn():
+    import execution.clob_executor as ce
+    return getattr(ce, "_compute_slippage", None)
+
+
+# H4-13s) SELL adverse fill (fill < expected) → POZİTİF slippage
+def test_sell_adverse_fill_positive_slippage():
+    fn = _slip_fn()
+    assert fn is not None, "GREEN: _compute_slippage(side, expected, fill) helper eklenmeli"
+    # SELL: beklenen 0.50, gerçekleşen 0.45 (daha az aldık) = adverse → pozitif
+    assert fn("SELL", 0.50, 0.45) == pytest.approx((0.50 - 0.45) / 0.50, abs=1e-9)
+    assert fn("SELL", 0.50, 0.45) > 0
+
+
+# H4-14s) BUY adverse fill (fill > expected) → POZİTİF; yön action'dan DEĞİL side'dan
+def test_slippage_direction_from_order_side_not_action():
+    fn = _slip_fn()
+    assert fn is not None, "GREEN: _compute_slippage helper eklenmeli"
+    # Aynı (expected, fill) için BUY ve SELL ZIT işaret → yön side'dan türer (YES/NO değil)
+    buy = fn("BUY", 0.40, 0.44)      # fill>expected → BUY adverse → +
+    sell = fn("SELL", 0.40, 0.44)    # fill>expected → SELL favorable → -
+    assert buy > 0 and sell < 0, f"yön side'dan türemeli: buy={buy} sell={sell}"
+    assert buy == pytest.approx(-sell, abs=1e-9)
+
+
+# H4-15s) Side missing/unknown → default BUY YASAK → raise (execute bunu recovery'e çevirir)
+def test_slippage_unknown_side_no_default_buy():
+    fn = _slip_fn()
+    assert fn is not None, "GREEN: _compute_slippage helper eklenmeli"
+    import pytest as _pt
+    with _pt.raises((ValueError, KeyError)):
+        fn(None, 0.40, 0.44)         # side yok → sessiz BUY fallback YASAK
+    with _pt.raises((ValueError, KeyError)):
+        fn("WAT", 0.40, 0.44)        # bilinmeyen side → raise
+
+
+# H4-16) NaN/Inf telemetry poisoning guard — float('nan')<=0 False TUZAĞI.
+# NaN/Inf ask_at_decision/slippage_pct position_row'a SIZAMAZ → RECOVERY + TELEMETRY_DATA_MISSING.
+@pytest.mark.parametrize("bad_ask", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.asyncio
+async def test_nan_inf_ask_blocked_no_leak_recovery(bad_ask):
+    import execution.order_intent as oi
+    finding = _finding("YES"); token_id = finding["yes_token_id"]; db_path = str(oi.DB_FILE)
+    finding["best_ask"] = bad_ask
+    fc = _client(_resp(making="25.00", taking="71.43"))
+    p1, p2, p3 = _exec_patches(fc)
+    with p1, p2, p3:
+        from execution.clob_executor import execute
+        pos = await execute(finding, _gate(), _risk(), [])
+    assert not (pos and pos.get("accounting_result") == "OPENED"), "NaN/Inf ask OPEN AÇMAMALI"
+    c = sqlite3.connect(db_path)
+    irow = c.execute("SELECT status, reconciliation_reason FROM order_intents "
+                     "WHERE market_token_id=?", (token_id,)).fetchone()
+    n = c.execute("SELECT COUNT(*) FROM positions").fetchone()[0]
+    c.close()
+    assert irow[0] == "RECOVERY_REQUIRED" and irow[1] == "TELEMETRY_DATA_MISSING"
+    assert n == 0, "NaN/Inf telemetri → position YAZILMAZ (sızıntı YASAK)"

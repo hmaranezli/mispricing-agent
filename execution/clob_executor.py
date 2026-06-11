@@ -10,6 +10,7 @@ Docs: https://docs.polymarket.com/trading/orders/create.md
 """
 import asyncio
 import logging
+import math
 import re
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,7 +23,9 @@ from py_clob_client_v2.order_builder.constants import BUY
 from data.clob_price import get_quote
 from execution.order_pricing import compute_limit_price
 from execution.emergency_pause import is_emergency_paused
+from execution import emergency_pause
 from execution import order_intent
+import aiosqlite
 from data.shadow_quote import get_shadow_quote
 from db.logger import log_entry_air_pocket, update_entry_air_pocket_delayed
 import config
@@ -31,6 +34,102 @@ logger = logging.getLogger("execution.clob_executor")
 
 PRICE_PREMIUM = 0.01   # worst-price slippage buffer: live_ask + 1 cent
 TICK_SIZE     = "0.01" # binary prediction markets default tick size
+
+
+# ── Faz 2c Task H4+H5 — accounting/telemetry contract helper'ları ────────────
+
+class _TelemetryDataMissing(Exception):
+    """Telemetri (ask_at_decision / slippage) eksik veya geçersiz — None/0/default YASAK."""
+
+
+def _compute_slippage(side, expected_price, fill_price):
+    """Direction-normalized slippage; POZİTİF = ADVERSE. Yön GERÇEK order side'dan (BUY/SELL);
+    YES/NO outcome/action KULLANILMAZ. STRICT: side None/YES/NO/UNKNOWN → ValueError;
+    expected/fill <=0 veya None → ValueError. Default BUY YOK.
+      BUY adverse:  (fill - expected) / expected
+      SELL adverse: (expected - fill) / expected
+    """
+    if side not in ("BUY", "SELL"):
+        raise ValueError(f"_compute_slippage geçersiz side: {side!r} (yalnız 'BUY'/'SELL')")
+    if expected_price is None or fill_price is None:
+        raise ValueError("_compute_slippage fiyat None olamaz")
+    if not (math.isfinite(expected_price) and math.isfinite(fill_price)):
+        # NaN/Inf tuzağı: float('nan') <= 0 == False → sayısal bariyerden sızmasın.
+        raise ValueError(f"_compute_slippage fiyat non-finite: expected={expected_price} fill={fill_price}")
+    if expected_price <= 0 or fill_price <= 0:
+        raise ValueError(f"_compute_slippage fiyat <=0: expected={expected_price} fill={fill_price}")
+    if side == "BUY":
+        return (fill_price - expected_price) / expected_price
+    return (expected_price - fill_price) / expected_price
+
+
+def _map_decision_to_position_row(decision, finding, gate_result, risk_result,
+                                  order_intent_id, order_id, position_id,
+                                  ask_at_decision, slippage_pct):
+    """SAF helper — yalnız assignment. H2 muhasebe matematiği TEKRAR EDİLMEZ (shares/spent_usd/
+    fill_price decision'dan). Eksik finding/decision alanı → KeyError/TypeError (çağıran
+    POSITION_ROW_BUILD_FAILED'e route eder)."""
+    return {
+        "position_id":             position_id,
+        "opened_at":               datetime.now(timezone.utc).isoformat(),
+        "asset":                   finding["asset"],
+        "action":                  finding["action"],
+        "slug":                    finding["slug"],
+        "pm_entry_price":          float(decision["fill_price"]),
+        "fair_value":              finding["fair_value"],
+        "ref_price":               finding["ref_price"],
+        "edge":                    finding["edge"],
+        "position_usd":            float(decision["spent_usd"]),
+        "kelly_f":                 risk_result["kelly_f"],
+        "confidence_score":        gate_result["confidence_score"],
+        "shares":                  float(decision["shares"]),
+        "order_id":                order_id,
+        "fill_price":              float(decision["fill_price"]),
+        "yes_token_id":            finding.get("yes_token_id"),
+        "no_token_id":             finding.get("no_token_id"),
+        "entry_hl_price":          finding.get("cur_price"),
+        "ask_at_decision":         ask_at_decision,
+        "slippage_pct":            slippage_pct,
+        "requires_human_approval": False,
+        "dry_run":                 False,
+        "status":                  "open",
+        "order_intent_id":         order_intent_id,
+    }
+
+
+def _recovery_envelope(order_intent_id, reason):
+    return {"accounting_persisted": False, "accounting_result": "RECOVERY_REQUIRED",
+            "order_intent_id": order_intent_id, "recovery_reason": reason}
+
+
+async def _recovery_ladder(order_intent_id, reason, slug, order_id=None, size=None):
+    """RECOVERY_REQUIRED owner = execute(). transition fail → kill-switch (set_emergency_pause) →
+    son-çare CRITICAL (is_emergency_paused fail-closed sonraki execute'u bloklar)."""
+    try:
+        await order_intent.transition(None, order_intent_id, "RECOVERY_REQUIRED",
+                                      reason=reason, server_order_id=order_id, size_matched=size)
+        logger.critical("[clob] %s: RECOVERY_REQUIRED (%s) intent=%s — 2c-4 reconcile, yeni emir bloklu",
+                        slug, reason, order_intent_id)
+        return
+    except Exception as e1:
+        logger.critical("[clob] %s: RECOVERY_REQUIRED write FAIL (%s) — kill-switch deneniyor: %s",
+                        slug, reason, e1)
+    try:
+        await emergency_pause.set_emergency_pause(
+            None, reason=f"task_h_recovery_write_failed:{reason}", source="task_h",
+            order_intent_id=order_intent_id)
+        logger.critical("[clob] %s: EMERGENCY_PAUSE set — yeni emir KESİN durdu (%s)", slug, reason)
+    except Exception as e2:
+        logger.critical("[clob] %s: kill-switch write de FAIL (%s) — is_emergency_paused fail-closed "
+                        "son kilit: %s", slug, reason, e2)
+
+
+async def _readback_existing_position_id(order_intent_id):
+    """DUPLICATE → aynı order_intent_id için mevcut (position_id, ts_open) readback. Yoksa None."""
+    async with aiosqlite.connect(str(order_intent.DB_FILE)) as conn:
+        cur = await conn.execute(
+            "SELECT position_id, ts_open FROM positions WHERE order_intent_id=?", (order_intent_id,))
+        return await cur.fetchone()
 
 
 async def _handle_fak_no_match(
@@ -350,48 +449,107 @@ async def execute(
     def _get(obj, key, default=None):
         return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
 
-    status        = _get(resp, "status", "")
-    success       = _get(resp, "success", False)
-    order_id      = _get(resp, "orderID", "")
-    taking_amount = _get(resp, "takingAmount", None)  # v2: fill edilen share
-    making_amount = _get(resp, "makingAmount", None)  # v2: harcanan USDC
+    # Faz 2c H4: classify_fak_fill → kind dispatch (H2 kararı; muhasebe TEKRAR HESAPLANMAZ)
+    decision = order_intent.classify_fak_fill(
+        status=_get(resp, "status", ""),
+        taking_amount=_get(resp, "takingAmount", None),
+        making_amount=_get(resp, "makingAmount", None),
+        requested_usd=position_usd,
+        order_id=_get(resp, "orderID", None),
+    )
+    kind = decision["kind"]
+    order_id = _get(resp, "orderID", "") or ""
 
-    # FAK: "matched" = fill oldu (tam veya kısmi) — docs statuses: matched/live/delayed/unmatched
-    matched = (status or "").lower() == "matched"
-    if not matched:
-        print(f"[clob] {finding['slug']}: FAK UNMATCHED (status={status})")
+    if kind == "BLOCK_UNKNOWN":
+        # no_fill_proof: order_id var ama fill yok → SUBMITTED_UNKNOWN'da BIRAK (transition YOK)
+        logger.error("[clob] %s: no_fill_proof (order_id var, fill yok) — SUBMITTED_UNKNOWN kalır "
+                     "(2c-4 reconcile)", finding.get("slug"))
         return None
 
-    fill_shares = float(taking_amount) if taking_amount and float(taking_amount) > 0 else 0.0
-    if fill_shares <= 0:
-        print(f"[clob] {finding['slug']}: fill_shares=0")
+    if kind == "TERMINAL_ZERO":
+        # zero-fill, order_id yok → terminal CANCELLED (FAK_ZERO_FILL); position YOK
+        try:
+            await order_intent.transition(None, order_intent_id, "CANCELLED",
+                                          reason=decision.get("reason") or "FAK_ZERO_FILL")
+        except Exception as e:
+            logger.error("[clob] %s: TERMINAL_ZERO CANCELLED transition fail: %s",
+                         finding.get("slug"), e)
         return None
 
-    pos_usd    = float(making_amount) if making_amount else position_usd
-    fill_price = round(pos_usd / fill_shares, 6) if fill_shares > 0 else worst_price
+    if kind == "RECOVERY":
+        # cost-missing / invariant-breach → recovery (confirm_fill_atomic ASLA çağrılmaz)
+        reason = decision.get("reason") or "FAK_RECOVERY"
+        _size = float(decision["shares"]) if decision.get("shares") is not None else None
+        await _recovery_ladder(order_intent_id, reason, finding.get("slug"),
+                               order_id=order_id, size=_size)
+        return _recovery_envelope(order_intent_id, reason)
 
-    print(f"[clob] {finding['slug']}: FILLED {fill_shares:.4f} shares @ ${fill_price:.4f} (${pos_usd:.2f})")
+    # OPEN_FILLED / OPEN_PARTIAL → atomik confirm.
+    # position_id TEK kez üret — confirm_fill_atomic'e ve return position'a AYNI değer gider.
+    position_id = str(uuid4())
+    try:
+        # Atomic telemetry (confirm ÖNCESİ position_row'a): ask_at_decision + direction-normalized
+        # slippage. None/0/default YASAK → TELEMETRY_DATA_MISSING.
+        ask_at_decision = finding.get("best_ask")
+        # NaN/Inf tuzağı: float('nan') <= 0 == False → None/<=0 yetmez, isfinite ŞART.
+        if (ask_at_decision is None or not math.isfinite(ask_at_decision)
+                or ask_at_decision <= 0):
+            raise _TelemetryDataMissing(f"ask_at_decision geçersiz: {ask_at_decision!r}")
+        # Yön GERÇEK order side (entry = BUY); YES/NO action slippage yönü için KULLANILMAZ.
+        slippage_pct = _compute_slippage(BUY, float(ask_at_decision), float(decision["fill_price"]))
+        if not math.isfinite(slippage_pct):
+            raise _TelemetryDataMissing(f"slippage_pct non-finite: {slippage_pct!r}")
+        position_row = _map_decision_to_position_row(
+            decision, finding, gate_result, risk_result, order_intent_id, order_id,
+            position_id, float(ask_at_decision), slippage_pct)
+    except _TelemetryDataMissing as e:
+        logger.error("[clob] %s: telemetry eksik (%s) → TELEMETRY_DATA_MISSING recovery",
+                     finding.get("slug"), e)
+        await _recovery_ladder(order_intent_id, "TELEMETRY_DATA_MISSING", finding.get("slug"),
+                               order_id=order_id)
+        return _recovery_envelope(order_intent_id, "TELEMETRY_DATA_MISSING")
+    except ValueError as e:
+        # _compute_slippage strict validation (side/price invalid) → telemetri geçersiz
+        logger.error("[clob] %s: slippage/telemetry invalid (%s) → TELEMETRY_DATA_MISSING",
+                     finding.get("slug"), e)
+        await _recovery_ladder(order_intent_id, "TELEMETRY_DATA_MISSING", finding.get("slug"),
+                               order_id=order_id)
+        return _recovery_envelope(order_intent_id, "TELEMETRY_DATA_MISSING")
+    except (KeyError, TypeError) as e:
+        # _map_decision_to_position_row alan eksikliği → build fail (CONFIRM_TX_FAILED'den AYRI)
+        logger.critical("[clob] %s: position_row build FAIL (%s) → POSITION_ROW_BUILD_FAILED",
+                        finding.get("slug"), e)
+        await _recovery_ladder(order_intent_id, "POSITION_ROW_BUILD_FAILED", finding.get("slug"),
+                               order_id=order_id)
+        return _recovery_envelope(order_intent_id, "POSITION_ROW_BUILD_FAILED")
 
-    return {
-        "position_id":             str(uuid4()),
-        "asset":                   finding["asset"],
-        "action":                  action,
-        "slug":                    finding["slug"],
-        "pm_entry_price":          fill_price,
-        "fair_value":              finding["fair_value"],
-        "ref_price":               finding["ref_price"],
-        "edge":                    finding["edge"],
-        "position_usd":            pos_usd,
-        "kelly_f":                 risk_result["kelly_f"],
-        "confidence_score":        gate_result["confidence_score"],
-        "shares":                  fill_shares,
-        "order_id":                order_id,
-        "fill_price":              fill_price,
-        "yes_token_id":            finding.get("yes_token_id"),
-        "no_token_id":             finding.get("no_token_id"),
-        "entry_hl_price":          finding.get("cur_price"),
-        "requires_human_approval": False,
-        "dry_run":                 False,
-        "status":                  "open",
-        "opened_at":               datetime.now(timezone.utc).isoformat(),
-    }
+    terminal_state = decision["state"]   # FILLED | PARTIAL_FILLED
+    try:
+        result = await order_intent.confirm_fill_atomic(
+            None, order_intent_id, position_row, terminal_state)
+    except Exception as e:
+        logger.critical("[clob] %s: confirm_fill_atomic FAIL (%s) → CONFIRM_TX_FAILED recovery",
+                        finding.get("slug"), e)
+        await _recovery_ladder(order_intent_id, "CONFIRM_TX_FAILED", finding.get("slug"),
+                               order_id=order_id, size=position_row.get("shares"))
+        return _recovery_envelope(order_intent_id, "CONFIRM_TX_FAILED")
+
+    if result == "DUPLICATE":
+        existing = await _readback_existing_position_id(order_intent_id)
+        if existing is None:
+            logger.critical("[clob] %s: DUPLICATE ama readback BOŞ → DB_INCONSISTENCY recovery",
+                            finding.get("slug"))
+            await _recovery_ladder(order_intent_id, "DB_INCONSISTENCY", finding.get("slug"),
+                                   order_id=order_id)
+            return _recovery_envelope(order_intent_id, "DB_INCONSISTENCY")
+        logger.warning("[clob] %s: confirm DUPLICATE — order_intent_id=%s existing_position_id=%s "
+                       "ts=%s (candidate uuid DÖNDÜRÜLMEZ)", finding.get("slug"), order_intent_id,
+                       existing[0], existing[1])
+        return {"accounting_persisted": True, "accounting_result": "DUPLICATE",
+                "order_intent_id": order_intent_id, "existing_position_id": existing[0],
+                "existing_ts_open_or_created_at": existing[1]}
+
+    # OPENED — envelope (accounting metadata position objesine SIZMAZ)
+    print(f"[clob] {finding['slug']}: OPENED {position_row['shares']} @ {position_row['fill_price']} "
+          f"(${position_row['position_usd']}) state={terminal_state}")
+    return {"accounting_persisted": True, "accounting_result": "OPENED", "position": position_row}
