@@ -696,32 +696,48 @@ if position:
 **Files:**
 - Test: `tests/test_task_h_fill_confirm.py`, mevcut suite
 
-- [ ] **Step 1: Duplicate-on-repeat test (partial fill + tekrar response işleme)**
+- [x] **Step 1 — KAPANDI: `H6_STEP1_ALREADY_COVERED_BY_EXISTING_TESTS` (2026-06-11, RCA traceability closure)**
 
-```python
-@pytest.mark.asyncio
-async def test_repeated_response_processing_no_second_position():
-    """Aynı intent için confirm iki kez (partial fill response'u tekrar işlenirse) → ikinci position YOK,
-    intent zaten terminal (MONOTONIC) → muhasebe tek (D6)."""
-    import execution.order_intent as oi
-    db = str(oi.DB_FILE)
-    iid = await oi.create_intent(None, "tok-1", "BUY", 0.36, 25.0, slug="btc-x")
-    await oi.transition(None, iid, "SUBMITTED_UNKNOWN")
-    p = {"position_id": "p1", "opened_at": "2026-06-10T12:00:00+00:00", "slug": "btc-x",
-         "asset": "BTC", "action": "YES", "pm_entry_price": 0.35, "fair_value": 0.55,
-         "ref_price": 95000.0, "edge": 0.2, "position_usd": 14.0, "kelly_f": 0.15,
-         "confidence_score": 82.0, "shares": 40.0, "status": "open", "dry_run": 0,
-         "order_intent_id": iid, "order_id": "ord"}
-    r1 = await oi.confirm_fill_atomic(None, iid, p, "PARTIAL_FILLED")
-    r2 = await oi.confirm_fill_atomic(None, iid, {**p, "position_id": "p2"}, "PARTIAL_FILLED")
-    assert (r1, r2) == ("OPENED", "DUPLICATE")
-    c = sqlite3.connect(db)
-    n = c.execute("SELECT COUNT(*) FROM positions WHERE order_intent_id=?", (iid,)).fetchone()[0]
-    c.close()
-    assert n == 1
-```
+  **Karar:** Aşağıdaki literal `test_repeated_response_processing_no_second_position` testi **YAZILMAYACAK.** "Duplicate-on-repeat → ikinci position YOK (D6)" invariant'ı, merkezi idempotency guard üzerinden mevcut testlerle **zaten kapsanmış** durumda. Literal `PARTIAL_FILLED` varyantı **gerçek bir RED üretmez** (direct-green olur) ve verifier checklist madde "RED failed for the correct reason" disiplinini ihlal eder (sahte RED yasağı).
 
-- [ ] **Step 2: Run → PASS** (DB UNIQUE + precheck).
+  **Gerekçe (root cause):** `confirm_fill_atomic` içindeki duplicate guard, `order_intent_id` precheck'i ile **fill classification'dan ÖNCE** çalışır; ikinci çağrı herhangi bir state değişikliği yapmadan `"DUPLICATE"` döner. Bu yüzden `FILLED` vs `PARTIAL_FILLED` farkı duplicate-on-repeat sonucunu **değiştirmez** — `FILLED` varyantı (H3-3) aynı kod yolunu zaten çalıştırıyor.
+
+  **Invariant'ı kapsayan mevcut testler (3 katman):**
+  - DB / confirm_fill_atomic: `tests/test_task_h_fill_confirm.py::test_duplicate_intent_second_confirm_is_noop_readback_proof` — `(OPENED, DUPLICATE)` + `COUNT(*)==1` readback proof. (Plan H6 Step 1'in birebir yapısal eşdeğeri; tek fark status `FILLED`.)
+  - DB race / IntegrityError: `tests/test_task_h_fill_confirm.py::test_integrity_error_readback_existing_duplicate_is_noop` — precheck'i aşan race → readback EXISTING → `DUPLICATE`, `COUNT(*)==1` (rollback proof).
+  - execute() envelope: `tests/test_execute_intent_wiring.py::test_duplicate_returns_existing_position_id_not_candidate_uuid` — DUPLICATE envelope; partial position objesi YASAK; `existing_position_id` DB readback'ten.
+  - execute() inconsistency: `tests/test_execute_intent_wiring.py` H4-9 (`test_duplicate_returns_*` komşusu) — DUPLICATE ama readback boş → `DB_INCONSISTENCY` / `RECOVERY_REQUIRED`.
+  - main_loop forensic: `tests/test_mainloop_accounting.py::test_mainloop_duplicate_warning_no_append_no_ws_no_write` — DUPLICATE envelope → forensic WARNING; append/ws/write YOK.
+
+  **No new test** çünkü redundant/direct-green olur ve no-fake-RED disiplinini ihlal eder. H6 Step 1 traceability düzeyinde kapanmıştır.
+
+  <details><summary>Orijinal plan taslağı (REFERANS — yazılmayacak)</summary>
+
+  ```python
+  @pytest.mark.asyncio
+  async def test_repeated_response_processing_no_second_position():
+      """Aynı intent için confirm iki kez (partial fill response'u tekrar işlenirse) → ikinci position YOK,
+      intent zaten terminal (MONOTONIC) → muhasebe tek (D6)."""
+      import execution.order_intent as oi
+      db = str(oi.DB_FILE)
+      iid = await oi.create_intent(None, "tok-1", "BUY", 0.36, 25.0, slug="btc-x")
+      await oi.transition(None, iid, "SUBMITTED_UNKNOWN")
+      p = {"position_id": "p1", "opened_at": "2026-06-10T12:00:00+00:00", "slug": "btc-x",
+           "asset": "BTC", "action": "YES", "pm_entry_price": 0.35, "fair_value": 0.55,
+           "ref_price": 95000.0, "edge": 0.2, "position_usd": 14.0, "kelly_f": 0.15,
+           "confidence_score": 82.0, "shares": 40.0, "status": "open", "dry_run": 0,
+           "order_intent_id": iid, "order_id": "ord"}
+      r1 = await oi.confirm_fill_atomic(None, iid, p, "PARTIAL_FILLED")
+      r2 = await oi.confirm_fill_atomic(None, iid, {**p, "position_id": "p2"}, "PARTIAL_FILLED")
+      assert (r1, r2) == ("OPENED", "DUPLICATE")
+      c = sqlite3.connect(db)
+      n = c.execute("SELECT COUNT(*) FROM positions WHERE order_intent_id=?", (iid,)).fetchone()[0]
+      c.close()
+      assert n == 1
+  ```
+  </details>
+
+- [x] **Step 2 — N/A:** literal test yazılmadığından ayrı "Run → PASS" adımı yok. Duplicate guard (DB UNIQUE + precheck) yukarıdaki mevcut testlerle yeşil (önceki rebuild: `test_task_h_fill_confirm.py` 22 passed).
 
 - [ ] **Step 3: Tam regresyon** — `pytest tests/test_execute_intent_wiring.py tests/test_clob_executor.py tests/test_emergency_pause.py tests/test_reconciliation.py tests/test_live_exec_lineage.py tests/test_fill_confirm.py tests/test_task_h_fill_confirm.py tests/test_db_schema_migration.py -q` → **tümü yeşil**; özellikle Task E (timeout→SUBMITTED_UNKNOWN), F (connection/unknown→SUBMITTED_UNKNOWN), G (no-match→CANCELLED) bozulmamalı.
 
