@@ -295,3 +295,54 @@ async def test_insert_fail_rolls_back_no_terminal_intent(tmp_path, monkeypatch):
     c.close()
     assert n == 0, f"INSERT fail → rollback, position yok: {n}"
     assert st == "SUBMITTED_UNKNOWN", f"intent FILLED/PARTIAL_FILLED OLMAMALI (rollback): {st}"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Task H3b — UPDATE-after-INSERT rollback proof (TRIGGER-BASED, ORGANİK FAULT).
+# Monkeypatch/driver-patch/test-seam YOK; hata SAF SQLite motorundan (RAISE ABORT) gelir.
+# Bu DAR/STABİL seam, H3 RED'deki kırılgan execute-monkeypatch endişesini çözer.
+# Klasik RED olmayabilir: H3 generic/IntegrityError rollback doğruysa ilk çalıştırmada PASS
+# (regression-lock/proof). INSERT positions başarılı → UPDATE order_intents trigger ile fail
+# → tüm txn rollback: position SİLİNİR (zombi yok), intent SUBMITTED_UNKNOWN kalır.
+# ════════════════════════════════════════════════════════════════════════════
+@pytest.mark.asyncio
+async def test_update_fail_after_insert_rolls_back_with_sqlite_trigger(tmp_path):
+    db = await _make_db(tmp_path)
+    iid = await create_intent(db, "tok-1", "BUY", 0.36, 25.0, slug="btc-x")
+    await transition(db, iid, "SUBMITTED_UNKNOWN")     # seed ÖNCE (trigger henüz YOK)
+
+    # Trigger seed'den SONRA kurulur; NORMAL (TEMP DEĞİL) → confirm_fill_atomic'in AYRI
+    # connection'ında görünür. Yalnız bu order_intent_id'nin UPDATE'inde RAISE(ABORT).
+    setup = sqlite3.connect(db)
+    setup.executescript(
+        "CREATE TRIGGER inject_update_fail\n"
+        "BEFORE UPDATE ON order_intents\n"
+        f"WHEN NEW.order_intent_id = '{iid}'\n"
+        "BEGIN\n"
+        "  SELECT RAISE(ABORT, 'Simulated Update Failure');\n"
+        "END;")
+    setup.commit()
+    setup.close()        # KRİTİK: lock serbest — confirm BEGIN IMMEDIATE 'locked' olmamalı
+
+    try:
+        # INSERT positions başarılı olmalı; fail YALNIZ UPDATE order_intents'te (trigger).
+        with pytest.raises(sqlite3.DatabaseError) as ei:
+            await confirm_fill_atomic(db, iid, _posrow(iid), "FILLED")
+        msg = str(ei.value)
+        assert "Simulated Update Failure" in msg, f"hata trigger'dan gelmeli (lock değil): {msg!r}"
+        assert "database is locked" not in msg.lower(), f"database-is-locked tuzağı: {msg!r}"
+
+        # Readback: rollback gerçek mi?
+        c = sqlite3.connect(db)
+        n = c.execute("SELECT COUNT(*) FROM positions WHERE order_intent_id=?", (iid,)).fetchone()[0]
+        st = c.execute("SELECT status FROM order_intents WHERE order_intent_id=?",
+                       (iid,)).fetchone()[0]
+        c.close()
+        assert n == 0, f"UPDATE fail → INSERT ROLLBACK olmalı (zombi position yok): {n}"
+        assert st == "SUBMITTED_UNKNOWN", f"intent terminalize EDİLMEMELİ (rollback): {st}"
+    finally:
+        # KRİTİK teardown: PASS da FAIL de olsa trigger DÜŞÜRÜLÜR (ayrı connection + commit).
+        cleanup = sqlite3.connect(db)
+        cleanup.execute("DROP TRIGGER IF EXISTS inject_update_fail")
+        cleanup.commit()
+        cleanup.close()
