@@ -161,10 +161,13 @@
 
 ## Task I: Matched PARTIAL fill → position PARTIAL_FILLED (yine açılır)
 
-- [ ] **Step 1: Failing test** — `test_matched_partial_fill_opens_position`: `takingAmount` < requested_est (örn taking=10, making=4, position_usd=25).
+- [x] **Step 1: Failing test** — `test_matched_partial_fill_opens_position`: `takingAmount` < requested_est (örn taking=10, making=4, position_usd=25).
   - **Assert:** DB intent `status=="PARTIAL_FILLED"`; position dict **yine döner** (open state); `shares==10`, `position_usd==4` (API'den, approximate değil).
-- [ ] **Step 2-4:** Task H kapsar; test doğrular.
-- [ ] **Step 5: Commit** (H ile birleşebilir).
+- [x] **Step 2-4:** Task H kapsar; test doğrular.
+- [x] **Step 5: Commit** (H ile birleşti).
+
+> **CLOSURE (2026-06-11) — DONE / Task H ile tam subsumed.**
+> Kanıt: `tests/test_execute_intent_wiring.py:837` `test_partial_fill_persists_partial_filled_with_aggregate_slippage` PASS → intent `PARTIAL_FILLED`, pozisyon açılıyor, muhasebe API'den. Spec semantiği uygulandı. Ek iş yok.
 
 ---
 
@@ -177,6 +180,11 @@
 - [ ] **Step 4: Run/pass.**
 - [ ] **Step 5: Commit.**
 
+> **CLOSURE (2026-06-11) — KISMİ. Güvenlik kapalı, status semantiği Faz 2c-4'e DEFERRED.**
+> - **Kapalı (güvenlik invariantı):** `tests/test_execute_intent_wiring.py:1046` `test_no_fill_proof_blocks_submitted_unknown_no_position` PASS → no-fill-proof'ta **sahte pozisyon açılmıyor** (`confirm_fill_atomic` asla çağrılmaz, `positions` count 0).
+> - **Uygulanmamış (spec semantiği):** intent `ACCEPTED` + `reconciliation_reason=="no_fill_proof"` transition'ı YOK; gerçek davranış intent'i **`SUBMITTED_UNKNOWN`** bırakıyor. Bu kasıtlı — planın kendi başlığı "(2c-4'e kalır)".
+> - **Sonraki:** ACCEPTED status transition'ı Faz 2c-4 reconcile / recovery-ladder resolve protokolünde ele alınacak. "DONE" sayılmaz.
+
 ---
 
 ## Task K: Matched taking=0 → CANCELLED, position yok
@@ -187,6 +195,11 @@
 - [ ] **Step 3:** Task H/J implementasyonu kapsar (classify→CANCELLED→is_position_open False).
 - [ ] **Step 4: Run/pass.**
 - [ ] **Step 5: Commit.**
+
+> **CLOSURE (2026-06-11) — KISMİ. Güvenlik kapalı, CANCELLED semantiği Faz 2c-4'e DEFERRED.**
+> - **Kapalı (güvenlik invariantı):** matched+taking=0'da pozisyon açılmıyor — `tests/test_execute_intent_wiring.py:1046` (H4-10) aynı senaryoyu kapsıyor (`positions` count 0).
+> - **Spec'ten FARK:** matched+taking=0 şu an `CANCELLED`+`FAK_ZERO_FILL` DEĞİL, **`SUBMITTED_UNKNOWN`** (no_fill_proof) olarak ele alınıyor. `CANCELLED`+`FAK_ZERO_FILL` semantiği yalnız Task G "no orders found to match" exception path'inde mevcut (`tests/test_execute_intent_wiring.py:595-702` PASS) — bu farklı bir senaryo.
+> - **Sonraki:** "matched ama taking=0" intent'inin doğru terminal status'u (CANCELLED mi, recovery mi) Faz 2c-4 reconcile protokolünde kararlaştırılacak. "DONE" sayılmaz.
 
 ---
 
