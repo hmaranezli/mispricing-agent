@@ -1,0 +1,170 @@
+================================================================
+# H6 VERIFIER — CURRENT-SESSION DURABLE EVIDENCE
+# Generated (UTC): 2026-06-11T22:49:01Z
+# HEAD:          cfe4f930b0de874bd881608e297dff32a40358dd
+# origin/master: cfe4f930b0de874bd881608e297dff32a40358dd
+# Purpose: close H6 verifier gate items 3,4,7,9 with raw command output.
+================================================================
+
+## COMMAND 1 — Curated H6 suite (8 files, faz2c4 H6 Step 3 :742)
+## pytest tests/test_execute_intent_wiring.py test_clob_executor.py test_emergency_pause.py
+##        test_reconciliation.py test_live_exec_lineage.py test_fill_confirm.py
+##        test_task_h_fill_confirm.py test_db_schema_migration.py -v
+----------------------------------------------------------------
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0 -- /root/mispricing_agent/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /root/mispricing_agent
+plugins: asyncio-1.4.0, anyio-4.13.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 109 items
+
+tests/test_execute_intent_wiring.py::test_positions_has_order_intent_id_column PASSED [  0%]
+tests/test_execute_intent_wiring.py::test_init_schema_idempotent_rerun_preserves_rows PASSED [  1%]
+tests/test_execute_intent_wiring.py::test_order_intent_id_migration_on_legacy_db_preserves_rows PASSED [  2%]
+tests/test_execute_intent_wiring.py::test_log_position_open_persists_order_intent_id PASSED [  3%]
+tests/test_execute_intent_wiring.py::test_execution_state_created_by_init_schema PASSED [  4%]
+tests/test_execute_intent_wiring.py::test_execution_state_singleton_survives_reinit PASSED [  5%]
+tests/test_execute_intent_wiring.py::test_unresolved_intent_early_stops_before_quote_and_submit PASSED [  6%]
+tests/test_execute_intent_wiring.py::test_execute_default_path_is_isolated_never_live PASSED [  7%]
+tests/test_execute_intent_wiring.py::test_intent_committed_submitted_unknown_before_post_order PASSED [  8%]
+tests/test_execute_intent_wiring.py::test_create_intent_fail_hard_aborts_no_submit PASSED [  9%]
+tests/test_execute_intent_wiring.py::test_transition_fail_hard_aborts_intent_stays_created PASSED [ 10%]
+tests/test_execute_intent_wiring.py::test_unresolved_check_db_fail_is_fail_closed PASSED [ 11%]
+tests/test_execute_intent_wiring.py::test_timeout_leaves_submitted_unknown_no_resubmit_and_blocks_next PASSED [ 11%]
+tests/test_execute_intent_wiring.py::test_unknown_submit_errors_keep_submitted_unknown_no_resubmit[exc0-connection reset] PASSED [ 12%]
+tests/test_execute_intent_wiring.py::test_unknown_submit_errors_keep_submitted_unknown_no_resubmit[exc1-502 gateway] PASSED [ 13%]
+tests/test_execute_intent_wiring.py::test_no_orders_found_transitions_cancelled_with_reason_and_telemetry PASSED [ 14%]
+tests/test_execute_intent_wiring.py::test_no_match_routing_is_case_insensitive[NO ORDERS FOUND TO MATCH with FAK order] PASSED [ 15%]
+tests/test_execute_intent_wiring.py::test_no_match_routing_is_case_insensitive[No Orders Found To Match with FAK order] PASSED [ 16%]
+tests/test_execute_intent_wiring.py::test_no_match_cancelled_transition_db_fail_is_fail_closed PASSED [ 17%]
+tests/test_execute_intent_wiring.py::test_full_fill_returns_accounting_persisted_opened_with_lineage PASSED [ 18%]
+tests/test_execute_intent_wiring.py::test_partial_fill_persists_partial_filled_with_aggregate_slippage PASSED [ 19%]
+tests/test_execute_intent_wiring.py::test_position_id_single_source_confirm_and_return_match PASSED [ 20%]
+tests/test_execute_intent_wiring.py::test_ask_at_decision_and_slippage_persisted_atomically PASSED [ 21%]
+tests/test_execute_intent_wiring.py::test_telemetry_missing_triggers_recovery PASSED [ 22%]
+tests/test_execute_intent_wiring.py::test_confirm_db_fail_returns_recovery_required_and_killswitch PASSED [ 22%]
+tests/test_execute_intent_wiring.py::test_mapping_keyerror_routes_position_row_build_failed PASSED [ 23%]
+tests/test_execute_intent_wiring.py::test_duplicate_returns_existing_position_id_not_candidate_uuid PASSED [ 24%]
+tests/test_execute_intent_wiring.py::test_duplicate_missing_readback_routes_db_inconsistency PASSED [ 25%]
+tests/test_execute_intent_wiring.py::test_no_fill_proof_blocks_submitted_unknown_no_position PASSED [ 26%]
+tests/test_execute_intent_wiring.py::test_cost_missing_recovery_no_position PASSED [ 27%]
+tests/test_execute_intent_wiring.py::test_invariant_breach_recovery_no_position PASSED [ 28%]
+tests/test_execute_intent_wiring.py::test_sell_adverse_fill_positive_slippage PASSED [ 29%]
+tests/test_execute_intent_wiring.py::test_slippage_direction_from_order_side_not_action PASSED [ 30%]
+tests/test_execute_intent_wiring.py::test_slippage_unknown_side_no_default_buy PASSED [ 31%]
+tests/test_execute_intent_wiring.py::test_nan_inf_ask_blocked_no_leak_recovery[nan] PASSED [ 32%]
+tests/test_execute_intent_wiring.py::test_nan_inf_ask_blocked_no_leak_recovery[inf] PASSED [ 33%]
+tests/test_execute_intent_wiring.py::test_nan_inf_ask_blocked_no_leak_recovery[-inf] PASSED [ 33%]
+tests/test_clob_executor.py::test_execute_returns_position_on_matched_fak PASSED [ 34%]
+tests/test_clob_executor.py::test_execute_returns_none_when_fak_unmatched PASSED [ 35%]
+tests/test_clob_executor.py::test_execute_uses_yes_token_for_yes_action PASSED [ 36%]
+tests/test_clob_executor.py::test_execute_uses_no_token_for_no_action PASSED [ 37%]
+tests/test_clob_executor.py::test_execute_uses_fak_order_type PASSED     [ 38%]
+tests/test_clob_executor.py::test_execute_passes_dollar_amount_not_shares PASSED [ 39%]
+tests/test_clob_executor.py::test_execute_passes_tick_size_options PASSED [ 40%]
+tests/test_clob_executor.py::test_execute_worst_price_includes_premium PASSED [ 41%]
+tests/test_clob_executor.py::test_execute_falls_back_to_finding_ask_when_clob_price_fails PASSED [ 42%]
+tests/test_clob_executor.py::test_execute_position_includes_entry_hl_price PASSED [ 43%]
+tests/test_clob_executor.py::test_execute_returns_none_when_token_id_missing PASSED [ 44%]
+tests/test_clob_executor.py::test_execute_returns_none_when_position_too_small PASSED [ 44%]
+tests/test_clob_executor.py::test_execute_market_order_args_has_fak_order_type PASSED [ 45%]
+tests/test_clob_executor.py::test_execute_matched_without_success_field PASSED [ 46%]
+tests/test_emergency_pause.py::test_set_and_read_emergency_pause PASSED  [ 47%]
+tests/test_emergency_pause.py::test_pause_persists_across_restart PASSED [ 48%]
+tests/test_emergency_pause.py::test_no_auto_clear PASSED                 [ 49%]
+tests/test_emergency_pause.py::test_clear_emergency_pause_manual_admin PASSED [ 50%]
+tests/test_emergency_pause.py::test_set_idempotent_preserves_original PASSED [ 51%]
+tests/test_emergency_pause.py::test_fail_closed_when_db_unreadable PASSED [ 52%]
+tests/test_emergency_pause.py::test_fail_closed_when_db_path_bogus PASSED [ 53%]
+tests/test_emergency_pause.py::test_scream_on_death_critical_log PASSED  [ 54%]
+tests/test_emergency_pause.py::test_execute_blocked_when_paused_no_network_call PASSED [ 55%]
+tests/test_emergency_pause.py::test_execute_proceeds_when_not_paused PASSED [ 55%]
+tests/test_reconciliation.py::test_full_fill_directional_pass PASSED     [ 56%]
+tests/test_reconciliation.py::test_aggregate_two_partials_full PASSED    [ 57%]
+tests/test_reconciliation.py::test_partial_fill PASSED                   [ 58%]
+tests/test_reconciliation.py::test_directional_fail_buy_excluded PASSED  [ 59%]
+tests/test_reconciliation.py::test_directional_sell_pass_and_fail PASSED [ 60%]
+tests/test_reconciliation.py::test_dedup_already_matched PASSED          [ 61%]
+tests/test_reconciliation.py::test_ambiguous_overfill_recovery PASSED    [ 62%]
+tests/test_reconciliation.py::test_outside_time_window_excluded PASSED   [ 63%]
+tests/test_reconciliation.py::test_zero_candidate_window_logic PASSED    [ 64%]
+tests/test_live_exec_lineage.py::test_clob_executor_entry_uses_quote_ask PASSED [ 65%]
+tests/test_live_exec_lineage.py::test_position_store_exit_uses_quote_bid PASSED [ 66%]
+tests/test_live_exec_lineage.py::test_main_loop_monitor_no_clob_price PASSED [ 66%]
+tests/test_live_exec_lineage.py::test_live_exec_critical_path_no_clob_price PASSED [ 67%]
+tests/test_live_exec_lineage.py::test_get_quote_is_book_derived_not_side PASSED [ 68%]
+tests/test_fill_confirm.py::test_classify_zero_fill_cancelled PASSED     [ 69%]
+tests/test_fill_confirm.py::test_classify_partial_fill PASSED            [ 70%]
+tests/test_fill_confirm.py::test_classify_full_fill PASSED               [ 71%]
+tests/test_fill_confirm.py::test_classify_accepted_no_fill_proof PASSED  [ 72%]
+tests/test_fill_confirm.py::test_classify_timeout_submitted_unknown PASSED [ 73%]
+tests/test_fill_confirm.py::test_monotonic_guard_blocks_terminal_downgrade PASSED [ 74%]
+tests/test_fill_confirm.py::test_monotonic_guard_blocks_partial_and_cancelled_downgrade PASSED [ 75%]
+tests/test_fill_confirm.py::test_is_terminal_helper PASSED               [ 76%]
+tests/test_task_h_fill_confirm.py::test_full_fill_usd_denominated PASSED [ 77%]
+tests/test_task_h_fill_confirm.py::test_partial_fill_usd_denominated PASSED [ 77%]
+tests/test_task_h_fill_confirm.py::test_zero_fill_no_order_id_is_terminal_cancelled PASSED [ 78%]
+tests/test_task_h_fill_confirm.py::test_zero_fill_with_order_id_blocks_submitted_unknown PASSED [ 79%]
+tests/test_task_h_fill_confirm.py::test_shares_present_but_cost_missing_is_recovery PASSED [ 80%]
+tests/test_task_h_fill_confirm.py::test_resting_status_is_invariant_breach_recovery[live] PASSED [ 81%]
+tests/test_task_h_fill_confirm.py::test_resting_status_is_invariant_breach_recovery[delayed] PASSED [ 82%]
+tests/test_task_h_fill_confirm.py::test_resting_status_is_invariant_breach_recovery[open] PASSED [ 83%]
+tests/test_task_h_fill_confirm.py::test_resting_status_is_invariant_breach_recovery[resting] PASSED [ 84%]
+tests/test_task_h_fill_confirm.py::test_large_shares_small_cost_is_partial_not_full PASSED [ 85%]
+tests/test_task_h_fill_confirm.py::test_monetary_fields_are_decimal_not_float PASSED [ 86%]
+tests/test_task_h_fill_confirm.py::test_near_full_fill_within_tolerance_is_full PASSED [ 87%]
+tests/test_task_h_fill_confirm.py::test_real_partial_below_tolerance_stays_partial PASSED [ 88%]
+tests/test_task_h_fill_confirm.py::test_tolerance_is_decimal_not_float_epsilon PASSED [ 88%]
+tests/test_task_h_fill_confirm.py::test_status_normalization_uppercase_equals_lowercase PASSED [ 89%]
+tests/test_task_h_fill_confirm.py::test_confirm_full_fill_writes_position_and_terminal_intent_atomically PASSED [ 90%]
+tests/test_task_h_fill_confirm.py::test_confirm_partial_fill_writes_position_and_terminal_intent_atomically PASSED [ 91%]
+tests/test_task_h_fill_confirm.py::test_duplicate_intent_second_confirm_is_noop_readback_proof PASSED [ 92%]
+tests/test_task_h_fill_confirm.py::test_integrity_error_readback_existing_duplicate_is_noop PASSED [ 93%]
+tests/test_task_h_fill_confirm.py::test_integrity_error_readback_missing_raises_and_does_not_terminalize PASSED [ 94%]
+tests/test_task_h_fill_confirm.py::test_insert_fail_rolls_back_no_terminal_intent PASSED [ 95%]
+tests/test_task_h_fill_confirm.py::test_update_fail_after_insert_rolls_back_with_sqlite_trigger PASSED [ 96%]
+tests/test_db_schema_migration.py::test_precondition_order_intent_id_column_exists_via_real_schema PASSED [ 97%]
+tests/test_db_schema_migration.py::test_partial_unique_index_exists_with_not_null_predicate PASSED [ 98%]
+tests/test_db_schema_migration.py::test_duplicate_non_null_order_intent_id_blocked_nulls_allowed PASSED [ 99%]
+tests/test_db_schema_migration.py::test_legacy_null_shares_stays_null_not_zeroed PASSED [100%]
+
+============================= 109 passed in 30.77s =============================
+
+CURATED_SUITE_EXIT_CODE=0
+================================================================
+
+## COMMAND 1b — coupled test_mainloop_accounting.py (handoff evidence: 7 passed)
+----------------------------------------------------------------
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0 -- /root/mispricing_agent/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /root/mispricing_agent
+plugins: asyncio-1.4.0, anyio-4.13.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 7 items
+
+tests/test_mainloop_accounting.py::test_mainloop_skips_log_position_open_on_accounting_persisted PASSED [ 14%]
+tests/test_mainloop_accounting.py::test_mainloop_appends_ws_enrich_on_opened_without_db_write PASSED [ 28%]
+tests/test_mainloop_accounting.py::test_mainloop_no_double_row_after_execute PASSED [ 42%]
+tests/test_mainloop_accounting.py::test_mainloop_recovery_result_no_write_no_append_no_ws PASSED [ 57%]
+tests/test_mainloop_accounting.py::test_mainloop_duplicate_warning_no_append_no_ws_no_write PASSED [ 71%]
+tests/test_mainloop_accounting.py::test_dry_run_path_still_uses_log_position_open PASSED [ 85%]
+tests/test_mainloop_accounting.py::test_recovery_required_blocks_future_entry_or_no_resubmit PASSED [100%]
+
+============================== 7 passed in 2.13s ===============================
+
+MAINLOOP_ACCOUNTING_EXIT_CODE=0
+================================================================
+
+## COMMAND 2 — live DB read-only query (Python sqlite3 mode=ro)
+## SELECT COUNT(*) FROM positions WHERE dry_run=0 AND status='open'
+----------------------------------------------------------------
+db_path = /root/mispricing_agent/logs/mispricing.db exists = True
+LIVE_OPEN_DRYRUN0_POSITIONS = 0
+breakdown (dry_run, status, count):
+    (0, 'closed', 238)
+    (1, 'closed', 1122)
+    (1, 'open', 3)
+positions_total = 1363
+================================================================
