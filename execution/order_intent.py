@@ -11,10 +11,17 @@ Heuristic reconciliation (get_trades eşleme) = Faz 2c. Burada alanlar + state b
 import hashlib
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import aiosqlite
 
 from db.logger import DB_FILE
+
+# Faz 2c Task H2 — FAK BUY tamlık eşiği (dust): makingAmount + bu tolerans ≥ requested → FULL.
+# USD bazında, Decimal (float epsilon YASAK). Magic number değil, isimli sabit.
+FILL_DUST_TOLERANCE_USD = Decimal("0.000001")
+# FAK/IOC için resting/open = invariant breach (FAK dinlenemez) → RECOVERY.
+_RESTING_STATUSES = ("live", "delayed", "open", "resting")
 
 # State machine
 STATES = (
@@ -54,6 +61,52 @@ def classify_fill(status, taking_amount, requested_size, order_id=None, exceptio
     if s in ("live", "delayed", "accepted") or order_id:
         return ("ACCEPTED", 0.0, "no_fill_proof")
     return ("CANCELLED", 0.0, "FAK_ZERO_FILL")
+
+
+def classify_fak_fill(status, taking_amount, making_amount, requested_usd, order_id=None):
+    """Faz 2c Task H2 — FAK BUY response → karar nesnesi. SAF/sync, DB'ye DOKUNMAZ.
+
+    Sözleşme:
+      - USD-denominated (D1): FULL↔PARTIAL kararı YALNIZ makingAmount(harcanan) vs requested_usd
+        ile verilir. takingAmount shares'tır; USD hesabına KATILMAZ (yalnız `shares` olarak korunur).
+      - Tolerance (dust): makingAmount + FILL_DUST_TOLERANCE_USD ≥ requested_usd → FULL, değilse PARTIAL.
+      - Cost yoksa position yok (D3): shares var ama makingAmount yok/≤0 → RECOVERY (FILL_COST_MISSING).
+      - Resting/open = FAK invariant breach (D2/D6) → RECOVERY; recovery İŞLEMİ burada ÇAĞRILMAZ.
+      - Parasal alanlar Decimal döner (float değil).
+
+    Returns dict: kind, state, shares (Decimal|None), spent_usd (Decimal|None),
+                  fill_price (Decimal|None), reason.
+    """
+    status_norm = str(status).strip().lower()
+    taking = Decimal(str(taking_amount if taking_amount is not None else 0))
+    making = None if making_amount is None else Decimal(str(making_amount))
+    req    = Decimal(str(requested_usd))
+
+    # 1) FAK invariant breach: emir dinleniyor/açık → RECOVERY (D2/D6). EN ÖNCE.
+    if status_norm in _RESTING_STATUSES:
+        return dict(kind="RECOVERY", state="RECOVERY_REQUIRED", shares=None,
+                    spent_usd=None, fill_price=None, reason="FAK_INVARIANT_BREACH_RESTING")
+
+    # 2) Fill kanıtı (shares) yok
+    if taking <= 0:
+        if order_id:   # order_id var ama fill kanıtı yok → araf (bloklayıcı), filled SAYILMAZ
+            return dict(kind="BLOCK_UNKNOWN", state="SUBMITTED_UNKNOWN", shares=None,
+                        spent_usd=None, fill_price=None, reason="no_fill_proof")
+        return dict(kind="TERMINAL_ZERO", state="CANCELLED", shares=Decimal("0"),
+                    spent_usd=Decimal("0"), fill_price=None, reason="FAK_ZERO_FILL")
+
+    # 3) shares var ama cost (makingAmount) yok → cost UYDURULMAZ (D3) → RECOVERY
+    if making is None or making <= 0:
+        return dict(kind="RECOVERY", state="RECOVERY_REQUIRED", shares=taking,
+                    spent_usd=None, fill_price=None, reason="FILL_COST_MISSING")
+
+    # 4) Fill var + cost var → USD bazında tamlık (taking USD hesabına GİRMEZ)
+    fill_price = (making / taking).quantize(Decimal("0.000001"))
+    if making + FILL_DUST_TOLERANCE_USD >= req:
+        return dict(kind="OPEN_FILLED", state="FILLED", shares=taking,
+                    spent_usd=making, fill_price=fill_price, reason=None)
+    return dict(kind="OPEN_PARTIAL", state="PARTIAL_FILLED", shares=taking,
+                spent_usd=making, fill_price=fill_price, reason=None)
 
 
 def make_order_intent_id() -> str:
