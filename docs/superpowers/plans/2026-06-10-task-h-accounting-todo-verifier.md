@@ -31,6 +31,8 @@ Sanitized engineering spec for Faz 2c Task H (fill-confirm atomic accounting). S
 | **H5** | main_loop double-accounting cleanup | Remove second DB write, preserve telemetry/notify |
 | **H6** | Final verification / checkpoint | Full regression green, graphify update, sealed checkpoint |
 
+> **H6 checkpoint durumu (2026-06-11):** Step 3 regression **green** (curated H6 suite **109 passed**, pollution yok; H4+H5 isolated 58, mainloop 7) + Step 4 graphify **done**, sealed **`e2cd152`** (pushed; 4241 nodes / 6594 edges / 313 communities, AST-only). Step 1 `H6_STEP1_ALREADY_COVERED_BY_EXISTING_TESTS` ile kapandı (`b326f93`). Step 3 regression green + Step 4 graphify done sealed `e2cd152`; H6 final checkpoint evidence captured; code/test unchanged (`bba2aaa..HEAD` `*.py` diff boş; yalnız docs + graphify-out).
+
 > **H6 Step 1 — `H6_STEP1_ALREADY_COVERED_BY_EXISTING_TESTS` (2026-06-11):** literal `test_repeated_response_processing_no_second_position` testi **gerekmiyor / yazılmadı.** "Duplicate-on-repeat → ikinci position YOK (D6)" invariant'ı merkezi idempotency guard üzerinden mevcut testlerle kapsanmış: `test_task_h_fill_confirm.py::test_duplicate_intent_second_confirm_is_noop_readback_proof` + `::test_integrity_error_readback_existing_duplicate_is_noop`, `test_execute_intent_wiring.py::test_duplicate_returns_existing_position_id_not_candidate_uuid` (+ H4-9 readback-empty recovery), `test_mainloop_accounting.py::test_mainloop_duplicate_warning_no_append_no_ws_no_write`. `confirm_fill_atomic` duplicate guard, `order_intent_id` precheck ile fill classification'dan ÖNCE çalışır → `FILLED`/`PARTIAL_FILLED` farkı sonucu değiştirmez. Literal test direct-green olur → no-fake-RED disiplinine aykırı. Detay: companion plan H6 Step 1.
 
 ---

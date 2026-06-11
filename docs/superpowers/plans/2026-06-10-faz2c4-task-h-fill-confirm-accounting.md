@@ -739,11 +739,13 @@ if position:
 
 - [x] **Step 2 — N/A:** literal test yazılmadığından ayrı "Run → PASS" adımı yok. Duplicate guard (DB UNIQUE + precheck) yukarıdaki mevcut testlerle yeşil (önceki rebuild: `test_task_h_fill_confirm.py` 22 passed).
 
-- [ ] **Step 3: Tam regresyon** — `pytest tests/test_execute_intent_wiring.py tests/test_clob_executor.py tests/test_emergency_pause.py tests/test_reconciliation.py tests/test_live_exec_lineage.py tests/test_fill_confirm.py tests/test_task_h_fill_confirm.py tests/test_db_schema_migration.py -q` → **tümü yeşil**; özellikle Task E (timeout→SUBMITTED_UNKNOWN), F (connection/unknown→SUBMITTED_UNKNOWN), G (no-match→CANCELLED) bozulmamalı.
+- [x] **Step 3: Tam regresyon** — `pytest tests/test_execute_intent_wiring.py tests/test_clob_executor.py tests/test_emergency_pause.py tests/test_reconciliation.py tests/test_live_exec_lineage.py tests/test_fill_confirm.py tests/test_task_h_fill_confirm.py tests/test_db_schema_migration.py -q` → **tümü yeşil**; özellikle Task E (timeout→SUBMITTED_UNKNOWN), F (connection/unknown→SUBMITTED_UNKNOWN), G (no-match→CANCELLED) bozulmamalı.
+  - **Kanıt (2026-06-11 current-session rebuild):** curated H6 suite **109 passed**, collect pollution yok — individual toplamı **109 == combined 109**; H4+H5 isolated **58 passed**; extra coupled `test_mainloop_accounting.py` **7 passed**. Full blanket `tests/` **bilinçli koşulmadı**: network/env + aiosqlite teardown caveat; plan curated suite esas alındı. Regresyon baseline kodu `bba2aaa`'dan beri değişmedi (`bba2aaa..HEAD` `*.py` diff boş).
 
-- [ ] **Step 4: graphify update + commit** — `graphify update .` → `chore: graphify update — Faz 2c Task H sonrası` (yalnız graphify-out stage).
+- [x] **Step 4: graphify update + commit** — `graphify update .` → yalnız graphify-out stage.
+  - **Kanıt:** graphify update + commit + push **tamam**: commit **`e2cd152`** (origin/master'a pushlandı); graph **4241 nodes / 6594 edges / 313 communities**; **AST-only / no LLM** (manifest `semantic_hash` boş, network çağrısı yok).
 
-- [ ] **Step 5: Final commit** — `test(P0 Faz2c Task H6): duplicate-on-repeat guard + full regression green`
+- [x] **Step 5: Final closure** — literal `test(...)` commit'i **kullanılmıyor** (H6 Step 1 literal testi `H6_STEP1_ALREADY_COVERED_BY_EXISTING_TESTS` ile yazılmadan kapandı → yeni test commit'i yok). Final adım bir **docs/checkpoint mührü**: `docs(task-h): seal H6 final checkpoint evidence` (regresyon yeşil + graphify mapped). H6 final ilanı insan onayına bağlı.
 
 ---
 
