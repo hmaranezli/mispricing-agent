@@ -21,7 +21,7 @@
 | D1 Denominasyon | FILLED↔PARTIAL ayrımı **USD**: `makingAmount` (gerçek harcanan) vs `position_usd` (istenen). `takingAmount` = shares; USD `requested` ile kıyaslanmaz. `shares` yalnız `takingAmount`'tan. Tüm fill aritmetiği `Decimal`. |
 | D2 No-fill-proof | Canlı FAK path'inde `ACCEPTED` KULLANILMAZ. `order_id`/accepted ama matched/executed kanıtı yok → intent `SUBMITTED_UNKNOWN` (bloklayıcı, `has_unresolved_intent`). status `live/delayed/open/resting` (FAK invariant breach) → `RECOVERY_REQUIRED` + CRITICAL. |
 | D3 Cost yok → position yok | `takingAmount`>0 ama `makingAmount`/cost yok → position AÇMA. `position_usd`/limit price ile cost UYDURMA → `RECOVERY_REQUIRED` + CRITICAL/ERROR → 2c-4. |
-| D4 Schema | `positions(order_intent_id)` partial UNIQUE index `WHERE order_intent_id IS NOT NULL`. `positions.shares REAL` nullable. Migration backfill-safe (eski satır bozulmaz), idempotent, testli. |
+| D4 Schema | `positions(order_intent_id)` partial UNIQUE index `WHERE order_intent_id IS NOT NULL`. `positions.shares REAL` nullable ZATEN mevcut (schema.py:325) → H1 yalnız index ekler, shares ekleme/backfill YOK. Migration backfill-safe (eski satır bozulmaz, NULL shares NULL kalır), idempotent, testli. |
 | D5 Atomicity | Atomik confirm `execute()`/helper'da TEK connection, TEK transaction, TEK COMMIT. INSERT başarılı + intent terminal UPDATE fail → rollback (zombi position yasak). intent FILLED/PARTIAL ama position yok yasak. main_loop ikinci DB accounting yazmaz; telemetri/log korunur. |
 | D6 Partial / duplicate | Partial sonrası remaining = dead (FAK); cancel emri YOK. response open/resting/live/delayed → invariant breach → RECOVERY. Aynı `order_intent_id` ikinci Task H/2c-4 → ikinci position YOK (DB UNIQUE + app precheck). Tekrar fill/response işleme denemesi de testlenir. |
 
@@ -59,13 +59,13 @@ post_order BAŞARILI (resp döndü, exception yok):
 
 | Dosya | Sorumluluk | Değişiklik |
 |-------|-----------|------------|
-| `db/schema.py` | şema + migration | `shares` kolonu + partial UNIQUE index (`_MIGRATIONS`'a) |
+| `db/schema.py` | şema + migration | partial UNIQUE index (`_MIGRATIONS`'a); `shares` ZATEN var (schema.py:325) |
 | `execution/order_intent.py` | state machine + fill sınıflama | `classify_fak_fill` (yeni saf fn) + `confirm_fill_atomic` (yeni, tek-txn) |
 | `execution/clob_executor.py` | execute() wiring | adım 8-10 + `recovery_ladder`; başarılı response → classify → confirm/recovery |
 | `main_loop.py` | tarama/telemetri | `_scan_and_execute`: execute() artık persist ettiği için 2. `log_position_open` DB accounting kaldır; notify/telemetri korunur |
 | `tests/test_task_h_fill_confirm.py` | yeni test dosyası | classify_fak_fill + confirm_fill_atomic + execute wiring + recovery + duplicate |
 | `tests/test_execute_intent_wiring.py` | mevcut | Task H execute-path testleri (E/F/G yanına) |
-| `tests/test_db_schema_migration.py` | yeni/var | shares + UNIQUE index migration backfill-safe testleri |
+| `tests/test_db_schema_migration.py` | yeni/var | partial UNIQUE index migration backfill-safe testleri (shares NULL korunur) |
 
 **DONMUŞ (dokunulmaz):** `config.py`, `execution/order_pricing.py`, `execution/emergency_pause.py` (yalnız çağrılır), 2c-3'te yazılan Task A/B/C-D/E/F/G mantığı.
 
@@ -73,13 +73,21 @@ post_order BAŞARILI (resp döndü, exception yok):
 
 ---
 
-### Task H0: Schema — `shares` kolonu + partial UNIQUE index (backfill-safe)
+### Task H0: Plan / spec checkpoint — TAMAMLANDI
+
+Bu plan + verifier spec (`2026-06-10-task-h-accounting-todo-verifier.md`) mühürlendi (origin/master). Canonical sıra: **H0 plan/spec → H1 schema → H2 classification → H3 atomic helper → H3b rollback-proof → H4 execute wiring → H5 main_loop cleanup → H6 final regression/verify.** İmplementasyon H1'den başlar.
+
+---
+
+### Task H1: Schema — partial UNIQUE index on order_intent_id (backfill-safe; `shares` zaten mevcut)
 
 **Files:**
 - Modify: `db/schema.py` (`_MIGRATIONS` listesi)
 - Test: `tests/test_db_schema_migration.py`
 
-- [ ] **Step 1: Failing test — yeni kolon + index + legacy korunur**
+**Preflight (doğrulandı 2026-06-11, read-only):** `positions.shares` kolonu ZATEN var (`db/schema.py:325` migration + canlı DB). `positions.order_intent_id` Task 0'da eklenmiş (`schema.py:470`); canlı DB'ye restart'ta uygulanacak. **H1 YALNIZ partial UNIQUE index ekler** — `shares` ekleme YOK, `shares=0` backfill YOK. Canlı DB'de non-null `order_intent_id` duplicate yok → migration blocker yok; tüm eski satırlar migration sonrası `order_intent_id` NULL → partial index (`WHERE ... IS NOT NULL`) hepsini dışlar.
+
+- [ ] **Step 1: Failing test — partial UNIQUE index + duplicate blok + legacy korunur**
 
 ```python
 import sqlite3, tempfile, aiosqlite, pytest
@@ -90,22 +98,19 @@ async def _fresh(path):
     conn = await aiosqlite.connect(str(path)); await init_schema(conn); await conn.close()
 
 @pytest.mark.asyncio
-async def test_positions_has_shares_column_and_unique_index():
+async def test_partial_unique_index_exists_after_migration():
     d = Path(tempfile.mkdtemp()) / "t.db"
     await _fresh(d)
     conn = await aiosqlite.connect(str(d))
-    cols = [r[1] for r in await (await conn.execute("PRAGMA table_info(positions)")).fetchall()]
-    idx  = [r[1] for r in await (await conn.execute("PRAGMA index_list(positions)")).fetchall()]
+    idx = [r[1] for r in await (await conn.execute("PRAGMA index_list(positions)")).fetchall()]
     await conn.close()
-    assert "shares" in cols, f"shares kolonu eklenmeli: {cols}"
-    assert any("order_intent_id" in i for i in idx), f"order_intent_id UNIQUE index olmalı: {idx}"
+    assert any("order_intent_id" in i for i in idx), f"order_intent_id partial UNIQUE index olmalı: {idx}"
 
 @pytest.mark.asyncio
 async def test_partial_unique_index_blocks_duplicate_intent_but_allows_null():
     d = Path(tempfile.mkdtemp()) / "t.db"
     await _fresh(d)
     conn = await aiosqlite.connect(str(d))
-    base = ("ts_open","slug","asset","action","status","dry_run")
     async def ins(pid, oiid):
         await conn.execute(
             "INSERT INTO positions (position_id, ts_open, slug, asset, action, status, dry_run, order_intent_id)"
@@ -115,11 +120,14 @@ async def test_partial_unique_index_blocks_duplicate_intent_but_allows_null():
     await ins("p2", None)          # NULL serbest (eski/dry pozisyonlar)
     await ins("p3", None)          # ikinci NULL da serbest (partial index)
     with pytest.raises(sqlite3.IntegrityError):
-        await ins("p4","intent-1") # AYNI intent-id ikinci kez → UNIQUE breach
+        await ins("p4","intent-1") # AYNI non-null intent-id ikinci kez → UNIQUE breach
     await conn.close()
 
 @pytest.mark.asyncio
-async def test_migration_idempotent_and_preserves_legacy_rows():
+async def test_migration_preserves_legacy_rows_and_null_shares_stays_null():
+    """Eski (kolonsuz) positions tablosu + satır → init_schema migration'ları (mevcut shares/
+    order_intent_id ALTER'leri + yeni index) uygular; legacy satır KORUNUR; shares NULL KALIR
+    (sahte 0'a ÇEVRİLMEZ)."""
     d = Path(tempfile.mkdtemp()) / "legacy.db"
     conn = await aiosqlite.connect(str(d))
     await conn.execute("CREATE TABLE positions (position_id TEXT PRIMARY KEY, slug TEXT)")
@@ -130,27 +138,26 @@ async def test_migration_idempotent_and_preserves_legacy_rows():
     row = await (await conn.execute(
         "SELECT position_id, slug, shares, order_intent_id FROM positions WHERE position_id='old'")).fetchone()
     await conn.close()
-    assert row == ("old","s",None,None), f"legacy satır korunmalı, yeni kolonlar NULL: {row}"
+    assert row == ("old","s",None,None), f"legacy korunmalı; shares NULL KALMALI (0 değil): {row}"
 ```
 
-- [ ] **Step 2: Run → FAIL** — `pytest tests/test_db_schema_migration.py -v` → "no such column: shares" / index yok.
+- [ ] **Step 2: Run → FAIL** — `pytest tests/test_db_schema_migration.py -v` → partial UNIQUE index henüz yok: `index_list`'te `order_intent_id` index YOK; duplicate non-null INSERT `IntegrityError` FIRLATMAZ → test FAIL. (Not: `shares` kolonu ZATEN var → RED `shares` üzerine kurulmaz; sahte RED yasak.)
 
-- [ ] **Step 3: Minimal migration** — `db/schema.py` `_MIGRATIONS` listesine ekle (mevcut try/except OperationalError ile idempotent):
+- [ ] **Step 3: Minimal migration** — `db/schema.py` `_MIGRATIONS` listesine YALNIZ index ekle (mevcut try/except OperationalError ile idempotent):
 
 ```python
-"ALTER TABLE positions ADD COLUMN shares REAL",
 "CREATE UNIQUE INDEX IF NOT EXISTS ix_positions_order_intent_id "
 "ON positions(order_intent_id) WHERE order_intent_id IS NOT NULL",
 ```
-Not: ALTER iki kez → `OperationalError` yutulur (mevcut migration döngüsü). Partial UNIQUE index sqlite 3.8+ desteklenir.
+Not: `shares` ALTER EKLENMEZ — kolon zaten `schema.py:325`'te var. `shares=0` backfill YOK; eski NULL shares NULL kalır. Partial UNIQUE index sqlite 3.8+ desteklenir; `WHERE order_intent_id IS NOT NULL` tüm eski NULL lineage satırlarını dışlar → çakışma yok.
 
 - [ ] **Step 4: Run → PASS** — 3 test yeşil; mevcut `test_execute_intent_wiring.py` schema testleri bozulmaz.
 
-- [ ] **Step 5: Commit** — `test(P0 Faz2c Task H0): positions.shares + partial UNIQUE(order_intent_id) migration`
+- [ ] **Step 5: Commit** — `test(P0 Faz2c Task H1): partial UNIQUE(order_intent_id) index migration (shares already present)`
 
 ---
 
-### Task H1: `classify_fak_fill` — USD-denominated, Decimal, breach-aware saf fonksiyon
+### Task H2: `classify_fak_fill` — USD-denominated, Decimal, breach-aware saf fonksiyon
 
 **Files:**
 - Modify: `execution/order_intent.py`
@@ -249,11 +256,11 @@ def classify_fak_fill(status, taking_amount, making_amount, requested_usd, order
 
 - [ ] **Step 4: Run → PASS** — 6 test yeşil; mevcut `classify_fill` testleri (`test_fill_confirm.py`) etkilenmez.
 
-- [ ] **Step 5: Commit** — `feat(P0 Faz2c Task H1): classify_fak_fill USD-denominated Decimal breach-aware`
+- [ ] **Step 5: Commit** — `feat(P0 Faz2c Task H2): classify_fak_fill USD-denominated Decimal breach-aware`
 
 ---
 
-### Task H2: `confirm_fill_atomic` — tek connection, tek transaction (D5)
+### Task H3: `confirm_fill_atomic` — tek connection, tek transaction (D5)
 
 **Files:**
 - Modify: `execution/order_intent.py`
@@ -373,15 +380,15 @@ async def confirm_fill_atomic(db_path, order_intent_id, position_row, terminal_s
                 pass
             raise
 ```
-Not: precheck whitelist (`terminal_state`) BEGIN'den önce raise eder → bu testte position hiç yazılmaz; INSERT-sonrası UPDATE fail senaryosu Task H3 exception-injection testinde (gerçek DB hatası enjekte) ayrıca kanıtlanır.
+Not: precheck whitelist (`terminal_state`) BEGIN'den önce raise eder → bu testte position hiç yazılmaz; INSERT-sonrası UPDATE fail senaryosu Task H3b exception-injection testinde (gerçek DB hatası enjekte) ayrıca kanıtlanır.
 
 - [ ] **Step 4: Run → PASS** — 3 test yeşil.
 
-- [ ] **Step 5: Commit** — `feat(P0 Faz2c Task H2): confirm_fill_atomic single-transaction position+intent (no zombie)`
+- [ ] **Step 5: Commit** — `feat(P0 Faz2c Task H3): confirm_fill_atomic single-transaction position+intent (no zombie)`
 
 ---
 
-### Task H2b: INSERT-sonrası UPDATE fail → gerçek rollback kanıtı (exception injection)
+### Task H3b: INSERT-sonrası UPDATE fail → gerçek rollback kanıtı (exception injection)
 
 **Files:**
 - Test: `tests/test_task_h_fill_confirm.py`
@@ -416,17 +423,17 @@ async def test_update_fail_after_insert_rolls_back(monkeypatch):
     assert st == "SUBMITTED_UNKNOWN", f"intent terminal OLMAMALI: {st}"
 ```
 
-- [ ] **Step 2: Run → FAIL veya PASS ölç** — Task H2 implementasyonu `BEGIN IMMEDIATE`/`ROLLBACK` ile doğru ise PASS (atomicity kanıtı, regression lock). FAIL ederse confirm_fill_atomic'te transaction sınırını düzelt (autocommit kapalı, tek COMMIT).
+- [ ] **Step 2: Run → FAIL veya PASS ölç** — Task H3 implementasyonu `BEGIN IMMEDIATE`/`ROLLBACK` ile doğru ise PASS (atomicity kanıtı, regression lock). FAIL ederse confirm_fill_atomic'te transaction sınırını düzelt (autocommit kapalı, tek COMMIT).
 
 - [ ] **Step 3: (gerekirse) düzelt** — `BEGIN IMMEDIATE` + explicit `COMMIT`/`ROLLBACK`; aiosqlite `isolation_level` davranışını doğrula.
 
 - [ ] **Step 4: Run → PASS**
 
-- [ ] **Step 5: Commit** — `test(P0 Faz2c Task H2b): prove INSERT+UPDATE atomic rollback under injected DB fault`
+- [ ] **Step 5: Commit** — `test(P0 Faz2c Task H3b): prove INSERT+UPDATE atomic rollback under injected DB fault`
 
 ---
 
-### Task H3: `execute()` wiring + recovery ladder (adım 8-10)
+### Task H4: `execute()` wiring + recovery ladder (adım 8-10)
 
 **Files:**
 - Modify: `execution/clob_executor.py` (post_order başarılı dalı + `recovery_ladder`)
@@ -629,11 +636,11 @@ Not: `position_usd` (istenen) yalnız `classify_fak_fill`'e `requested_usd` olar
 
 - [ ] **Step 4: Run → PASS** — 6 wiring testi yeşil.
 
-- [ ] **Step 5: Commit** — `feat(P0 Faz2c Task H3): wire execute() fill-confirm — atomic open + recovery ladder`
+- [ ] **Step 5: Commit** — `feat(P0 Faz2c Task H4): wire execute() fill-confirm — atomic open + recovery ladder`
 
 ---
 
-### Task H4: main_loop çift DB yazımını kaldır, telemetri/notify koru
+### Task H5: main_loop çift DB yazımını kaldır, telemetri/notify koru
 
 **Files:**
 - Modify: `main_loop.py` (`_scan_and_execute`, ~238-260)
@@ -680,11 +687,11 @@ if position:
 
 - [ ] **Step 4: Run → PASS** + canlı muhasebe tek kaynağa indi.
 
-- [ ] **Step 5: Commit** — `refactor(P0 Faz2c Task H4): move position DB accounting into atomic execute(), keep main_loop telemetry`
+- [ ] **Step 5: Commit** — `refactor(P0 Faz2c Task H5): move position DB accounting into atomic execute(), keep main_loop telemetry`
 
 ---
 
-### Task H5: Regresyon + tekrar-işleme duplicate guard
+### Task H6: Regresyon + tekrar-işleme duplicate guard + final verify
 
 **Files:**
 - Test: `tests/test_task_h_fill_confirm.py`, mevcut suite
@@ -720,7 +727,7 @@ async def test_repeated_response_processing_no_second_position():
 
 - [ ] **Step 4: graphify update + commit** — `graphify update .` → `chore: graphify update — Faz 2c Task H sonrası` (yalnız graphify-out stage).
 
-- [ ] **Step 5: Final commit** — `test(P0 Faz2c Task H5): duplicate-on-repeat guard + full regression green`
+- [ ] **Step 5: Final commit** — `test(P0 Faz2c Task H6): duplicate-on-repeat guard + full regression green`
 
 ---
 
@@ -746,7 +753,7 @@ async def test_repeated_response_processing_no_second_position():
 ## Atomicity'yi nasıl KANITLIYORUM
 
 1. **Aynı DB dosyası, tek connection, tek COMMIT:** `confirm_fill_atomic` `BEGIN IMMEDIATE` → INSERT positions → UPDATE order_intents → `COMMIT`; herhangi bir adım raise → `except` `ROLLBACK`. positions ve order_intents aynı `logs/mispricing.db` içinde olduğu için tek transaction ikisini de kapsar.
-2. **INSERT-sonrası UPDATE fail enjeksiyonu (Task H2b):** `aiosqlite.Connection.execute` monkeypatch ile `UPDATE order_intents` anında `OperationalError` fırlatılır; ardından ayrı `sqlite3` connection ile readback → `positions` satırı YOK (rollback kanıtı) + intent `SUBMITTED_UNKNOWN` (terminal değil). "INSERT başarılı ama UPDATE fail → zombi position" senaryosunun imkânsızlığı böyle kanıtlanır.
+2. **INSERT-sonrası UPDATE fail enjeksiyonu (Task H3b):** `aiosqlite.Connection.execute` monkeypatch ile `UPDATE order_intents` anında `OperationalError` fırlatılır; ardından ayrı `sqlite3` connection ile readback → `positions` satırı YOK (rollback kanıtı) + intent `SUBMITTED_UNKNOWN` (terminal değil). "INSERT başarılı ama UPDATE fail → zombi position" senaryosunun imkânsızlığı böyle kanıtlanır.
 3. **Terminal-intent-without-position imkânsızlığı:** intent terminal UPDATE'i yalnız aynı txn içinde INSERT ile birlikte COMMIT edilir; INSERT olmadan UPDATE tek başına COMMIT edilemez (kod yolu yok). Test: full-fill sonrası her iki tabloda da satır; UPDATE-fail sonrası iki tabloda da satır YOK.
 
 ## Duplicate accounting guard — partial fill & repeated processing
@@ -755,13 +762,13 @@ async def test_repeated_response_processing_no_second_position():
 - **App-level:** `confirm_fill_atomic` BEGIN içinde `SELECT 1 FROM positions WHERE order_intent_id=?` precheck → varsa hiç INSERT denemez.
 - **MONOTONIC GUARD (mevcut):** terminal intent (FILLED/PARTIAL_FILLED) yeniden transition edilemez → tekrar işlemede intent state de değişmez.
 - **Partial fill:** PARTIAL_FILLED terminal; remaining FAK gereği dead; ikinci confirm denemesi (ör. 2c-4 reconcile aynı intent'i görürse) `"DUPLICATE"` döner — partial pozisyon ikiye katlanmaz.
-- Test H5 bu üçlü kilidi partial fill + tekrar confirm ile doğrular.
+- Test H6 bu üçlü kilidi partial fill + tekrar confirm ile doğrular.
 
 ## Task E/F/G regresyon korunması
 
 - Task H yalnız `post_order` **başarılı** (resp döndü) dalını değiştirir; **exception** dalları (Task E timeout, F connection/unknown, G "no orders found") DOKUNULMAZ.
-- H3 wiring eski inline `matched/fill_shares` bloğunu değiştirir ama exception `try/except` yapısı korunur.
-- H5 Step 3 tam suite (E/F/G dahil) yeşil zorunluluğu; G'nin `_handle_fak_no_match` + CANCELLED transition'ı aynen çalışır.
+- H4 wiring eski inline `matched/fill_shares` bloğunu değiştirir ama exception `try/except` yapısı korunur.
+- H6 Step 3 tam suite (E/F/G dahil) yeşil zorunluluğu; G'nin `_handle_fak_no_match` + CANCELLED transition'ı aynen çalışır.
 
 ## main_loop telemetri kaybı olmadan çift yazımın kaldırılması
 
@@ -781,14 +788,14 @@ async def test_repeated_response_processing_no_second_position():
 
 ## TODO / RISK notes (implementation-time)
 
-- **TODO (H4):** `notify_entry` fonksiyon adı bir VARSAYIMDIR. H4 implementasyonuna başlamadan ÖNCE `main_loop.py`'deki gerçek bildirim/telemetri fonksiyonunun adı read-only doğrulanacak (örn. `notify_entry` / `send_telegram` / `notify_restart` deseni); test spy'ı ve kod düzenlemesi doğru ada göre yapılacak.
-- **TODO/RISK (H2b):** Rollback kanıtı testi şu an `aiosqlite.Connection.execute`'i monkeypatch'leyerek `UPDATE order_intents` anında hata enjekte ediyor — bu GENİŞ bir seam (tüm execute çağrılarını sarar, kırılgan). Mümkünse daha DAR ve stabil bir test seam'e indirilecek: ya `confirm_fill_atomic` içinde enjekte edilebilir bir hook, ya sadece UPDATE adımını saran ince bir yardımcı, ya da gerçek bir constraint ihlali (ör. NOT NULL) tetikleyerek INSERT-sonrası rollback'i organik üretmek. Amaç: atomicity invariant'ını implementasyon detayına daha az bağımlı kanıtlamak.
+- **TODO (H5):** `notify_entry` fonksiyon adı bir VARSAYIMDIR. H5 implementasyonuna başlamadan ÖNCE `main_loop.py`'deki gerçek bildirim/telemetri fonksiyonunun adı read-only doğrulanacak (örn. `notify_entry` / `send_telegram` / `notify_restart` deseni); test spy'ı ve kod düzenlemesi doğru ada göre yapılacak.
+- **TODO/RISK (H3b):** Rollback kanıtı testi şu an `aiosqlite.Connection.execute`'i monkeypatch'leyerek `UPDATE order_intents` anında hata enjekte ediyor — bu GENİŞ bir seam (tüm execute çağrılarını sarar, kırılgan). Mümkünse daha DAR ve stabil bir test seam'e indirilecek: ya `confirm_fill_atomic` içinde enjekte edilebilir bir hook, ya sadece UPDATE adımını saran ince bir yardımcı, ya da gerçek bir constraint ihlali (ör. NOT NULL) tetikleyerek INSERT-sonrası rollback'i organik üretmek. Amaç: atomicity invariant'ını implementasyon detayına daha az bağımlı kanıtlamak.
 
 ## Self-review (spec coverage)
-- D1 → H1 (USD-denominated classify) + H3 (spent_usd muhasebe). ✅
-- D2 → H1 (BLOCK_UNKNOWN/RESTING) + H3 (SUBMITTED_UNKNOWN/RECOVERY). ✅
-- D3 → H1 (FILL_COST_MISSING) + H3 (recovery, position yok). ✅
-- D4 → H0 (shares + partial UNIQUE, migration testleri). ✅
-- D5 → H2/H2b (tek-txn, rollback kanıtı) + H4 (main_loop tek kaynak). ✅
-- D6 → H2 (DUPLICATE) + H5 (partial + repeated). ✅
-- Regresyon E/F/G → H5 Step 3. ✅
+- D1 → H2 (USD-denominated classify) + H4 (spent_usd muhasebe). ✅
+- D2 → H2 (BLOCK_UNKNOWN/RESTING) + H4 (SUBMITTED_UNKNOWN/RECOVERY). ✅
+- D3 → H2 (FILL_COST_MISSING) + H4 (recovery, position yok). ✅
+- D4 → H1 (partial UNIQUE index, migration testleri; shares zaten mevcut). ✅
+- D5 → H3/H3b (tek-txn, rollback kanıtı) + H5 (main_loop tek kaynak). ✅
+- D6 → H3 (DUPLICATE) + H6 (partial + repeated). ✅
+- Regresyon E/F/G → H6 Step 3. ✅
