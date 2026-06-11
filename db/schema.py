@@ -468,6 +468,10 @@ _MIGRATIONS = [
     # Live Execution Faz 2c-3 — lineage: position ↔ order_intent bağlantısı
     # 2c-4 reconcile join'i için (positions.order_intent_id ↔ order_intents.order_intent_id).
     "ALTER TABLE positions ADD COLUMN order_intent_id TEXT",
+    # Faz 2c Task H1 — duplicate accounting guard: aynı order_intent_id için ikinci position
+    # YASAK (DB-level). Partial UNIQUE: eski/dry NULL lineage satırlarını DIŞLAR (çakışma yok).
+    "CREATE UNIQUE INDEX IF NOT EXISTS ix_positions_order_intent_id "
+    "ON positions(order_intent_id) WHERE order_intent_id IS NOT NULL",
 ]
 
 
