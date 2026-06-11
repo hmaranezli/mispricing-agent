@@ -6,11 +6,15 @@ YOK, execute() wiring YOK, recovery/emergency_pause çağrısı YOK.
 
 RED turu: fonksiyon stub (`raise NotImplementedError`); GREEN davranışı henüz yazılmadı.
 """
+import sqlite3
 from decimal import Decimal
 
+import aiosqlite
 import pytest
 
-from execution.order_intent import classify_fak_fill as C
+from db.schema import init_schema
+from execution.order_intent import (classify_fak_fill as C, confirm_fill_atomic,
+                                     create_intent, transition)
 
 
 # 1) FULL_FILL — USD bazında: making (harcanan) requested'i karşılıyor → FILLED
@@ -128,3 +132,166 @@ def test_status_normalization_uppercase_equals_lowercase():
     assert up["kind"] == lo["kind"] == "OPEN_FILLED"
     assert up["state"] == lo["state"] == "FILLED"
     assert up == lo, f"case farkı aynı sonucu vermeli: {up} != {lo}"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Task H3 — confirm_fill_atomic RED turu (helper + happy/duplicate/insert-fail/
+# IntegrityError-readback). H3b (UPDATE-after-INSERT rollback) AYRI tasktır, BURADA YOK.
+#
+# Sözleşme: confirm_fill_atomic(db_path, order_intent_id, position_row, terminal_state).
+#   - position_row + terminal_state alır; H2 decision dict'ini DOĞRUDAN almaz.
+#   - classify_fak_fill çağrısı / making/taking/requested_usd hesabı YOK (muhasebe H2'de bitti).
+#   - terminal_state whitelist yalnız FILLED / PARTIAL_FILLED.
+#   - Tüm testler EXPLICIT tmp DB kullanır (gerçek init_schema); canlı DB'ye yazmaz.
+#
+# RED turu: confirm_fill_atomic STUB → NotImplementedError. GREEN davranışı henüz yok.
+# (Aşağıdaki monkeypatch seam'leri GREEN'de tetiklenecek; RED'de stub önce raise eder.)
+# ════════════════════════════════════════════════════════════════════════════
+
+async def _make_db(tmp_path):
+    """Gerçek schema/migration ile kurulmuş per-test tmp DB (canlı DB DEĞİL)."""
+    db = tmp_path / "h3.db"
+    conn = await aiosqlite.connect(str(db))
+    await init_schema(conn)
+    await conn.close()
+    return str(db)
+
+
+def _posrow(oiid, pid="pos-1", **over):
+    """H4 wiring'in kuracağı position_row'un manuel/sabit eşdeğeri (mapping testlenmez)."""
+    row = {"position_id": pid, "opened_at": "2026-06-10T12:00:00+00:00", "slug": "btc-x",
+           "asset": "BTC", "action": "YES", "pm_entry_price": 0.35, "fair_value": 0.55,
+           "ref_price": 95000.0, "edge": 0.2, "position_usd": 25.0, "kelly_f": 0.15,
+           "confidence_score": 82.0, "shares": 71.43, "dry_run": 0, "status": "open",
+           "order_intent_id": oiid, "order_id": "ord"}
+    row.update(over)
+    return row
+
+
+# H3-1) FULL_FILL — position INSERT + order_intents FILLED aynı transaction'da atomik
+@pytest.mark.asyncio
+async def test_confirm_full_fill_writes_position_and_terminal_intent_atomically(tmp_path):
+    db = await _make_db(tmp_path)
+    iid = await create_intent(db, "tok-1", "BUY", 0.36, 25.0, slug="btc-x")
+    await transition(db, iid, "SUBMITTED_UNKNOWN")
+    res = await confirm_fill_atomic(db, iid, _posrow(iid, shares=71.43), "FILLED")
+    assert res == "OPENED"
+    c = sqlite3.connect(db)
+    prow = c.execute("SELECT order_intent_id, shares FROM positions WHERE order_intent_id=?",
+                     (iid,)).fetchone()
+    irow = c.execute("SELECT status FROM order_intents WHERE order_intent_id=?", (iid,)).fetchone()
+    c.close()
+    assert prow == (iid, 71.43), f"position lineage+shares yazılmalı: {prow}"
+    assert irow[0] == "FILLED", f"intent terminal FILLED olmalı: {irow}"
+
+
+# H3-2) PARTIAL_FILL — position INSERT + order_intents PARTIAL_FILLED aynı transaction'da atomik
+@pytest.mark.asyncio
+async def test_confirm_partial_fill_writes_position_and_terminal_intent_atomically(tmp_path):
+    db = await _make_db(tmp_path)
+    iid = await create_intent(db, "tok-1", "BUY", 0.36, 25.0, slug="btc-x")
+    await transition(db, iid, "SUBMITTED_UNKNOWN")
+    res = await confirm_fill_atomic(db, iid, _posrow(iid, shares=40.0, position_usd=14.0),
+                                    "PARTIAL_FILLED")
+    assert res == "OPENED"
+    c = sqlite3.connect(db)
+    prow = c.execute("SELECT order_intent_id, shares FROM positions WHERE order_intent_id=?",
+                     (iid,)).fetchone()
+    irow = c.execute("SELECT status FROM order_intents WHERE order_intent_id=?", (iid,)).fetchone()
+    c.close()
+    assert prow == (iid, 40.0), f"partial position lineage+shares: {prow}"
+    assert irow[0] == "PARTIAL_FILLED", f"intent terminal PARTIAL_FILLED olmalı: {irow}"
+
+
+# H3-3) DUPLICATE — aynı order_intent_id ikinci confirm → app precheck → DUPLICATE no-op
+@pytest.mark.asyncio
+async def test_duplicate_intent_second_confirm_is_noop_readback_proof(tmp_path):
+    db = await _make_db(tmp_path)
+    iid = await create_intent(db, "tok-1", "BUY", 0.36, 25.0, slug="btc-x")
+    await transition(db, iid, "SUBMITTED_UNKNOWN")
+    r1 = await confirm_fill_atomic(db, iid, _posrow(iid, "pos-1"), "FILLED")
+    r2 = await confirm_fill_atomic(db, iid, _posrow(iid, "pos-2"), "FILLED")   # tekrar
+    assert (r1, r2) == ("OPENED", "DUPLICATE"), f"ikinci confirm DUPLICATE olmalı: {(r1, r2)}"
+    c = sqlite3.connect(db)
+    n = c.execute("SELECT COUNT(*) FROM positions WHERE order_intent_id=?", (iid,)).fetchone()[0]
+    c.close()
+    assert n == 1, f"ikinci position AÇILMAMALI (readback proof): {n}"
+
+
+# H3-4) IntegrityError + readback EXISTING → DUPLICATE (precheck'i aşan race simülasyonu)
+@pytest.mark.asyncio
+async def test_integrity_error_readback_existing_duplicate_is_noop(tmp_path, monkeypatch):
+    db = await _make_db(tmp_path)
+    iid = await create_intent(db, "tok-1", "BUY", 0.36, 25.0, slug="btc-x")
+    await transition(db, iid, "SUBMITTED_UNKNOWN")
+    # Zaten yazılmış bir position (başka bir confirm/yarış) → INSERT UNIQUE'e çarpacak.
+    pre = sqlite3.connect(db)
+    pre.execute("INSERT INTO positions (position_id, ts_open, slug, asset, action, status, "
+                "dry_run, order_intent_id) VALUES (?,?,?,?,?,?,?,?)",
+                ("pre-1", "2026-06-10T12:00:00+00:00", "btc-x", "BTC", "YES", "open", 0, iid))
+    pre.commit(); pre.close()
+    # Race penceresi: İLK positions/order_intent_id SELECT'i (precheck) boş döndür → INSERT denenir.
+    # GREEN sözleşmesi: precheck ile readback ayırt edilebilir SELECT'ler olmalı (readback patch'lenmez).
+    real_execute = aiosqlite.Connection.execute
+    seen = {"precheck": False}
+
+    async def _bypass_precheck(self, sql, *a, **k):
+        s = " ".join(str(sql).split()).upper()
+        if (not seen["precheck"] and s.startswith("SELECT")
+                and "POSITIONS" in s and "ORDER_INTENT_ID" in s):
+            seen["precheck"] = True
+            return await real_execute(self, "SELECT 1 WHERE 0")   # precheck hiçbir şey görmez
+        return await real_execute(self, sql, *a, **k)
+
+    monkeypatch.setattr(aiosqlite.Connection, "execute", _bypass_precheck)
+    res = await confirm_fill_atomic(db, iid, _posrow(iid, "pos-2"), "FILLED")
+    assert res == "DUPLICATE", f"IntegrityError+readback-existing → DUPLICATE olmalı: {res}"
+    monkeypatch.undo()
+    c = sqlite3.connect(db)
+    n = c.execute("SELECT COUNT(*) FROM positions WHERE order_intent_id=?", (iid,)).fetchone()[0]
+    c.close()
+    assert n == 1, f"ikinci position yazılmamalı (rollback): {n}"
+
+
+# H3-5) IntegrityError + readback MISSING → SESSİZCE YUTMA; raise + terminalize ETME
+@pytest.mark.asyncio
+async def test_integrity_error_readback_missing_raises_and_does_not_terminalize(tmp_path):
+    db = await _make_db(tmp_path)
+    iid = await create_intent(db, "tok-1", "BUY", 0.36, 25.0, slug="btc-x")
+    await transition(db, iid, "SUBMITTED_UNKNOWN")
+    # asset NOT NULL ihlali → gerçek IntegrityError; aynı iid'li position YOK → readback boş.
+    bad = _posrow(iid, asset=None)
+    with pytest.raises(sqlite3.IntegrityError):
+        await confirm_fill_atomic(db, iid, bad, "FILLED")
+    c = sqlite3.connect(db)
+    n = c.execute("SELECT COUNT(*) FROM positions WHERE order_intent_id=?", (iid,)).fetchone()[0]
+    st = c.execute("SELECT status FROM order_intents WHERE order_intent_id=?", (iid,)).fetchone()[0]
+    c.close()
+    assert n == 0, f"IntegrityError readback-missing → position yazılmamalı: {n}"
+    assert st == "SUBMITTED_UNKNOWN", f"intent terminalize EDİLMEMELİ (fail-safe): {st}"
+
+
+# H3-6) INSERT gerçek fail (OperationalError) → rollback; position yok, intent terminal değil
+@pytest.mark.asyncio
+async def test_insert_fail_rolls_back_no_terminal_intent(tmp_path, monkeypatch):
+    db = await _make_db(tmp_path)
+    iid = await create_intent(db, "tok-1", "BUY", 0.36, 25.0, slug="btc-x")
+    await transition(db, iid, "SUBMITTED_UNKNOWN")
+    real_execute = aiosqlite.Connection.execute
+
+    async def _boom_on_insert(self, sql, *a, **k):
+        s = " ".join(str(sql).split()).upper()
+        if s.startswith("INSERT INTO POSITIONS"):
+            raise sqlite3.OperationalError("disk I/O error")   # gerçek INSERT fault
+        return await real_execute(self, sql, *a, **k)
+
+    monkeypatch.setattr(aiosqlite.Connection, "execute", _boom_on_insert)
+    with pytest.raises(sqlite3.OperationalError):
+        await confirm_fill_atomic(db, iid, _posrow(iid), "FILLED")
+    monkeypatch.undo()
+    c = sqlite3.connect(db)
+    n = c.execute("SELECT COUNT(*) FROM positions WHERE order_intent_id=?", (iid,)).fetchone()[0]
+    st = c.execute("SELECT status FROM order_intents WHERE order_intent_id=?", (iid,)).fetchone()[0]
+    c.close()
+    assert n == 0, f"INSERT fail → rollback, position yok: {n}"
+    assert st == "SUBMITTED_UNKNOWN", f"intent FILLED/PARTIAL_FILLED OLMAMALI (rollback): {st}"

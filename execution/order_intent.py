@@ -9,12 +9,14 @@ Bu yüzden LOCAL idempotency: pre-submit INTENT_CREATED kaydı (DB UNIQUE) + sta
 Heuristic reconciliation (get_trades eşleme) = Faz 2c. Burada alanlar + state base.
 """
 import hashlib
+import sqlite3
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
 import aiosqlite
 
+import config
 from db.logger import DB_FILE
 
 # Faz 2c Task H2 — FAK BUY tamlık eşiği (dust): makingAmount + bu tolerans ≥ requested → FULL.
@@ -107,6 +109,94 @@ def classify_fak_fill(status, taking_amount, making_amount, requested_usd, order
                     spent_usd=making, fill_price=fill_price, reason=None)
     return dict(kind="OPEN_PARTIAL", state="PARTIAL_FILLED", shares=taking,
                 spent_usd=making, fill_price=fill_price, reason=None)
+
+
+async def confirm_fill_atomic(db_path, order_intent_id, position_row: dict,
+                              terminal_state: str) -> str:
+    """Faz 2c Task H3 — position INSERT + order_intents terminal UPDATE'i TEK connection /
+    TEK transaction'da atomik yapar (D5).
+
+    H2 kararını TEKRAR HESAPLAMAZ: making/taking/requested_usd, FILL_DUST_TOLERANCE_USD,
+    fill_price bölmesi YOK. Yalnız verilen `position_row` + `terminal_state` yazılır.
+
+    Idempotency (D6): `BEGIN IMMEDIATE`'den hemen sonra app-level precheck → varsa `"DUPLICATE"`.
+    Düz INSERT (OR IGNORE YOK). Precheck'i aşan IntegrityError'da ROLLBACK + ayrı readback:
+    aynı `order_intent_id` position varsa `"DUPLICATE"`; yoksa/tutarsızsa original IntegrityError
+    re-raise (SESSİZCE YUTMA YOK). Diğer DB fault → ROLLBACK + re-raise. ROLLBACK hatası
+    original exception'ı GÖLGELEMEZ. Başarılı COMMIT sonrası kör ROLLBACK çağrılmaz.
+
+    Döner: `"OPENED"` | `"DUPLICATE"`; DB fail → raise (çağıran recovery'e gider).
+    """
+    # KRİTİK: whitelist validasyonu connection AÇILMADAN ve BEGIN IMMEDIATE kilidi ALINMADAN önce.
+    if terminal_state not in ("FILLED", "PARTIAL_FILLED"):
+        raise ValueError(
+            f"confirm_fill_atomic yalnız FILLED/PARTIAL_FILLED kabul eder: {terminal_state!r}")
+    now = datetime.now(timezone.utc).isoformat()
+    dry_run = 1 if config.DRY_RUN else 0   # repo sözleşmesi: sabit 0 DEĞİL, config'ten türetilir
+
+    async with aiosqlite.connect(str(db_path or DB_FILE)) as conn:
+        await conn.execute("BEGIN IMMEDIATE")
+        # App-level precheck (DB partial UNIQUE index ile çift kilit — D6)
+        cur = await conn.execute(
+            "SELECT 1 FROM positions WHERE order_intent_id=?", (order_intent_id,))
+        if await cur.fetchone():
+            await conn.execute("ROLLBACK")
+            return "DUPLICATE"
+        try:
+            await conn.execute(
+                """INSERT INTO positions
+                       (position_id, ts_open, slug, asset, action, pm_entry_price, fair_value,
+                        ref_price, edge, position_usd, kelly_f, confidence_score, status, dry_run,
+                        shares, order_id, yes_token_id, no_token_id, seq_no, entry_hl_price,
+                        ask_at_decision, slippage_pct, order_intent_id)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+                           (SELECT COALESCE(MAX(seq_no), 0) + 1 FROM positions),?,?,?,?)""",
+                (position_row["position_id"],
+                 position_row.get("opened_at", now),
+                 position_row.get("slug"),
+                 position_row.get("asset"),
+                 position_row.get("action"),
+                 position_row.get("pm_entry_price"),
+                 position_row.get("fair_value"),
+                 position_row.get("ref_price"),
+                 position_row.get("edge"),
+                 position_row.get("position_usd"),
+                 position_row.get("kelly_f"),
+                 position_row.get("confidence_score"),
+                 position_row.get("status", "open"),
+                 dry_run,
+                 position_row.get("shares"),
+                 position_row.get("order_id"),
+                 position_row.get("yes_token_id"),
+                 position_row.get("no_token_id"),
+                 position_row.get("entry_hl_price"),
+                 position_row.get("ask_at_decision"),
+                 position_row.get("slippage_pct"),
+                 order_intent_id))
+            await conn.execute(
+                "UPDATE order_intents SET status=?, size_matched=?, exchange_order_id=?, "
+                "updated_at=? WHERE order_intent_id=?",
+                (terminal_state, position_row.get("shares"), position_row.get("order_id"),
+                 now, order_intent_id))
+            await conn.execute("COMMIT")
+            return "OPENED"
+        except sqlite3.IntegrityError:
+            try:
+                await conn.execute("ROLLBACK")
+            except Exception:
+                pass   # ROLLBACK hatası original IntegrityError'ı GÖLGELEMEZ
+            # Readback: precheck'i aşan IntegrityError gerçek duplicate mı?
+            cur = await conn.execute(
+                "SELECT 1 FROM positions WHERE order_intent_id=?", (order_intent_id,))
+            if await cur.fetchone():
+                return "DUPLICATE"
+            raise   # readback yok/tutarsız → SESSİZCE YUTMA YOK, original re-raise
+        except BaseException:
+            try:
+                await conn.execute("ROLLBACK")
+            except Exception:
+                pass   # ROLLBACK hatası original exception'ı GÖLGELEMEZ
+            raise
 
 
 def make_order_intent_id() -> str:
