@@ -172,28 +172,35 @@ async def resolve_emergency_pause(db_path=None, *, order_intent_id, resolved_by,
                 "(intent=%s observed=%s); pause AKTİF kalır.", order_intent_id, observed)
             return dict(resolved=False, blocked=True, mode="verified",
                         observed_intent_state=observed)
-        # Clear öncesi mevcut emergency_paused (audit old_state)
-        async with conn.execute(
-            "SELECT emergency_paused FROM execution_state WHERE state_key=?",
-            (_STATE_KEY,)) as cur:
-            srow = await cur.fetchone()
-        old_state = srow[0] if srow else 0
         verified_flag = 1 if mode == "verified" else 0
         force_flag = 1 if mode == "force" else 0
-        # Clear + RESOLVE event AYNI transaction (tek commit ile birlikte)
-        await conn.execute(
-            "UPDATE execution_state SET emergency_paused=0, updated_at=? WHERE state_key=?",
+        # Atomik KOŞULLU clear: yalnız gerçek 1→0 geçişinde satır güncellenir (ayrı SELECT→if→UPDATE
+        # race'i YOK). rowcount>0 ⇔ pause gerçekten 1'den 0'a indi → idempotency garantisi.
+        await conn.execute("BEGIN IMMEDIATE")
+        cur = await conn.execute(
+            "UPDATE execution_state SET emergency_paused=0, updated_at=? "
+            "WHERE state_key=? AND emergency_paused=1",
             (now, _STATE_KEY))
-        await conn.execute(
-            """INSERT INTO execution_state_events
-                   (event_type, ts, old_state, new_state, reason, source,
-                    order_intent_id, observed_intent_state, resolved_by, force, verified)
-               VALUES ('RESOLVE', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)""",
-            (now, old_state, reason, f"resolve_{mode}", order_intent_id, observed,
-             resolved_by, force_flag, verified_flag))
-        await conn.commit()
+        transitioned = cur.rowcount > 0
+        if transitioned:
+            # SADECE gerçek 1→0 geçişinde RESOLVE event (old_state=1, new_state=0); aynı transaction.
+            await conn.execute(
+                """INSERT INTO execution_state_events
+                       (event_type, ts, old_state, new_state, reason, source,
+                        order_intent_id, observed_intent_state, resolved_by, force, verified)
+                   VALUES ('RESOLVE', ?, 1, 0, ?, ?, ?, ?, ?, ?, ?)""",
+                (now, reason, f"resolve_{mode}", order_intent_id, observed,
+                 resolved_by, force_flag, verified_flag))
+        await conn.execute("COMMIT")
+    if not transitioned:
+        # Pause zaten clear → idempotent no-op: yeni RESOLVE event YOK, state değişmedi.
+        logger.info(
+            "[emergency_pause] %s-resolve no-op — pause zaten clear (intent=%s); event yazılmadı.",
+            mode, order_intent_id)
+        return dict(resolved=False, already_clear=True, mode=mode,
+                    observed_intent_state=observed)
     logger.critical(
         "[emergency_pause] ✅ %s RESOLVE — pause temizlendi (intent=%s observed=%s "
         "resolved_by=%s reason=%s)", mode.upper(), order_intent_id, observed, resolved_by, reason)
     return dict(resolved=True, mode=mode, verified=bool(verified_flag),
-                observed_intent_state=observed, old_state=old_state)
+                observed_intent_state=observed, old_state=1)

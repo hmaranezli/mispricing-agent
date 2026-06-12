@@ -264,3 +264,69 @@ async def test_missing_intent_fails_closed_in_all_modes():
         assert n_res == 0, f"missing intent'te RESOLVE event YAZILMAMALI: {n_res}"
     finally:
         await conn.close()
+
+
+# ── 7) RED/PIN: already-clear idempotency — pause 0 iken resolve YENİ RESOLVE event yazmamalı ──
+
+@pytest.mark.asyncio
+async def test_resolve_already_clear_is_idempotent_in_all_modes():
+    """RESOLVE event semantiği = 1→0 geçişi. Pause zaten clear (0) ise resolve YENİ event YAZMAZ.
+    Ana kontrat: audit RESOLVE count + emergency_paused state (return value DEĞİL). Hem verified
+    hem force için geçerli."""
+    from execution import order_intent, emergency_pause
+    from execution.emergency_pause import resolve_emergency_pause
+    dbp = await _fresh_tmp_db()
+
+    async def _counts():
+        conn = await aiosqlite.connect(str(dbp))
+        try:
+            paused = (await (await conn.execute(
+                "SELECT emergency_paused FROM execution_state WHERE state_key='global'"
+            )).fetchone())[0]
+            n_res = (await (await conn.execute(
+                "SELECT COUNT(*) FROM execution_state_events WHERE event_type='RESOLVE'"
+            )).fetchone())[0]
+            return paused, n_res
+        finally:
+            await conn.close()
+
+    # Adım 1: verified setup → ilk resolve (1→0)
+    iid = await order_intent.create_intent(str(dbp), "tok-1", "BUY", 0.36, 25.0, slug="btc-x")
+    await order_intent.transition(str(dbp), iid, "CANCELLED")             # terminal
+    await emergency_pause.set_emergency_pause(
+        str(dbp), reason="task_h_recovery_write_failed:X", source="task_h", order_intent_id=iid)
+    await resolve_emergency_pause(
+        str(dbp), order_intent_id=iid, resolved_by="human:hasan",
+        reason="idempotency check", mode="verified")
+    paused, n_res = await _counts()
+    assert paused == 0, f"adım1 emergency_paused=0 olmalı: {paused}"
+    assert n_res == 1, f"adım1 RESOLVE count=1 olmalı: {n_res}"
+
+    # Adım 2: verified idempotency → ikinci çağrı YENİ event yazmamalı (return'e assert YOK)
+    await resolve_emergency_pause(
+        str(dbp), order_intent_id=iid, resolved_by="human:hasan",
+        reason="idempotency check", mode="verified")
+    paused, n_res = await _counts()
+    assert paused == 0, f"adım2 emergency_paused=0 kalmalı: {paused}"
+    assert n_res == 1, f"adım2 verified idempotency: RESOLVE count hâlâ 1 olmalı: {n_res}"
+
+    # Adım 3: force setup → yeni intent, non-terminal recovery, pause tekrar trip → force resolve
+    force_iid = await order_intent.create_intent(str(dbp), "tok-2", "BUY", 0.36, 25.0, slug="btc-y")
+    await order_intent.transition(str(dbp), force_iid, "RECOVERY_REQUIRED")   # non-terminal
+    await emergency_pause.set_emergency_pause(
+        str(dbp), reason="task_h_recovery_write_failed:Y", source="task_h",
+        order_intent_id=force_iid)
+    await resolve_emergency_pause(
+        str(dbp), order_intent_id=force_iid, resolved_by="human:hasan",
+        reason="idempotency check", mode="force")
+    paused, n_res = await _counts()
+    assert paused == 0, f"adım3 emergency_paused=0 olmalı: {paused}"
+    assert n_res == 2, f"adım3 toplam RESOLVE count=2 olmalı: {n_res}"
+
+    # Adım 4: force idempotency → ikinci çağrı YENİ event yazmamalı (return'e assert YOK)
+    await resolve_emergency_pause(
+        str(dbp), order_intent_id=force_iid, resolved_by="human:hasan",
+        reason="idempotency check", mode="force")
+    paused, n_res = await _counts()
+    assert paused == 0, f"adım4 emergency_paused=0 kalmalı: {paused}"
+    assert n_res == 2, f"adım4 force idempotency: toplam RESOLVE count hâlâ 2 olmalı: {n_res}"
