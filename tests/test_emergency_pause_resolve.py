@@ -391,3 +391,60 @@ async def test_resolve_rejects_empty_resolved_by_or_reason_before_clear():
     paused, n_res = await _state()
     assert paused == 1, f"adım3 pause temizlenmemeli: {paused}"
     assert n_res == 0, f"adım3 toplam RESOLVE count hâlâ 0: {n_res}"
+
+
+# ── 9) RED/PIN: audit-failure fail-closed — RESOLVE INSERT patlarsa pause AKTİF kalır (rollback) ──
+
+@pytest.mark.asyncio
+async def test_resolve_audit_insert_failure_keeps_pause_active():
+    """Audit-failure fail-closed: RESOLVE event INSERT'i engine-level trigger ile patlatılırsa,
+    aynı transaction'daki UPDATE emergency_paused=0 ROLLBACK olur → pause AKTİF (1) kalır, RESOLVE
+    event yazılmaz. Audit yazılamıyorsa sistem ÇÖZÜLMÜŞ SAYILMAZ."""
+    from execution import order_intent, emergency_pause
+    from execution.emergency_pause import resolve_emergency_pause
+    dbp = await _fresh_tmp_db()
+    iid = await order_intent.create_intent(str(dbp), "tok-1", "BUY", 0.36, 25.0, slug="btc-x")
+    await order_intent.transition(str(dbp), iid, "CANCELLED")              # terminal
+    await emergency_pause.set_emergency_pause(
+        str(dbp), reason="task_h_recovery_write_failed:X", source="task_h", order_intent_id=iid)
+
+    # Engine-level RESOLVE INSERT failure (monkeypatch DEĞİL; normal — TEMP değil — trigger)
+    setup = await aiosqlite.connect(str(dbp))
+    await setup.execute(
+        "CREATE TRIGGER fail_resolve_event_insert "
+        "BEFORE INSERT ON execution_state_events "
+        "WHEN NEW.event_type = 'RESOLVE' "
+        "BEGIN "
+        "  SELECT RAISE(ABORT, 'Simulated RESOLVE audit insert failure'); "
+        "END")
+    await setup.commit()
+    await setup.close()
+
+    try:
+        with pytest.raises(Exception) as exc:
+            await resolve_emergency_pause(
+                str(dbp), order_intent_id=iid, resolved_by="human:hasan",
+                reason="audit failure test", mode="verified")
+        assert "Simulated RESOLVE audit insert failure" in str(exc.value), \
+            f"trigger kaynaklı audit hatası beklenir: {exc.value!r}"
+    finally:
+        cleanup = await aiosqlite.connect(str(dbp))
+        await cleanup.execute("DROP TRIGGER IF EXISTS fail_resolve_event_insert")
+        await cleanup.commit()
+        await cleanup.close()
+
+    # Cleanup sonrası fail-closed doğrulama: pause AKTİF kalmalı, RESOLVE event yazılmamalı
+    assert await emergency_pause.is_emergency_paused(str(dbp)) is True
+    conn = await aiosqlite.connect(str(dbp))
+    try:
+        paused = (await (await conn.execute(
+            "SELECT emergency_paused FROM execution_state WHERE state_key='global'")).fetchone())[0]
+        n_trip = (await (await conn.execute(
+            "SELECT COUNT(*) FROM execution_state_events WHERE event_type='TRIP'")).fetchone())[0]
+        n_res = (await (await conn.execute(
+            "SELECT COUNT(*) FROM execution_state_events WHERE event_type='RESOLVE'")).fetchone())[0]
+        assert paused == 1, f"pause AKTİF (1) kalmalı (rollback): {paused}"
+        assert n_trip == 1, f"TRIP count 1 olmalı: {n_trip}"
+        assert n_res == 0, f"RESOLVE event YAZILMAMALI (rollback): {n_res}"
+    finally:
+        await conn.close()
