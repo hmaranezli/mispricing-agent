@@ -80,6 +80,7 @@ async def set_emergency_pause(db_path=None, reason=None, source=None,
                 "intent=%s); ilk pause bozulmadı", reason, source, order_intent_id)
             return
         # Trip (False→True veya ilk kayıt): UPSERT — created_at burada sabitlenir.
+        old_state = row[0] if row else 0
         await conn.execute(
             """INSERT INTO execution_state
                    (state_key, emergency_paused, reason, source, order_intent_id,
@@ -90,6 +91,15 @@ async def set_emergency_pause(db_path=None, reason=None, source=None,
                    order_intent_id=excluded.order_intent_id,
                    created_at=excluded.created_at, updated_at=excluded.updated_at""",
             (_STATE_KEY, reason, source, order_intent_id, now, now),
+        )
+        # Append-only audit (Faz 2c-4 Slice D): YALNIZ başarılı 0→1 geçişinde TEK TRIP event.
+        # Idempotent ikinci çağrı yukarıda erken-return ettiği için buraya ulaşmaz → duplicate yok.
+        await conn.execute(
+            """INSERT INTO execution_state_events
+                   (event_type, ts, old_state, new_state, reason, source,
+                    order_intent_id, force, verified)
+               VALUES ('TRIP', ?, ?, 1, ?, ?, ?, 0, 0)""",
+            (now, old_state, reason, source, order_intent_id),
         )
         await conn.commit()
     # SCREAM on death — sessiz kalma.
@@ -119,3 +129,71 @@ async def clear_emergency_pause(db_path=None, cleared_by=None, note=None) -> Non
     logger.critical(
         "[emergency_pause] ✅ MANUEL CLEAR — emergency pause kaldırıldı (cleared_by=%s note=%s)",
         cleared_by, note)
+
+
+async def resolve_emergency_pause(db_path=None, *, order_intent_id, resolved_by, reason,
+                                  mode="verified") -> dict:
+    """Faz 2c-4 Slice D — emergency_pause resolve protokolü (verified + force path).
+
+    Ortak: offending order_intent durumu DB'den okunur ve `observed_intent_state` olarak audit'e
+    korunur. Intent KAYDI YOKSA her iki mode da fail-closed (clear yok, event yok). Clear + RESOLVE
+    event TEK transaction / TEK commit; legacy `clear_emergency_pause` ÇAĞRILMAZ (trip alanını ezmez).
+
+      - mode='verified': intent `order_intent.TERMINAL_STATES`'te ise temizler (verified=1, force=0);
+        terminal değilse fail-closed (clear yok, event yok).
+      - mode='force': intent VARSA terminal önkoşulu BYPASS edilir → operatör override ile temizler
+        (force=1, verified=0). Var-olmayan intent yine fail-closed.
+
+    Kapsam dışı (sonraki RED'ler): already-clear/idempotency, empty resolved_by/reason validation,
+    audit-failure handling.
+    """
+    from execution.order_intent import TERMINAL_STATES   # dinamik (circular import yok)
+    if mode not in ("verified", "force"):
+        raise ValueError(
+            f"resolve_emergency_pause yalnız mode='verified'|'force' destekler: {mode!r}")
+    now = _now()
+    async with aiosqlite.connect(str(db_path or DB_FILE)) as conn:
+        # Offending intent durumu — minimal SELECT (her iki mode için)
+        async with conn.execute(
+            "SELECT status FROM order_intents WHERE order_intent_id=?",
+            (order_intent_id,)) as cur:
+            irow = await cur.fetchone()
+        observed = irow[0] if irow else None
+        # Intent kaydı YOK → her iki mode fail-closed (force bile var-olmayan intent'i bypass etmez)
+        if irow is None:
+            logger.critical(
+                "[emergency_pause] %s-resolve REDDEDİLDİ — offending intent KAYDI YOK "
+                "(intent=%s); pause AKTİF kalır.", mode, order_intent_id)
+            return dict(resolved=False, blocked=True, mode=mode, observed_intent_state=None)
+        # Verified önkoşul: intent terminal değilse fail-closed. Force bu kontrolü BYPASS eder.
+        if mode == "verified" and observed not in TERMINAL_STATES:
+            logger.critical(
+                "[emergency_pause] verified-resolve REDDEDİLDİ — offending intent terminal değil "
+                "(intent=%s observed=%s); pause AKTİF kalır.", order_intent_id, observed)
+            return dict(resolved=False, blocked=True, mode="verified",
+                        observed_intent_state=observed)
+        # Clear öncesi mevcut emergency_paused (audit old_state)
+        async with conn.execute(
+            "SELECT emergency_paused FROM execution_state WHERE state_key=?",
+            (_STATE_KEY,)) as cur:
+            srow = await cur.fetchone()
+        old_state = srow[0] if srow else 0
+        verified_flag = 1 if mode == "verified" else 0
+        force_flag = 1 if mode == "force" else 0
+        # Clear + RESOLVE event AYNI transaction (tek commit ile birlikte)
+        await conn.execute(
+            "UPDATE execution_state SET emergency_paused=0, updated_at=? WHERE state_key=?",
+            (now, _STATE_KEY))
+        await conn.execute(
+            """INSERT INTO execution_state_events
+                   (event_type, ts, old_state, new_state, reason, source,
+                    order_intent_id, observed_intent_state, resolved_by, force, verified)
+               VALUES ('RESOLVE', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)""",
+            (now, old_state, reason, f"resolve_{mode}", order_intent_id, observed,
+             resolved_by, force_flag, verified_flag))
+        await conn.commit()
+    logger.critical(
+        "[emergency_pause] ✅ %s RESOLVE — pause temizlendi (intent=%s observed=%s "
+        "resolved_by=%s reason=%s)", mode.upper(), order_intent_id, observed, resolved_by, reason)
+    return dict(resolved=True, mode=mode, verified=bool(verified_flag),
+                observed_intent_state=observed, old_state=old_state)

@@ -472,6 +472,23 @@ _MIGRATIONS = [
     # YASAK (DB-level). Partial UNIQUE: eski/dry NULL lineage satırlarını DIŞLAR (çakışma yok).
     "CREATE UNIQUE INDEX IF NOT EXISTS ix_positions_order_intent_id "
     "ON positions(order_intent_id) WHERE order_intent_id IS NOT NULL",
+    # Faz 2c-4 Slice D — emergency_pause resolve protokolü: append-only audit log.
+    # Singleton execution_state yalnız güncel flag tutar; her TRIP/RESOLVE olayı buraya
+    # immutable satır olarak eklenir (trip alanları asla ezilmez; çoklu döngü korunur).
+    """CREATE TABLE IF NOT EXISTS execution_state_events (
+        event_id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type            TEXT NOT NULL,
+        ts                    TEXT NOT NULL,
+        old_state             INTEGER,
+        new_state             INTEGER NOT NULL,
+        reason                TEXT,
+        source                TEXT,
+        order_intent_id       TEXT,
+        observed_intent_state TEXT,
+        resolved_by           TEXT,
+        force                 INTEGER NOT NULL DEFAULT 0,
+        verified              INTEGER NOT NULL DEFAULT 0
+    )""",
 ]
 
 
