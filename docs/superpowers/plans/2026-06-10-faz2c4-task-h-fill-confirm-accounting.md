@@ -745,7 +745,7 @@ if position:
 - [x] **Step 4: graphify update + commit** — `graphify update .` → yalnız graphify-out stage.
   - **Kanıt:** graphify update + commit + push **tamam**: commit **`e2cd152`** (origin/master'a pushlandı); graph **4241 nodes / 6594 edges / 313 communities**; **AST-only / no LLM** (manifest `semantic_hash` boş, network çağrısı yok).
 
-- [x] **Step 5: Final closure** — literal `test(...)` commit'i **kullanılmıyor** (H6 Step 1 literal testi `H6_STEP1_ALREADY_COVERED_BY_EXISTING_TESTS` ile yazılmadan kapandı → yeni test commit'i yok). Final adım bir **docs/checkpoint mührü**: `docs(task-h): seal H6 final checkpoint evidence` (regresyon yeşil + graphify mapped). H6 final ilanı insan onayına bağlı.
+- [x] **Step 5: Final closure** — literal `test(...)` commit'i **kullanılmıyor** (H6 Step 1 literal testi `H6_STEP1_ALREADY_COVERED_BY_EXISTING_TESTS` ile yazılmadan kapandı → yeni test commit'i yok). Final adım bir **docs/checkpoint mührü**: `docs(task-h): seal H6 final checkpoint evidence` (regresyon yeşil + graphify mapped). H6 final ilanı insan onayına bağlı. **ACCEPTED (2026-06-11):** H6 accepted with traceability exception recorded — item 1 TRACEABILITY_ACCEPTED (raw historical RED yok, geçmişe dönük üretilemez); items 2–9 PASS via independent LLM verifier + independent adversarial code-review subagent (not Gemini); sealed verifier evidence `docs/superpowers/evidence/2026-06-11-h6-verifier-current-session.txt` @ `11fb9c4`; raw FULL_PASS not claimed.
 
 ---
 

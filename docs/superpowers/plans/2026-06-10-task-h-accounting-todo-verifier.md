@@ -31,7 +31,7 @@ Sanitized engineering spec for Faz 2c Task H (fill-confirm atomic accounting). S
 | **H5** | main_loop double-accounting cleanup | Remove second DB write, preserve telemetry/notify |
 | **H6** | Final verification / checkpoint | Full regression green, graphify update, sealed checkpoint |
 
-> **H6 checkpoint durumu (2026-06-11):** Step 3 regression **green** (curated H6 suite **109 passed**, pollution yok; H4+H5 isolated 58, mainloop 7) + Step 4 graphify **done**, sealed **`e2cd152`** (pushed; 4241 nodes / 6594 edges / 313 communities, AST-only). Step 1 `H6_STEP1_ALREADY_COVERED_BY_EXISTING_TESTS` ile kapandı (`b326f93`). Step 3 regression green + Step 4 graphify done sealed `e2cd152`; H6 final checkpoint evidence captured; code/test unchanged (`bba2aaa..HEAD` `*.py` diff boş; yalnız docs + graphify-out).
+> **H6 checkpoint durumu (2026-06-11):** Step 3 regression **green** (curated H6 suite **109 passed**, pollution yok; H4+H5 isolated 58, mainloop 7) + Step 4 graphify **done**, sealed **`e2cd152`** (pushed; 4241 nodes / 6594 edges / 313 communities, AST-only). Step 1 `H6_STEP1_ALREADY_COVERED_BY_EXISTING_TESTS` ile kapandı (`b326f93`). Step 3 regression green + Step 4 graphify done sealed `e2cd152`; H6 final checkpoint evidence captured; code/test unchanged (`bba2aaa..HEAD` `*.py` diff boş; yalnız docs + graphify-out). **ACCEPTANCE (2026-06-11):** H6 accepted with traceability exception recorded — item 1 TRACEABILITY_ACCEPTED; items 2–9 PASS via independent LLM verifier + independent adversarial code-review subagent (not Gemini); sealed verifier evidence `11fb9c4`; raw FULL_PASS not claimed. See section "B. H6 Final Software Checkpoint — Acceptance".
 
 > **H6 Step 1 — `H6_STEP1_ALREADY_COVERED_BY_EXISTING_TESTS` (2026-06-11):** literal `test_repeated_response_processing_no_second_position` testi **gerekmiyor / yazılmadı.** "Duplicate-on-repeat → ikinci position YOK (D6)" invariant'ı merkezi idempotency guard üzerinden mevcut testlerle kapsanmış: `test_task_h_fill_confirm.py::test_duplicate_intent_second_confirm_is_noop_readback_proof` + `::test_integrity_error_readback_existing_duplicate_is_noop`, `test_execute_intent_wiring.py::test_duplicate_returns_existing_position_id_not_candidate_uuid` (+ H4-9 readback-empty recovery), `test_mainloop_accounting.py::test_mainloop_duplicate_warning_no_append_no_ws_no_write`. `confirm_fill_atomic` duplicate guard, `order_intent_id` precheck ile fill classification'dan ÖNCE çalışır → `FILLED`/`PARTIAL_FILLED` farkı sonucu değiştirmez. Literal test direct-green olur → no-fake-RED disiplinine aykırı. Detay: companion plan H6 Step 1.
 
@@ -48,6 +48,21 @@ Sanitized engineering spec for Faz 2c Task H (fill-confirm atomic accounting). S
 - [ ] Operational guardrail: live `dry_run=0` open positions = **0**.
 - [ ] No running `main_loop` / `watch` / `pytest` background process.
 - [ ] `verification-before-completion` performed — evidence (command output) captured before any success claim.
+
+---
+
+## B. H6 Final Software Checkpoint — Acceptance (2026-06-11)
+
+> Sealed verifier evidence: `docs/superpowers/evidence/2026-06-11-h6-verifier-current-session.txt` @ commit **`11fb9c4`**. Raw FULL_PASS is **not** claimed; accepted with the item-1 traceability exception below.
+
+- [x] **Independent read-only LLM verifier** — fresh-context subagent (same model family, not the implementer's context); re-ran the gating commands read-only instead of trusting prose. Verdict: items 3–9 PASS; items 1–2 BLOCKED at that time.
+  - _Note: 8/9 PASS + item 1 TRACEABILITY_ACCEPTED; raw FULL_PASS iddia edilmiyor; sealed evidence: `11fb9c4`._
+- [x] **Independent adversarial code-review subagent (NOT Gemini)** — item 2 "GREEN minimal / no over-engineering" scope (`git diff 19e5aa5..bba2aaa`). Verdict: PASS — every added production construct traces to a named test; no over-engineering. (No Gemini review was run; this was an independent code-review subagent.)
+  - _Note: No blocker after TRACEABILITY_ACCEPTED decision; independent code-review subagent, not Gemini; sealed evidence: `11fb9c4`._
+- [x] **H6 PASS acceptance + memory update** — item 1 "RED failed for the correct reason" closed by human/architectural decision **TRACEABILITY_ACCEPTED**: raw historical RED output does not exist and cannot be reliably reconstructed; H3b test-first commit (`b8c638a`) + per-task plan "Step 2: Run→FAIL" + H6 no-fake-RED note are accepted as sufficient traceability. The gap is explicitly acknowledged, not papered over.
+  - _Note: H6 accepted with traceability exception recorded; sealed evidence: `11fb9c4`._
+
+> **Net gate:** item 1 = TRACEABILITY_ACCEPTED; items 2–9 = PASS (8/9 PASS). No item FAIL. No fabricated evidence. This is acceptance with a recorded exception — **not** a raw H6_VERIFIER_GATE_FULL_PASS.
 
 ---
 
