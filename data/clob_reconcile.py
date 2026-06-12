@@ -55,6 +55,27 @@ def _find_confirmed_fill(trades, our_order_id):
     return None
 
 
+def _has_any_order_trace(trades, our_order_id) -> bool:
+    """trades.data içinde bizim order_id'mize ait (STATUS'TAN BAĞIMSIZ) herhangi bir trade izi var
+    mı? taker_order_id / maker_orders[].order_id / (fixture-contract v0 desteği) top-level order_id.
+    Bozuk/eksik yapıda EXCEPTION fırlatmaz: None trade/maker güvenle atlanır.
+
+    Güvenli True/False: yalnız NET eşleşmede True; eşleşme yoksa False ("olmayan iz" uydurulmaz).
+    Çağıran (zero-fill cancel evidence) fail-closed kullanır → iz VARSA clean cancel SAYILMAZ.
+    CONFIRMED bunun alt kümesidir; bu guard status'tan bağımsız tüm izleri bloklar.
+    """
+    for tr in (trades or {}).get("data", []) or []:
+        tr = tr or {}
+        if tr.get("taker_order_id") == our_order_id:
+            return True
+        if any((m or {}).get("order_id") == our_order_id
+               for m in (tr.get("maker_orders") or [])):
+            return True
+        if tr.get("order_id") == our_order_id:     # v0 desteği — yalnız order-trace block için
+            return True
+    return False
+
+
 def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
     """Araf intent için dual-oracle kararı (saf, I/O yok). `intent`/`order`/`trades` önceden
     çekilmiş ham dict'ler (client/pagination ayrı katman = sonraki adım).
@@ -94,3 +115,60 @@ def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
     if target > 0 and filled == target:
         return ResolutionResult(state="FILLED")
     return ResolutionResult(state="PARTIAL_FILLED")
+
+
+_CANONICAL_CANCEL_STATUSES = ("CANCELED", "CANCELLED")  # iki yazım da kabul; compare'de tek canonical
+
+
+def _zero_fill_cancel_evidence(intent_order_id, obs):
+    """obs = {"order": {...}, "trades": {...}} tek gözlemini "canonical zero-fill cancel" açısından
+    doğrular. Geçerliyse stabilite kıyası için kanıt tuple'ı döner, değilse None.
+
+    Geçerlilik: order_id eşleşir; status canonical cancel (CANCELED/CANCELLED); size_matched
+    Decimal("0"); trades.next_cursor == "LTE=" (scan complete); order_id'mizle CONFIRMED trade YOK.
+    Saf — I/O yok. associate_trades dolu olması TEK BAŞINA fail değildir (CONFIRMED yokluğu esas).
+    """
+    order = (obs or {}).get("order") or {}
+    trades = (obs or {}).get("trades") or {}
+    if order.get("order_id") != intent_order_id:
+        return None
+    if _norm_status(order.get("status")) not in _CANONICAL_CANCEL_STATUSES:
+        return None
+    try:
+        size_matched = Decimal(str(order.get("size_matched")))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    if size_matched != Decimal("0"):
+        return None
+    if trades.get("next_cursor") != "LTE=":
+        return None
+    # Bizim order_id'mize ait HERHANGİ trade izi (status'tan bağımsız: unconfirmed dahil) varsa
+    # clean zero-fill cancel SAYILMAZ — pending iz fill'e dönüşebilir (CONFIRMED bunun alt kümesi).
+    if _has_any_order_trace(trades, intent_order_id):
+        return None
+    # CANCELED/CANCELLED tek canonical'a indirgenir → yazım farkı instabilite SAYILMAZ
+    return (intent_order_id, "CANCELED", size_matched, "LTE=", True)
+
+
+def decide_zero_fill_cancel_with_stability(intent, first_obs, second_obs) -> ResolutionResult:
+    """Zero-fill cancel için eventual-consistency guard'lı saf karar (I/O yok). İKİ bağımsız gözlem
+    (driver tarafından zaman aralığıyla çekilmiş) açık input olarak taşınır — gizli state/saat YOK.
+
+    CANCELLED yalnız İKİ gözlem de canonical zero-fill cancel iken VE birbirleriyle stabil
+    (özdeş kanıt) iken döner. Aksi halde fail-closed RECOVERY_REQUIRED. Position/fill accounting
+    YAPMAZ — yalnız order_intent state kararı (zero-fill = dolan yok = muhasebe yok).
+    """
+    if second_obs is None:
+        return ResolutionResult(state="RECOVERY_REQUIRED")     # tek gözlem → terminal yok
+    intent_order_id = intent.get("order_id")
+    if not intent_order_id:
+        return ResolutionResult(state="RECOVERY_REQUIRED")
+
+    ev1 = _zero_fill_cancel_evidence(intent_order_id, first_obs)
+    ev2 = _zero_fill_cancel_evidence(intent_order_id, second_obs)
+    if ev1 is None or ev2 is None:
+        return ResolutionResult(state="RECOVERY_REQUIRED")     # biri canonical değil → fail-closed
+    if ev1 != ev2:
+        return ResolutionResult(state="RECOVERY_REQUIRED")     # instabilite → fail-closed
+
+    return ResolutionResult(state="CANCELLED")

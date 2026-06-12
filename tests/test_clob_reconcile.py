@@ -172,3 +172,189 @@ def test_zero_fill_cancel_requires_stable_second_observation():
     # Beklenen: non-terminal / fail-closed
     assert state in {"RECOVERY_REQUIRED", "NO_EVIDENCE", "WAIT", "SUBMITTED_UNKNOWN"}, \
         f"non-terminal/fail-closed beklenir: {state}"
+
+
+# ── 4) RED: stable second observation zero-fill → CANCELLED (ayrı saf stability helper) ──
+
+def test_stable_second_zero_fill_cancel_returns_cancelled():
+    from data.clob_reconcile import decide_zero_fill_cancel_with_stability
+
+    intent = {
+        "order_id": "zero_fill_order_1",
+        "side": "BUY",
+        "original_size": "10",
+    }
+
+    first_obs = {
+        "order": {
+            "order_id": "zero_fill_order_1",
+            "status": "ORDER_STATUS_CANCELED",
+            "original_size": "10",
+            "size_matched": "0",
+            "associate_trades": [],
+        },
+        "trades": {
+            "next_cursor": "LTE=",
+            "data": [],
+        },
+    }
+
+    second_obs = {
+        "order": {
+            "order_id": "zero_fill_order_1",
+            "status": "ORDER_STATUS_CANCELED",
+            "original_size": "10",
+            "size_matched": "0",
+            "associate_trades": [],
+        },
+        "trades": {
+            "next_cursor": "LTE=",
+            "data": [],
+        },
+    }
+
+    # Deep identity check to prevent object alias leakage
+    assert second_obs is not first_obs
+    assert second_obs["order"] is not first_obs["order"]
+    assert second_obs["trades"] is not first_obs["trades"]
+
+    result = decide_zero_fill_cancel_with_stability(
+        intent=intent,
+        first_obs=first_obs,
+        second_obs=second_obs,
+    )
+
+    assert result.state == "CANCELLED"
+
+
+# ── 5) Fail-closed safety matrix: stability helper tehlikeli durumda CANCELLED DÖNMEZ ──
+
+def _zfc_obs(order_id="zero_fill_order_1", status="ORDER_STATUS_CANCELED",
+             size_matched="0", next_cursor="LTE=", data=None):
+    """Her çağrıda YENİ canonical zero-fill-cancel observation literal'i döner (alias yok).
+    data verilmezse boş yeni liste; verilirse aynen kullanılır (çağıran fresh liste geçmeli)."""
+    return {
+        "order": {
+            "order_id": order_id,
+            "status": status,
+            "original_size": "10",
+            "size_matched": size_matched,
+            "associate_trades": [],
+        },
+        "trades": {
+            "next_cursor": next_cursor,
+            "data": [] if data is None else data,
+        },
+    }
+
+
+def test_stable_zero_fill_cancel_blocks_unconfirmed_trade_trace():
+    """İki gözlem zero-fill cancel gibi görünse de, bizim order_id'mize ait UNCONFIRMED
+    (MATCHED/MINED) trade izi varsa CANCELLED yazılamaz — iz fill'e dönüşebilir (fail-closed)."""
+    from data.clob_reconcile import decide_zero_fill_cancel_with_stability
+
+    intent = {"order_id": "zero_fill_order_1", "side": "BUY", "original_size": "10"}
+
+    # İki obs ayrı literal (inner trade dict'leri de ayrı) — alias yok
+    first_obs = {
+        "order": {"order_id": "zero_fill_order_1", "status": "ORDER_STATUS_CANCELED",
+                  "original_size": "10", "size_matched": "0", "associate_trades": []},
+        "trades": {"next_cursor": "LTE=", "data": [
+            {"id": "trade_pending_a", "status": "TRADE_STATUS_MATCHED",
+             "taker_order_id": "zero_fill_order_1", "maker_orders": [],
+             "size": "10", "price": "0.36", "side": "BUY"},
+        ]},
+    }
+    second_obs = {
+        "order": {"order_id": "zero_fill_order_1", "status": "ORDER_STATUS_CANCELED",
+                  "original_size": "10", "size_matched": "0", "associate_trades": []},
+        "trades": {"next_cursor": "LTE=", "data": [
+            {"id": "trade_pending_a", "status": "TRADE_STATUS_MINED",
+             "taker_order_id": "zero_fill_order_1", "maker_orders": [],
+             "size": "10", "price": "0.36", "side": "BUY"},
+        ]},
+    }
+    assert second_obs is not first_obs and second_obs["trades"] is not first_obs["trades"]
+
+    result = decide_zero_fill_cancel_with_stability(
+        intent=intent, first_obs=first_obs, second_obs=second_obs)
+    assert result.state != "CANCELLED", \
+        f"unconfirmed trade izi varken CANCELLED yazılmamalı: {result.state}"
+    assert result.state == "RECOVERY_REQUIRED", f"fail-closed beklenir: {result.state}"
+
+
+def test_stable_zero_fill_cancel_requires_complete_scan():
+    """Herhangi gözlemde next_cursor != 'LTE=' (scan eksik) → CANCELLED yazılamaz."""
+    from data.clob_reconcile import decide_zero_fill_cancel_with_stability
+
+    intent = {"order_id": "zero_fill_order_1", "side": "BUY", "original_size": "10"}
+    first_obs = _zfc_obs()                              # tam scan (LTE=)
+    second_obs = _zfc_obs(next_cursor="MORE_PAGES")     # scan eksik
+    assert second_obs is not first_obs
+
+    result = decide_zero_fill_cancel_with_stability(
+        intent=intent, first_obs=first_obs, second_obs=second_obs)
+    assert result.state != "CANCELLED", \
+        f"eksik scan'de CANCELLED yazılmamalı: {result.state}"
+
+
+def test_stable_zero_fill_cancel_blocks_size_matched_positive():
+    """Herhangi gözlemde size_matched > 0 → zero-fill değil → CANCELLED yazılamaz."""
+    from data.clob_reconcile import decide_zero_fill_cancel_with_stability
+
+    intent = {"order_id": "zero_fill_order_1", "side": "BUY", "original_size": "10"}
+    first_obs = _zfc_obs(size_matched="0")
+    second_obs = _zfc_obs(size_matched="1")            # pozitif fill → zero-fill değil
+    assert second_obs is not first_obs
+
+    result = decide_zero_fill_cancel_with_stability(
+        intent=intent, first_obs=first_obs, second_obs=second_obs)
+    assert result.state != "CANCELLED", \
+        f"size_matched>0 iken CANCELLED yazılmamalı: {result.state}"
+
+
+def test_stable_zero_fill_cancel_blocks_observation_mismatch():
+    """İki gözlem canonical alanlarda uyuşmuyorsa (second LIVE) → instabilite → CANCELLED yok."""
+    from data.clob_reconcile import decide_zero_fill_cancel_with_stability
+
+    intent = {"order_id": "zero_fill_order_1", "side": "BUY", "original_size": "10"}
+    first_obs = _zfc_obs(status="ORDER_STATUS_CANCELED")
+    second_obs = _zfc_obs(status="ORDER_STATUS_LIVE")  # canonical cancel değil → instabil
+    assert second_obs is not first_obs
+
+    result = decide_zero_fill_cancel_with_stability(
+        intent=intent, first_obs=first_obs, second_obs=second_obs)
+    assert result.state != "CANCELLED", \
+        f"gözlem uyuşmazlığında CANCELLED yazılmamalı: {result.state}"
+
+
+def test_stable_zero_fill_cancel_blocks_order_id_mismatch():
+    """second_obs order_id farklı (bizim order'ımıza ait değil) → CANCELLED yazılamaz."""
+    from data.clob_reconcile import decide_zero_fill_cancel_with_stability
+
+    intent = {"order_id": "zero_fill_order_1", "side": "BUY", "original_size": "10"}
+    first_obs = _zfc_obs(order_id="zero_fill_order_1")
+    second_obs = _zfc_obs(order_id="some_other_order")
+    assert second_obs is not first_obs
+
+    result = decide_zero_fill_cancel_with_stability(
+        intent=intent, first_obs=first_obs, second_obs=second_obs)
+    assert result.state != "CANCELLED", \
+        f"order_id mismatch'te CANCELLED yazılmamalı: {result.state}"
+
+
+def test_stable_zero_fill_cancel_invalid_numeric_fails_closed():
+    """size_matched parse edilemezse exception FIRLAMAMALI; fail-closed non-terminal dönmeli."""
+    from data.clob_reconcile import decide_zero_fill_cancel_with_stability
+
+    intent = {"order_id": "zero_fill_order_1", "side": "BUY", "original_size": "10"}
+    first_obs = _zfc_obs(size_matched="not-a-number")
+    second_obs = _zfc_obs(size_matched="0")
+    assert second_obs is not first_obs
+
+    # Exception yakalanıp success sayılmaz; fırlarsa pytest doğal olarak fail eder (doğru RED)
+    result = decide_zero_fill_cancel_with_stability(
+        intent=intent, first_obs=first_obs, second_obs=second_obs)
+    assert result.state != "CANCELLED", \
+        f"parse edilemeyen numeric'te CANCELLED yazılmamalı: {result.state}"
+    assert result.state == "RECOVERY_REQUIRED", f"fail-closed beklenir: {result.state}"
