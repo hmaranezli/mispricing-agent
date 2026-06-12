@@ -151,6 +151,11 @@ async def resolve_emergency_pause(db_path=None, *, order_intent_id, resolved_by,
     if mode not in ("verified", "force"):
         raise ValueError(
             f"resolve_emergency_pause yalnız mode='verified'|'force' destekler: {mode!r}")
+    # API contract (DB bağlantısı/clear ÖNCESİ): resolved_by ve reason boş/whitespace olamaz.
+    # Sessiz False değil → açık ValueError (hem verified hem force). Değer trim'lenmez, korunur.
+    for _field_name, _value in (("resolved_by", resolved_by), ("reason", reason)):
+        if not isinstance(_value, str) or not _value.strip():
+            raise ValueError(f"Invalid {_field_name}: must be a non-empty string")
     now = _now()
     async with aiosqlite.connect(str(db_path or DB_FILE)) as conn:
         # Offending intent durumu — minimal SELECT (her iki mode için)
