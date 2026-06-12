@@ -130,3 +130,45 @@ def test_maker_order_confirmed_fill_uses_maker_slot_side():
     assert state in {"FILLED", "PARTIAL_FILLED"}, \
         f"maker-side CONFIRMED fill terminal olmalı: {state}"
     assert state == "FILLED", f"tam maker fill (10/10) FILLED beklenir: {state}"
+
+
+# ── 3) PIN: zero-fill cancel → tek gözlemde CANCELLED yazma (eventual-consistency guard) ──
+
+def test_zero_fill_cancel_requires_stable_second_observation():
+    """get_order CANCELED + size_matched==0 + flawless scan (next_cursor=LTE=, data=[]) + CONFIRMED
+    trade YOK olsa bile, bu İLK/TEK gözlemse sistem hemen CANCELLED terminal YAZMAMALI. get_order ile
+    get_trades atomik değil → eventual consistency: CANCELLED için ikinci stabil gözlem gerekir.
+    Mevcut kod CONFIRMED kanıtı olmadan terminal yazmıyor → bu invariant PIN ile kilitlenir.
+    (Saf imza korunur: decide_araf_resolution(intent, order, trades); time/retry mock YOK.)
+    """
+    from data.clob_reconcile import decide_araf_resolution
+
+    intent = {
+        "order_intent_id": "iid-zero-1",
+        "market_token_id": "tok-zero",
+        "side": "BUY",
+        "intended_size": "10",
+        "exchange_order_id": "zero_fill_order_1",
+    }
+
+    order = {
+        "status": "ORDER_STATUS_CANCELED",
+        "original_size": "10",
+        "size_matched": "0",
+        "associate_trades": [],
+    }
+
+    trades = {
+        "next_cursor": "LTE=",     # tarama TAM
+        "data": [],                # CONFIRMED trade KESİNLİKLE yok
+    }
+
+    result = decide_araf_resolution(intent=intent, order=order, trades=trades)
+    state = result["state"] if isinstance(result, dict) else getattr(result, "state")
+
+    # Tek gözlemde terminal (özellikle CANCELLED) YAZILMAMALI
+    assert state not in {"CANCELLED", "FILLED", "PARTIAL_FILLED"}, \
+        f"tek gözlemde terminal yazılmamalı (eventual-consistency): {state}"
+    # Beklenen: non-terminal / fail-closed
+    assert state in {"RECOVERY_REQUIRED", "NO_EVIDENCE", "WAIT", "SUBMITTED_UNKNOWN"}, \
+        f"non-terminal/fail-closed beklenir: {state}"
