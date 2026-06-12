@@ -168,3 +168,54 @@ breakdown (dry_run, status, count):
     (1, 'open', 3)
 positions_total = 1363
 ================================================================
+
+================================================================
+## VERIFIER VERDICTS (appended 2026-06-11)
+## Independent read-only review. HEAD at append time: see git below.
+================================================================
+
+### A. INDEPENDENT VERIFIER (fresh-context subagent, same model family; re-ran commands read-only)
+[1] BLOCKED_NEEDS_EVIDENCE — no raw historical RED output captured; checklist concedes it.
+[2] BLOCKED_NEEDS_EVIDENCE — no independent code-review attestation at time of review.
+[3] PASS — re-ran curated suite 109 passed RC=0; E/F/G present:
+      test_execute_intent_wiring.py:459 (timeout->SUBMITTED_UNKNOWN),
+      :528 (unknown submit errors->SUBMITTED_UNKNOWN), :593 (no-match->CANCELLED).
+[4] PASS — 8-file curated suite 109 passed in 30.75s RC=0; test_mainloop_accounting.py 7 passed RC=0.
+[5] PASS — git diff --name-only 19e5aa5 HEAD -- config.py order_pricing.py emergency_pause.py => empty.
+[6] PASS — git status --short => only 4 known untracked artefacts.
+[7] PASS — sqlite mode=ro: LIVE_OPEN_DRYRUN0_POSITIONS = 0.
+[8] PASS — ps aux: no main_loop/watch/pytest (only watchdogd, unattended-upgrade).
+[9] PASS — artifact ef6bd93 contains captured raw output + UTC timestamp before seal.
+INDEPENDENT VERIFIER OVERALL: BLOCKED_NEEDS_EVIDENCE (items [1],[2] open at that time).
+
+### B. ITEM 2 CODE-REVIEW ATTESTATION (independent fresh-context subagent; scope git diff 19e5aa5..bba2aaa)
+ITEM 2 VERDICT: PASS
+Justification: every added production construct in the H4+H5 diff traces to a dedicated named
+test (envelope contract H4-1/8/9, slippage helper H4-13s/a/b, telemetry-missing H4-5/NaN,
+POSITION_ROW_BUILD_FAILED H4-7, DB_INCONSISTENCY H4-9). Broader than the plan's literal H4
+sketch but not broader than its tests; helpers single-purpose, no unused params, no speculative
+branches, no dead code. Over-engineering: none.
+Findings:
+- clob_executor.py:51-71 (_compute_slippage) + TELEMETRY_DATA_MISSING/NaN-Inf path (~470-505):
+  test-required (H4-13s/a/b, H4-5, NaN/Inf "amendment 3"), not over-engineering.
+- main_loop.py:243-271 (H5): necessary consumer of the H4 envelope contract, covered by
+  test_mainloop_accounting.py; not scope creep.
+- Otherwise: none.
+
+### C. ITEM 1 — HUMAN / ARCHITECTURAL DECISION: TRACEABILITY_ACCEPTED (2026-06-11)
+Decision: accept item [1] "RED failed for the correct reason" on a TRACEABILITY basis.
+Rationale:
+  - Raw historical RED output does not exist and cannot be reliably reconstructed retroactively
+    (code is now green).
+  - Traceability is considered sufficient: H3b is a dedicated test-first commit (b8c638a);
+    the plan defines per-task "Step 2: Run -> FAIL"; H6 Step 1 documents the deliberate
+    no-fake-RED decision (H6_STEP1_ALREADY_COVERED).
+  - This decision does NOT pretend historical RED evidence exists; it explicitly accepts the gap.
+ITEM 1 STATUS: TRACEABILITY_ACCEPTED (not "PROVEN by raw output").
+
+### D. RESULTING H6 VERIFIER GATE STATUS
+  [1] TRACEABILITY_ACCEPTED (human decision; raw RED gap explicitly acknowledged)
+  [2] PASS (independent code-review attestation, section B)
+  [3]-[9] PASS (independent verifier re-run, section A)
+Net: 8/9 PASS + item [1] TRACEABILITY_ACCEPTED. No item FAIL. No fabricated evidence.
+================================================================
