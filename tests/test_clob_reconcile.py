@@ -358,3 +358,61 @@ def test_stable_zero_fill_cancel_invalid_numeric_fails_closed():
     assert result.state != "CANCELLED", \
         f"parse edilemeyen numeric'te CANCELLED yazılmamalı: {result.state}"
     assert result.state == "RECOVERY_REQUIRED", f"fail-closed beklenir: {result.state}"
+
+
+# ── 6) RED: taker-side CONFIRMED full fill → Decimal accounting evidence (state'ten fazlası) ──
+
+def test_taker_confirmed_full_fill_returns_decimal_accounting_evidence():
+    """Taker-side CONFIRMED full fill: result yalnız state='FILLED' değil, Decimal accounting
+    evidence de taşımalı (matched_size/avg_price/fee_rate_bps/matched_trade_ids/accounting_source).
+    Kanıt order.status'tan DEĞİL, CONFIRMED trade evidence'tan gelir. Tek trade; VWAP/multi-trade,
+    maker-side accounting, partial/residual-live, idempotent DB accounting bu testin DIŞINDA.
+    """
+    from decimal import Decimal
+    from data.clob_reconcile import decide_araf_resolution
+
+    # NOT: exchange_order_id, mevcut decide_araf_resolution contract bridge'idir (fonksiyon
+    # intent["exchange_order_id"] okuyor). order_id↔exchange_order_id standardizasyonu AYRI
+    # RED/refactor konusu; bu testte production contract'a dokunmadan köprü kuruyoruz.
+    intent = {
+        "order_id": "full_fill_order_1",
+        "exchange_order_id": "full_fill_order_1",
+        "side": "BUY",
+        "original_size": "10",
+    }
+
+    order = {
+        "order_id": "full_fill_order_1",
+        "status": "ORDER_STATUS_MATCHED",
+        "original_size": "10",
+        "size_matched": "10",
+    }
+
+    # NOT: trade.side, mevcut decide_araf_resolution taker-side direction validation contract'ıdır
+    # (taker fill'de yön top-level side ile doğrulanır). Gerçek API alan adları canlı sample ile
+    # ayrıca doğrulanacak (fixture-contract v0 varsayımı).
+    trades = {
+        "next_cursor": "LTE=",
+        "data": [
+            {
+                "id": "trade_full_1",
+                "taker_order_id": "full_fill_order_1",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "side": "BUY",
+                "size": "10",
+                "price": "0.52",
+                "fee_rate_bps": "10",
+            },
+        ],
+    }
+
+    result = decide_araf_resolution(intent=intent, order=order, trades=trades)
+
+    assert result.state == "FILLED", f"taker CONFIRMED full fill FILLED olmalı: {result.state}"
+    assert result.matched_size == Decimal("10"), f"matched_size Decimal: {result.matched_size!r}"
+    assert result.avg_price == Decimal("0.52"), f"avg_price Decimal: {result.avg_price!r}"
+    assert result.fee_rate_bps == Decimal("10"), f"fee_rate_bps Decimal (evidence): {result.fee_rate_bps!r}"
+    assert result.matched_trade_ids == ("trade_full_1",), \
+        f"matched_trade_ids tuple: {result.matched_trade_ids!r}"
+    assert result.accounting_source == "CONFIRMED_TRADE", \
+        f"accounting_source: {result.accounting_source!r}"

@@ -15,8 +15,19 @@ from decimal import Decimal, InvalidOperation
 @dataclass(frozen=True)
 class ResolutionResult:
     """Araf-intent reconcile kararı. `state` non-terminal (fail-closed) veya CONFIRMED kanıtıyla
-    terminal (FILLED/PARTIAL_FILLED) olabilir. Price/fee tam muhasebesi sonraki TDD adımlarında."""
+    terminal (FILLED/PARTIAL_FILLED) olabilir.
+
+    Accounting evidence alanları (opsiyonel, geriye uyumlu — non-fill state'lerde None):
+      - matched_size / avg_price / fee_rate_bps: Decimal (float yok). fee_rate_bps EVIDENCE'tir,
+        fee AMOUNT değil (amount formülü canlı contract netleşince ayrı RED).
+      - matched_trade_ids: dedupe için kanıt (driver/DB sorumluluğu); accounting_source kaynak işareti.
+    """
     state: str
+    matched_size: Decimal | None = None
+    avg_price: Decimal | None = None
+    fee_rate_bps: Decimal | None = None
+    matched_trade_ids: tuple | None = None
+    accounting_source: str | None = None
 
 
 def _norm_status(raw) -> str:
@@ -76,6 +87,37 @@ def _has_any_order_trace(trades, our_order_id) -> bool:
     return False
 
 
+def _extract_taker_accounting_evidence(trades, our_order_id):
+    """Tek CONFIRMED TAKER trade için accounting evidence (top-level alanlar) → dict, yoksa None.
+    KAPSAM: yalnız taker-side, tek trade. Maker-side / multi-trade / VWAP DAHİL DEĞİL (sonraki RED).
+    Saf — I/O yok. size/price Decimal zorunlu (parse fail → None); fee_rate_bps opsiyonel Decimal
+    (yok/parse fail → None, evidence düşmez). fee AMOUNT hesaplanmaz, yalnız rate evidence taşınır."""
+    for tr in (trades or {}).get("data", []) or []:
+        tr = tr or {}
+        if _norm_status(tr.get("status")) != "CONFIRMED":
+            continue
+        if tr.get("taker_order_id") != our_order_id:
+            continue
+        try:
+            matched_size = Decimal(str(tr.get("size")))
+            avg_price = Decimal(str(tr.get("price")))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+        fee_raw = tr.get("fee_rate_bps")
+        try:
+            fee_rate_bps = None if fee_raw is None else Decimal(str(fee_raw))
+        except (InvalidOperation, TypeError, ValueError):
+            fee_rate_bps = None
+        return {
+            "matched_size": matched_size,
+            "avg_price": avg_price,
+            "fee_rate_bps": fee_rate_bps,
+            "matched_trade_ids": (str(tr.get("id")),),
+            "accounting_source": "CONFIRMED_TRADE",
+        }
+    return None
+
+
 def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
     """Araf intent için dual-oracle kararı (saf, I/O yok). `intent`/`order`/`trades` önceden
     çekilmiş ham dict'ler (client/pagination ayrı katman = sonraki adım).
@@ -113,6 +155,18 @@ def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
     if filled <= 0:
         return ResolutionResult(state="RECOVERY_REQUIRED")
     if target > 0 and filled == target:
+        # Taker full fill → Decimal accounting evidence ekle. Maker-side/evidence yoksa alanlar None
+        # kalır (maker-side accounting sonraki RED; mevcut maker state davranışı bozulmaz).
+        ev = _extract_taker_accounting_evidence(trades, our_order_id)
+        if ev is not None:
+            return ResolutionResult(
+                state="FILLED",
+                matched_size=ev["matched_size"],
+                avg_price=ev["avg_price"],
+                fee_rate_bps=ev["fee_rate_bps"],
+                matched_trade_ids=ev["matched_trade_ids"],
+                accounting_source=ev["accounting_source"],
+            )
         return ResolutionResult(state="FILLED")
     return ResolutionResult(state="PARTIAL_FILLED")
 
