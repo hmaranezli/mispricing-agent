@@ -416,3 +416,79 @@ def test_taker_confirmed_full_fill_returns_decimal_accounting_evidence():
         f"matched_trade_ids tuple: {result.matched_trade_ids!r}"
     assert result.accounting_source == "CONFIRMED_TRADE", \
         f"accounting_source: {result.accounting_source!r}"
+
+
+# ── 7) RED: maker-side CONFIRMED full fill → Decimal accounting evidence maker SLOT'tan ──
+
+def test_maker_confirmed_full_fill_returns_decimal_accounting_evidence():
+    """Maker-side CONFIRMED full fill: state='FILLED' KALIR (mevcut davranış), ama accounting
+    evidence top-level trade alanlarından DEĞİL, bizim order_id ile eşleşen `maker_orders[]`
+    slot'undan gelmeli. Top-level side/size/price/fee_rate_bps bilerek POISON (yanıltıcı) —
+    test, sonucun maker slot'tan geldiğini ve top-level'ı KÖR kullanmadığını ispatlar.
+    Tek maker trade; VWAP/multi-trade, partial/residual-live, idempotent DB accounting DIŞINDA.
+    """
+    from decimal import Decimal
+    from data.clob_reconcile import decide_araf_resolution
+
+    our_id = "our_maker_order_1"
+
+    intent = {
+        "order_id": our_id,
+        "exchange_order_id": our_id,     # decide_araf_resolution contract bridge
+        "side": "BUY",
+        "intended_size": "10",
+    }
+
+    order = {
+        "status": "ORDER_STATUS_MATCHED",
+        "original_size": "10",
+        "size_matched": "10",
+    }
+
+    # Tek CONFIRMED trade: top-level alanlar POISON (bizim emrimize ait değil), bizim slot
+    # YALNIZ maker_orders[] içinde ve doğru değerlerle. taker_order_id bilerek bizim DEĞİL
+    # → taker extractor'a sızmaz; tek doğru kaynak maker slot.
+    trades = {
+        "next_cursor": "LTE=",
+        "data": [
+            {
+                "id": "trade_confirmed_maker_1",
+                "status": "TRADE_STATUS_CONFIRMED",
+                # ── top-level POISON (kör kullanılmamalı) ──
+                "taker_order_id": "someone_else_taker_order",
+                "side": "SELL",
+                "size": "99",
+                "price": "0.99",
+                "fee_rate_bps": "999",
+                # ── bizim slot (tek doğru accounting kaynağı) ──
+                "maker_orders": [
+                    {
+                        "order_id": our_id,
+                        "side": "BUY",
+                        "matched_amount": "10",
+                        "price": "0.52",
+                        "fee_rate_bps": "10",
+                    },
+                ],
+            },
+        ],
+    }
+
+    result = decide_araf_resolution(intent=intent, order=order, trades=trades)
+
+    assert result.state == "FILLED", f"maker CONFIRMED full fill FILLED olmalı: {result.state}"
+    assert result.matched_size == Decimal("10"), \
+        f"matched_size maker slot matched_amount: {result.matched_size!r}"
+    assert result.avg_price == Decimal("0.52"), \
+        f"avg_price maker slot price: {result.avg_price!r}"
+    assert result.fee_rate_bps == Decimal("10"), \
+        f"fee_rate_bps maker slot (evidence): {result.fee_rate_bps!r}"
+    assert result.matched_trade_ids == ("trade_confirmed_maker_1",), \
+        f"matched_trade_ids trade-level id: {result.matched_trade_ids!r}"
+    assert result.accounting_source == "CONFIRMED_TRADE", \
+        f"accounting_source: {result.accounting_source!r}"
+
+    # ── poison-pill regression guard: kaynak top-level DEĞİL, maker slot ──
+    assert result.matched_size != Decimal("99"), "top-level size POISON sızdı"
+    assert result.avg_price != Decimal("0.99"), "top-level price POISON sızdı"
+    assert result.fee_rate_bps != Decimal("999"), "top-level fee_rate_bps POISON sızdı"

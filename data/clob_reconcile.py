@@ -118,6 +118,41 @@ def _extract_taker_accounting_evidence(trades, our_order_id):
     return None
 
 
+def _extract_maker_accounting_evidence(trades, our_order_id):
+    """Tek CONFIRMED trade'in bizim order_id'mizle eşleşen maker_orders[] SLOT'undan accounting
+    evidence (nested maker alanları) → dict, yoksa None. KAPSAM: yalnız maker-side, tek slot.
+    Multi-trade / aynı trade'de birden fazla bizim maker slot / VWAP DAHİL DEĞİL (sonraki RED).
+    Saf — I/O yok. matched_amount/price Decimal zorunlu (parse fail → None); fee_rate_bps opsiyonel
+    Decimal (yok/parse fail → None, evidence düşmez). Top-level trade size/price/fee/side KÖR
+    KULLANILMAZ — kaynak yalnız eşleşen maker slot. fee AMOUNT hesaplanmaz, yalnız rate evidence."""
+    for tr in (trades or {}).get("data", []) or []:
+        tr = tr or {}
+        if _norm_status(tr.get("status")) != "CONFIRMED":
+            continue
+        for m in (tr.get("maker_orders") or []):
+            m = m or {}
+            if m.get("order_id") != our_order_id:
+                continue
+            try:
+                matched_size = Decimal(str(m.get("matched_amount")))
+                avg_price = Decimal(str(m.get("price")))
+            except (InvalidOperation, TypeError, ValueError):
+                return None
+            fee_raw = m.get("fee_rate_bps")
+            try:
+                fee_rate_bps = None if fee_raw is None else Decimal(str(fee_raw))
+            except (InvalidOperation, TypeError, ValueError):
+                fee_rate_bps = None
+            return {
+                "matched_size": matched_size,
+                "avg_price": avg_price,
+                "fee_rate_bps": fee_rate_bps,
+                "matched_trade_ids": (str(tr.get("id")),),
+                "accounting_source": "CONFIRMED_TRADE",
+            }
+    return None
+
+
 def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
     """Araf intent için dual-oracle kararı (saf, I/O yok). `intent`/`order`/`trades` önceden
     çekilmiş ham dict'ler (client/pagination ayrı katman = sonraki adım).
@@ -155,9 +190,12 @@ def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
     if filled <= 0:
         return ResolutionResult(state="RECOVERY_REQUIRED")
     if target > 0 and filled == target:
-        # Taker full fill → Decimal accounting evidence ekle. Maker-side/evidence yoksa alanlar None
-        # kalır (maker-side accounting sonraki RED; mevcut maker state davranışı bozulmaz).
+        # Full fill → Decimal accounting evidence. Önce taker (top-level alanlar) yolu KORUNUR;
+        # taker evidence yoksa maker slot (nested) evidence denenir. İkisi de yoksa accounting None
+        # ile FILLED (mevcut fallback davranışı bozulmaz). Top-level değerler maker için KÖR değil.
         ev = _extract_taker_accounting_evidence(trades, our_order_id)
+        if ev is None:
+            ev = _extract_maker_accounting_evidence(trades, our_order_id)
         if ev is not None:
             return ResolutionResult(
                 state="FILLED",
