@@ -135,6 +135,59 @@ async def test_conflicting_duplicate_shadow_fails_closed(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_recovery_required_shadow_writes_null_accounting(tmp_path):
+    """state="RECOVERY_REQUIRED" → accounting alanları DB'ye NULL (sahte "None"/""/"0" YASAK),
+    recovery_reason="MISSING_TELEMETRY" yazılır; order_intents/positions dokunulmaz (A3-pure).
+    Anti-hallucination: kanıt yokken muhasebe sayısı uydurulmaz."""
+    from execution.araf_resolve_shadow import record_araf_resolution
+
+    db = str(tmp_path / "araf_shadow_recovery.db")
+    from db.schema import init_schema
+    async with aiosqlite.connect(db) as conn:
+        await init_schema(conn)
+        await conn.commit()
+
+    resolution = ResolutionResult(
+        state="RECOVERY_REQUIRED",
+        matched_size=None,
+        avg_price=None,
+        fee_rate_bps=None,
+        matched_trade_ids=None,
+        accounting_source=None,
+    )
+    # ResolutionResult frozen dataclass + recovery_reason alanı YOK → object.__setattr__ ile ekle
+    # (normal setattr FrozenInstanceError atar; bu bypass setup'ı writer'a ulaşmadan çökmemeli).
+    object.__setattr__(resolution, "recovery_reason", "MISSING_TELEMETRY")
+
+    result = await record_araf_resolution(db, "iid-recovery-1", "0xexch-recovery-1", resolution)
+    assert result == "RECORDED", f"RECOVERY_REQUIRED kaydı RECORDED: {result!r}"
+
+    conn = sqlite3.connect(db)
+    try:
+        rows = conn.execute(
+            "SELECT resolution_state, matched_size, avg_price, fee_rate_bps, matched_trade_ids, "
+            "accounting_source, recovery_reason FROM araf_resolution_shadow "
+            "WHERE order_intent_id=?", ("iid-recovery-1",)).fetchall()
+        assert len(rows) == 1, f"tek satır: {len(rows)}"
+        r = rows[0]
+        assert r[0] == "RECOVERY_REQUIRED", f"resolution_state: {r[0]!r}"
+        # Accounting alanları gerçek NULL — sahte string ("None"/""/"0") YASAK.
+        assert r[1] is None, f"matched_size NULL olmalı (sahte string değil): {r[1]!r}"
+        assert r[2] is None, f"avg_price NULL: {r[2]!r}"
+        assert r[3] is None, f"fee_rate_bps NULL: {r[3]!r}"
+        assert r[4] is None, f"matched_trade_ids NULL: {r[4]!r}"
+        assert r[5] is None, f"accounting_source NULL: {r[5]!r}"
+        assert r[6] == "MISSING_TELEMETRY", f"recovery_reason: {r[6]!r}"
+
+        assert conn.execute("SELECT COUNT(*) FROM order_intents").fetchone()[0] == 0, \
+            "order_intents'e yazım YOK (A3-pure)"
+        assert conn.execute("SELECT COUNT(*) FROM positions").fetchone()[0] == 0, \
+            "positions'a yazım YOK (A3-pure)"
+    finally:
+        conn.close()
+
+
+@pytest.mark.asyncio
 async def test_duplicate_resolution_shadow_is_idempotent(tmp_path):
     """Aynı order_intent_id için ikinci record_araf_resolution → "DUPLICATE", tek satır kalır,
     ilk satır OVERWRITE EDİLMEZ; order_intents/positions dokunulmaz (A3-pure idempotency)."""
