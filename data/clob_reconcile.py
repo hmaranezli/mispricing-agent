@@ -153,6 +153,12 @@ def _extract_maker_accounting_evidence(trades, our_order_id):
     return None
 
 
+# Conflicting-duplicate sentinel: aynı trade.id FARKLI accounting payload ile geldiğinde aggregate
+# helper bunu döner. Resolver bunu fail-closed RECOVERY_REQUIRED'a çevirir (exception YOK, dict|None
+# dönüş tipinden ayrık bir tekil nesne → çağıran `is` ile kesin ayırt eder).
+_ACCOUNTING_CONFLICT = object()
+
+
 def _aggregate_taker_confirmed_fills(trades, our_order_id):
     """Bizim TÜM CONFIRMED taker fill'lerimizi (taker_order_id == our_order_id) topla → aggregate
     accounting evidence dict, yoksa None. KAPSAM: yalnız taker-side; maker_orders[] OKUNMAZ.
@@ -162,25 +168,33 @@ def _aggregate_taker_confirmed_fills(trades, our_order_id):
     Herhangi size/price parse fail veya total_size ≤ 0 → fail-closed None. Saf — I/O yok; next_cursor/
     scan davranışına dokunmaz. Tek trade'de single-helper ile aynı sonucu verir (Decimal-only).
 
-    IDENTICAL-duplicate dedup: aynı scan payload'ı içinde BİREBİR AYNI satır (id+status+taker_order_id+
-    side+size+price+fee_rate_bps) tekrar görünürse (pagination overlap yankısı) BİR KEZ sayılır.
-    Conflicting duplicate (aynı id, FARKLI payload) farklı identity → dedup EDİLMEZ (fail-closed policy
-    SONRAKİ RED). DB run-arası idempotency burada YOK (matched_trade_ids dedup anahtarı driver/DB'ye)."""
+    Duplicate trade.id karar matrisi (her satır için):
+      - yeni id → normal aggregate
+      - aynı id + AYNI identity (id+status+taker_order_id+side+size+price+fee_rate_bps) → IDENTICAL
+        duplicate (pagination overlap yankısı) → skip (bir kez say)
+      - aynı id + FARKLI identity → CONFLICT → `_ACCOUNTING_CONFLICT` dön (sessiz sum/seçim YOK).
+    DB run-arası idempotency burada YOK (matched_trade_ids dedup anahtarı driver/DB'ye)."""
     sizes_prices = []
     ids = []
     fee_raws = []
     seen = set()
+    id_to_identity = {}
     for tr in (trades or {}).get("data", []) or []:
         tr = tr or {}
         if _norm_status(tr.get("status")) != "CONFIRMED":
             continue
         if tr.get("taker_order_id") != our_order_id:
             continue
-        # Identical-duplicate skip: birebir aynı taker satırı ikinci kez sayılmaz (ham alanlar)
-        identity = (str(tr.get("id")), tr.get("status"), tr.get("taker_order_id"),
+        tr_id = str(tr.get("id"))
+        identity = (tr_id, tr.get("status"), tr.get("taker_order_id"),
                     tr.get("side"), tr.get("size"), tr.get("price"), tr.get("fee_rate_bps"))
+        # Identical-duplicate skip: birebir aynı taker satırı ikinci kez sayılmaz (ham alanlar)
         if identity in seen:
             continue
+        # Conflict: aynı id daha önce FARKLI identity ile görüldü → tutarsız veri → fail-closed
+        if tr_id in id_to_identity:
+            return _ACCOUNTING_CONFLICT
+        id_to_identity[tr_id] = identity
         seen.add(identity)
         try:
             size = Decimal(str(tr.get("size")))
@@ -345,6 +359,9 @@ def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
     # Tek trade'de aggregate = single sonuç → mevcut taker full-fill testi birebir korunur.
     if _slot == "taker" and target > 0:
         taker_agg = _aggregate_taker_confirmed_fills(trades, our_order_id)
+        if taker_agg is _ACCOUNTING_CONFLICT:
+            # Aynı id farklı payload → tutarsız → terminal muhasebe yazma, fail-closed
+            return ResolutionResult(state="RECOVERY_REQUIRED")
         if taker_agg is not None and taker_agg["matched_size"] == target:
             return ResolutionResult(
                 state="FILLED",
@@ -407,6 +424,9 @@ def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
     # değerler maker yolunda KÖR değil. Tek-trade/slot'ta aggregate = single → mevcut dead-residual
     # taker/maker single testleri bozulmaz. (Full-fill early-return ve residual-live guard'a dokunulmaz.)
     ev = _aggregate_taker_confirmed_fills(trades, our_order_id)
+    if ev is _ACCOUNTING_CONFLICT:
+        # Aynı id farklı payload → tutarsız → terminal muhasebe yazma, fail-closed
+        return ResolutionResult(state="RECOVERY_REQUIRED")
     if ev is None:
         ev = _aggregate_maker_confirmed_fills(trades, our_order_id)
     if ev is not None:

@@ -1317,3 +1317,70 @@ def test_maker_aggregation_dedupes_identical_trade_id_once():
     assert result.fee_rate_bps != Decimal("999"), "top-level fee_rate_bps POISON sızdı (trade 1)"
     assert result.avg_price != Decimal("0.88"), "top-level price POISON sızdı (trade 2)"
     assert result.fee_rate_bps != Decimal("888"), "top-level fee_rate_bps POISON sızdı (trade 2)"
+
+
+# ── 18) RED: conflicting duplicate taker trade.id → fail-closed RECOVERY_REQUIRED (sessiz işlem yok) ──
+
+def test_taker_aggregation_fails_on_conflicting_duplicate_trade_id():
+    """Aynı scan payload'ı içinde aynı taker trade.id FARKLI accounting payload (burada size "2" vs
+    "3") ile gelirse veri TUTARSIZDIR → resolver terminal accounting ÜRETMEMELİ. Sessiz skip / sessiz
+    seçim / sum / VWAP YOK (hepsi heuristic tahmin = finansal mutabakatta veri bozulması). Fail-closed:
+    state RECOVERY_REQUIRED, accounting alanları None. Exception AÇILMAZ (saf fonksiyon, parse-fail→
+    None→RECOVERY ile tutarlı).
+
+    Yalnız taker conflicting duplicate. Identical dedup (8ee7f8e/080830b), maker conflict, DB run-arası
+    idempotency, pagination, fee amount/policy DIŞINDA.
+    """
+    from data.clob_reconcile import decide_araf_resolution
+
+    our_id = "conflict_taker_order_1"
+
+    intent = {
+        "order_id": our_id,
+        "exchange_order_id": our_id,     # decide_araf_resolution contract bridge
+        "side": "BUY",
+        "intended_size": "10",
+    }
+
+    order = {
+        "status": "ORDER_STATUS_CANCELED",
+        "original_size": "10",
+        "size_matched": "5",
+    }
+
+    # Aynı trade.id İKİ kez ama size "2" vs "3" → conflict (identical DEĞİL → dedup edilemez)
+    trades = {
+        "next_cursor": "LTE=",
+        "data": [
+            {
+                "id": "trade_conflict_taker_1",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": our_id,
+                "side": "BUY",
+                "size": "2",
+                "price": "0.50",
+                "fee_rate_bps": "10",
+            },
+            {
+                "id": "trade_conflict_taker_1",     # aynı id
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": our_id,
+                "side": "BUY",
+                "size": "3",                         # ← CONFLICT: size farklı
+                "price": "0.50",
+                "fee_rate_bps": "10",
+            },
+        ],
+    }
+
+    result = decide_araf_resolution(intent=intent, order=order, trades=trades)
+
+    # Tutarsız veri → terminal muhasebe YASAK; fail-closed non-terminal
+    assert result.state == "RECOVERY_REQUIRED", \
+        f"conflicting duplicate → fail-closed RECOVERY_REQUIRED (terminal/sum YASAK): {result.state}"
+    assert result.matched_size is None, \
+        f"conflict'te matched_size None olmalı (sum YASAK): {result.matched_size!r}"
+    assert result.avg_price is None, \
+        f"conflict'te avg_price None olmalı: {result.avg_price!r}"
+    assert result.matched_trade_ids is None, \
+        f"conflict'te matched_trade_ids None olmalı: {result.matched_trade_ids!r}"
