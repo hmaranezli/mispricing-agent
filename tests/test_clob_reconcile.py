@@ -707,3 +707,77 @@ def test_dead_residual_maker_partial_returns_terminal_with_accounting_evidence()
     assert result.matched_size != Decimal("99"), "top-level size POISON sızdı"
     assert result.avg_price != Decimal("0.99"), "top-level price POISON sızdı"
     assert result.fee_rate_bps != Decimal("999"), "top-level fee_rate_bps POISON sızdı"
+
+
+# ── 11) RED: multi-trade taker full-fill → VWAP accounting aggregation (tek trade ile yetinme) ──
+
+def test_multi_trade_taker_full_fill_aggregates_vwap_accounting():
+    """Aynı taker order için İKİ CONFIRMED trade (size 4 + 6). decide_araf_resolution tek trade
+    ile yetinmemeli: toplam size (10) == target → state FILLED; accounting evidence AGGREGATE:
+    matched_size = Σsize = 10, avg_price = VWAP = Σ(size·price)/Σsize = (4·0.50+6·0.60)/10 = 0.56,
+    matched_trade_ids = data-order'da iki id, accounting_source = CONFIRMED_TRADE.
+
+    fee_rate_bps iki trade'de de "10" (uniform) → fee aggregation bu RED'in DIŞINDA (sonraki RED).
+    Yalnız taker-side; maker-side aggregation, dead-residual partial aggregation, farklı-fee/fee
+    amount, DB idempotency DIŞINDA.
+    """
+    from decimal import Decimal
+    from data.clob_reconcile import decide_araf_resolution
+
+    our_id = "multi_taker_order_1"
+
+    intent = {
+        "order_id": our_id,
+        "exchange_order_id": our_id,     # decide_araf_resolution contract bridge
+        "side": "BUY",
+        "intended_size": "10",
+    }
+
+    order = {
+        "status": "ORDER_STATUS_FILLED",
+        "original_size": "10",
+        "size_matched": "10",
+    }
+
+    # İki CONFIRMED taker trade, aynı order_id; tek trade short-circuit YETMEMELİ
+    trades = {
+        "next_cursor": "LTE=",
+        "data": [
+            {
+                "id": "trade_multi_taker_1",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": our_id,
+                "side": "BUY",
+                "size": "4",
+                "price": "0.50",
+                "fee_rate_bps": "10",
+            },
+            {
+                "id": "trade_multi_taker_2",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": our_id,
+                "side": "BUY",
+                "size": "6",
+                "price": "0.60",
+                "fee_rate_bps": "10",
+            },
+        ],
+    }
+
+    result = decide_araf_resolution(intent=intent, order=order, trades=trades)
+
+    # Birincil: aggregate toplam (10) == target → FILLED (tek-trade short-circuit PARTIAL_FILLED YASAK)
+    assert result.state == "FILLED", \
+        f"multi-trade toplam fill target → FILLED olmalı (tek trade ile yetinme): {result.state}"
+
+    # Aggregate accounting evidence
+    assert result.matched_size == Decimal("10"), \
+        f"matched_size = Σsize (4+6): {result.matched_size!r}"
+    assert result.avg_price == Decimal("0.56"), \
+        f"avg_price = VWAP (4·0.50+6·0.60)/10: {result.avg_price!r}"
+    assert result.fee_rate_bps == Decimal("10"), \
+        f"fee_rate_bps uniform (evidence): {result.fee_rate_bps!r}"
+    assert result.matched_trade_ids == ("trade_multi_taker_1", "trade_multi_taker_2"), \
+        f"matched_trade_ids data-order iki id: {result.matched_trade_ids!r}"
+    assert result.accounting_source == "CONFIRMED_TRADE", \
+        f"accounting_source: {result.accounting_source!r}"

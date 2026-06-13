@@ -153,6 +153,65 @@ def _extract_maker_accounting_evidence(trades, our_order_id):
     return None
 
 
+def _aggregate_taker_confirmed_fills(trades, our_order_id):
+    """Bizim TÜM CONFIRMED taker fill'lerimizi (taker_order_id == our_order_id) topla → aggregate
+    accounting evidence dict, yoksa None. KAPSAM: yalnız taker-side; maker_orders[] OKUNMAZ.
+      - matched_size = Σsize, avg_price = VWAP = Σ(size·price)/Σsize, matched_trade_ids = data-order tuple.
+      - fee_rate_bps: TÜM trade'ler aynı parseable rate ise o Decimal; aksi halde None (farklı-fee
+        policy SONRAKİ RED — burada blend/weight YOK).
+    Herhangi size/price parse fail veya total_size ≤ 0 → fail-closed None. Saf — I/O yok; next_cursor/
+    scan davranışına dokunmaz. Tek trade'de single-helper ile aynı sonucu verir (Decimal-only)."""
+    sizes_prices = []
+    ids = []
+    fee_raws = []
+    for tr in (trades or {}).get("data", []) or []:
+        tr = tr or {}
+        if _norm_status(tr.get("status")) != "CONFIRMED":
+            continue
+        if tr.get("taker_order_id") != our_order_id:
+            continue
+        try:
+            size = Decimal(str(tr.get("size")))
+            price = Decimal(str(tr.get("price")))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+        sizes_prices.append((size, price))
+        ids.append(str(tr.get("id")))
+        fee_raws.append(tr.get("fee_rate_bps"))
+
+    if not sizes_prices:
+        return None
+    total_size = sum((sp[0] for sp in sizes_prices), Decimal("0"))
+    if total_size <= 0:
+        return None
+    total_notional = sum((sp[0] * sp[1] for sp in sizes_prices), Decimal("0"))
+    avg_price = total_notional / total_size     # VWAP — keyfi quantize YOK
+
+    # fee: yalnız uniform parseable rate → o rate; herhangi eksik/parse-fail/farklı → None (policy YOK)
+    fee_rate_bps = None
+    parsed_fees = []
+    uniform = True
+    for fr in fee_raws:
+        if fr is None:
+            uniform = False
+            break
+        try:
+            parsed_fees.append(Decimal(str(fr)))
+        except (InvalidOperation, TypeError, ValueError):
+            uniform = False
+            break
+    if uniform and parsed_fees and len(set(parsed_fees)) == 1:
+        fee_rate_bps = parsed_fees[0]
+
+    return {
+        "matched_size": total_size,
+        "avg_price": avg_price,
+        "fee_rate_bps": fee_rate_bps,
+        "matched_trade_ids": tuple(ids),
+        "accounting_source": "CONFIRMED_TRADE",
+    }
+
+
 def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
     """Araf intent için dual-oracle kararı (saf, I/O yok). `intent`/`order`/`trades` önceden
     çekilmiş ham dict'ler (client/pagination ayrı katman = sonraki adım).
@@ -189,6 +248,24 @@ def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
 
     if filled <= 0:
         return ResolutionResult(state="RECOVERY_REQUIRED")
+
+    # Multi-trade taker full-fill (aggregate): bizim TÜM CONFIRMED taker fill'lerimizin TOPLAMI
+    # target'a EŞİTSE → FILLED + VWAP aggregate accounting. State kararı tek trade ile değil toplam
+    # fill ile verilir. YALNIZ taker slot + full-fill; partial/dead-residual ve maker aggregation
+    # KAPSAM DIŞI (toplam ≠ target ise erken-return atlanır, eski tek-trade davranışı aynen sürer).
+    # Tek trade'de aggregate = single sonuç → mevcut taker full-fill testi birebir korunur.
+    if _slot == "taker" and target > 0:
+        taker_agg = _aggregate_taker_confirmed_fills(trades, our_order_id)
+        if taker_agg is not None and taker_agg["matched_size"] == target:
+            return ResolutionResult(
+                state="FILLED",
+                matched_size=taker_agg["matched_size"],
+                avg_price=taker_agg["avg_price"],
+                fee_rate_bps=taker_agg["fee_rate_bps"],
+                matched_trade_ids=taker_agg["matched_trade_ids"],
+                accounting_source=taker_agg["accounting_source"],
+            )
+
     if target > 0 and filled == target:
         # Full fill → Decimal accounting evidence. Önce taker (top-level alanlar) yolu KORUNUR;
         # taker evidence yoksa maker slot (nested) evidence denenir. İkisi de yoksa accounting None
