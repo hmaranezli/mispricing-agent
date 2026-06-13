@@ -781,3 +781,76 @@ def test_multi_trade_taker_full_fill_aggregates_vwap_accounting():
         f"matched_trade_ids data-order iki id: {result.matched_trade_ids!r}"
     assert result.accounting_source == "CONFIRMED_TRADE", \
         f"accounting_source: {result.accounting_source!r}"
+
+
+# ── 12) PIN (RED DEĞİL): mixed fee_rate_bps → fee_rate_bps None; size/VWAP/ids/source korunur ──
+
+def test_multi_trade_taker_mixed_fee_rate_yields_none_fee_evidence():
+    """PIN / characterization — RED DEĞİLDİR; ilk koşuda PASS beklenir. Mixed-fee→None politikası
+    `_aggregate_taker_confirmed_fills` içinde (ef030a0) ZATEN implement edilmiştir. Bu test o kontratı
+    KİLİTLER: aynı taker order'ın iki CONFIRMED trade'i FARKLI fee_rate_bps ("10"/"20") taşırsa, tek
+    bir fee_rate_bps evidence değeri finansal olarak belirsizdir → fail-safe None. Ancak boyut/fiyat
+    muhasebesi fee'den bağımsız: matched_size aggregation + VWAP + trade_ids + source DEVAM eder.
+
+    Bu PIN, maker-side aggregation (aynı fee mantığını çoğaltacak) öncesi sessiz regresyona karşı
+    sigorta. Weighted/blended fee, fee_amount, maker-side aggregation, dead-residual partial DIŞINDA.
+    """
+    from decimal import Decimal
+    from data.clob_reconcile import decide_araf_resolution
+
+    our_id = "multi_taker_fee_order_1"
+
+    intent = {
+        "order_id": our_id,
+        "exchange_order_id": our_id,     # decide_araf_resolution contract bridge
+        "side": "BUY",
+        "intended_size": "10",
+    }
+
+    order = {
+        "status": "ORDER_STATUS_FILLED",
+        "original_size": "10",
+        "size_matched": "10",
+    }
+
+    # İki CONFIRMED taker trade — size/price multi-trade VWAP fixture'ıyla aynı, YALNIZ fee farklı
+    trades = {
+        "next_cursor": "LTE=",
+        "data": [
+            {
+                "id": "trade_multi_taker_fee_1",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": our_id,
+                "side": "BUY",
+                "size": "4",
+                "price": "0.50",
+                "fee_rate_bps": "10",
+            },
+            {
+                "id": "trade_multi_taker_fee_2",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": our_id,
+                "side": "BUY",
+                "size": "6",
+                "price": "0.60",
+                "fee_rate_bps": "20",     # ← farklı fee → tek rate belirsiz → None
+            },
+        ],
+    }
+
+    result = decide_araf_resolution(intent=intent, order=order, trades=trades)
+
+    # size/fiyat muhasebesi fee'den bağımsız → aggregation DEVAM eder
+    assert result.state == "FILLED", f"multi-trade full fill FILLED: {result.state}"
+    assert result.matched_size == Decimal("10"), \
+        f"matched_size = Σsize (4+6): {result.matched_size!r}"
+    assert result.avg_price == Decimal("0.56"), \
+        f"avg_price = VWAP (4·0.50+6·0.60)/10: {result.avg_price!r}"
+    assert result.matched_trade_ids == ("trade_multi_taker_fee_1", "trade_multi_taker_fee_2"), \
+        f"matched_trade_ids data-order iki id: {result.matched_trade_ids!r}"
+    assert result.accounting_source == "CONFIRMED_TRADE", \
+        f"accounting_source: {result.accounting_source!r}"
+
+    # mixed fee → fail-safe None (blend/first-rate YOK); fee policy kontratı kilitli
+    assert result.fee_rate_bps is None, \
+        f"mixed fee_rate_bps → None olmalı (belirsiz tek rate iddia edilmez): {result.fee_rate_bps!r}"
