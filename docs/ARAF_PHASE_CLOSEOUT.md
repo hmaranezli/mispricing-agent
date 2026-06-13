@@ -135,19 +135,42 @@ last_update, outcome, bucket_index, owner, maker_address, transaction_hash, make
 - `maker_orders` = `list[dict]` (örnekte len=1). Slot keys: `order_id, owner, maker_address,
   matched_amount, price, fee_rate_bps, asset_id, outcome, side`.
 
-### 8.4 fixture-contract v0 → v1 farkları (kalibrasyon haritası)
-- **`id` (live) → resolver `trade_id`** : top-level alan adı `id`, tip str (UUID-formatı len36). RENAME.
-- **`status` = düz `"CONFIRMED"`** : varsayılan `TRADE_STATUS_` prefix'i YOK. Enum eşlemesi güncellenecek.
-- **Konum:** top-level `size` (taker); maker slot `matched_amount`. (taker top-level / maker nested ayrımı uyumlu.)
-- **Tüm numerikler string** (`size`/`price`/`fee_rate_bps`/`matched_amount`) → Decimal parse string'den.
-- **`fee_amount` YOK, sadece `fee_rate_bps`** (oran). Fee tutarı formülü hâlâ canlı-gated açık kapı.
-- **`asset_id` var (str len77, decimal token-id), `token_id` adı YOK.**
-- **`market` var (str `0x`+64hex = condition_id formatı), `condition_id` adı YOK.**
-- **`match_time` / `last_update` = unix saniye (string)** (`created_at` adı YOK).
-- **`trader_side` var** (top-level, str) → taker/maker rolü için ek/explicit sinyal (resolver konumdan çıkarıyordu).
-- **`transaction_hash` var** (`0x`+64hex) → forensic/B2 ledger için ileride değerli on-chain settlement referansı.
-- **`maker_orders[].order_id`** şimdilik maker slot discriminator adayı; **multi-slot henüz kanıtlanmadı**
-  (gözlemde tek slot).
+### 8.4 fixture-contract v0 → v1 farkları (kalibrasyon haritası) — DÜZELTİLDİ (2026-06-13)
+
+> Bu bölümün ilk hâlinde iki yanıltıcı iddia vardı; `data/clob_reconcile.py` kod kanıtıyla düzeltildi.
+> Düzeltme önemli çünkü yanlış kalibrasyon notu, gereksiz/yanlış bir adapter'a yol açardı.
+
+**DÜZELTME 1 — "id → trade_id RENAME gerekir" YANLIŞ idi.**
+Kod kanıtı: resolver girdi olarak doğrudan `trade["id"]` okur (`_extract_*`/`_aggregate_*`/`_find_confirmed_fill`,
+satır 115/150/188/205/290). `trade_id` yalnız `ResolutionResult.matched_trade_ids` **çıktı** alanının adıdır;
+girdi alanı zaten `id`. **Net karar: trade-level `id` PASS-THROUGH; adapter trade-id rename YAPMAZ.**
+
+**DÜZELTME 2 — "status mapping/enum eşlemesi gerekir" YANLIŞ idi.**
+Kod kanıtı: `_norm_status` (satır 33-41) `TRADE_STATUS_`/`ORDER_STATUS_` prefix'ini sıyırır; hem prefix'li
+(fixture `TRADE_STATUS_CONFIRMED`) hem düz (canlı `CONFIRMED`) değeri `CONFIRMED`'e indirger.
+**Net karar: adapter status NORMALİZE ETMEZ; status resolver-owned kalır (tek otorite `_norm_status`).**
+
+**Yeni net karar (kalibrasyon sonucu):**
+- Canlı **trade-level payload, resolver v0 trade contract'ıyla neredeyse birebir uyumlu** → **adapter/ACL ince kalır.**
+- **Tek zorunlu yapısal dönüşüm:** `get_trades_paginated` `page["trades"]` → resolver `trades_dict["data"]`
+  (resolver `(trades or {}).get("data", [])` okur; fixture envelope key'i `data`).
+- **`next_cursor` resolver dict'ine TAŞINIR** — çünkü zero-fill scan-complete kanıtı `next_cursor == "LTE="`
+  ile çalışır (`_zero_fill_cancel_evidence`, satır 480). Bu olmadan zero-fill cancel doğru teyit edilemez.
+- **`limit`/`count` resolver dict'ine SIZMAZ** — resolver okumaz; driver/crawler telemetry'si olarak kalır.
+- **Trade-level alanlar PASS-THROUGH:** `id, status, taker_order_id, side, size, price, fee_rate_bps,
+  maker_orders` (hepsi canlı key adıyla aynı; rename yok).
+- **Numerikler STRING kalır** (`size`/`price`/`fee_rate_bps`/`matched_amount`); **Decimal parse resolver-owned**
+  (`Decimal(str(...))`). Adapter Decimal üretmez.
+- **`fee_amount` ÜRETİLMEZ** — canlıda yok, yalnız `fee_rate_bps` (oran) taşınır. Fee amount/base/rounding **live-gated**.
+- **Konum ayrımı korunur:** taker → top-level `size`; maker → slot `matched_amount` (resolver taker top-level /
+  maker nested ayrımıyla uyumlu).
+- **maker multi-slot hâlâ LIVE-GATED** — gözlemde tek slot; `maker_orders[].order_id` discriminator adayı,
+  çoklu slot kanıtlanmadı. Adapter `maker_orders[]`'ı dokunmadan iletir (dedup/conflict resolver-owned).
+
+**Resolver kontratı DIŞI canlı alanlar** (resolver okumaz → adapter resolver-output'una koymaz; driver/B2 saklar):
+`asset_id` (str, token-id), `market` (str `0x`+hex, condition_id formatı), `trader_side`, `transaction_hash`,
+`owner`, `maker_address`, `bucket_index`, `outcome`, `match_time`/`last_update` (unix saniye string).
+Bunlar **forensic / B2 ledger için live-gated** değerlidir ama v0 resolve kararına girmez.
 
 ### 8.5 Net karar
 - **ARAF pure resolver SEALED kalır;** canlı payload doğrudan resolver'a bağlanmayacak.
