@@ -1153,3 +1153,78 @@ def test_dead_residual_taker_multi_trade_partial_aggregates_vwap_accounting():
     assert result.fee_rate_bps != Decimal("777"), "nuisance maker fee_rate_bps sızdı (trade 1)"
     assert result.avg_price != Decimal("0.66"), "nuisance maker price sızdı (trade 2)"
     assert result.fee_rate_bps != Decimal("666"), "nuisance maker fee_rate_bps sızdı (trade 2)"
+
+
+# ── 16) RED: identical duplicate trade.id payload içinde bir kez sayılmalı (taker dedup) ──
+
+def test_taker_aggregation_dedupes_identical_trade_id_once():
+    """Aynı scan payload'ı İÇİNDE birebir aynı trade.id + AYNI payload iki kez gelirse (ör. pagination
+    overlap aynı satırı yankılar), taker aggregation duplicate'i BİR KEZ saymalı: matched_size = unique
+    Σsize = 5 (2+3, ikinci "2" sayılmaz), avg_price = unique-set VWAP = (2·0.50+3·0.60)/5 = 0.56,
+    matched_trade_ids = deduped tuple (dup id bir kez). State dead-residual partial (PARTIAL_FILLED).
+
+    Yalnız IDENTICAL duplicate dedup, taker-side. Conflicting duplicate (aynı id farklı payload →
+    fail-closed RECOVERY), DB run-arası idempotency, pagination, fee amount/policy DIŞINDA.
+    """
+    from decimal import Decimal
+    from data.clob_reconcile import decide_araf_resolution
+
+    our_id = "dedup_taker_order_1"
+
+    intent = {
+        "order_id": our_id,
+        "exchange_order_id": our_id,     # decide_araf_resolution contract bridge
+        "side": "BUY",
+        "intended_size": "10",
+    }
+
+    # Dead-residual: status CANCELED (LIVE/MATCHED DEĞİL) + unique-toplam(5) < original_size(10)
+    order = {
+        "status": "ORDER_STATUS_CANCELED",
+        "original_size": "10",
+        "size_matched": "5",
+    }
+
+    # trade_dup_taker_1 birebir aynı payload ile İKİ kez; trade_unique_taker_2 bir kez.
+    dup = {
+        "id": "trade_dup_taker_1",
+        "status": "TRADE_STATUS_CONFIRMED",
+        "taker_order_id": our_id,
+        "side": "BUY",
+        "size": "2",
+        "price": "0.50",
+        "fee_rate_bps": "10",
+    }
+    trades = {
+        "next_cursor": "LTE=",
+        "data": [
+            dict(dup),     # birinci görünüm
+            dict(dup),     # birebir aynı id + aynı payload (overlap yankısı)
+            {
+                "id": "trade_unique_taker_2",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": our_id,
+                "side": "BUY",
+                "size": "3",
+                "price": "0.60",
+                "fee_rate_bps": "10",
+            },
+        ],
+    }
+
+    result = decide_araf_resolution(intent=intent, order=order, trades=trades)
+
+    assert result.state == "PARTIAL_FILLED", \
+        f"dead-residual taker partial PARTIAL_FILLED: {result.state}"
+
+    # Duplicate bir kez sayılmalı → unique aggregation
+    assert result.matched_size == Decimal("5"), \
+        f"matched_size = unique Σsize (2+3, dup sayılmaz): {result.matched_size!r}"
+    assert result.avg_price == Decimal("0.56"), \
+        f"avg_price = unique-set VWAP (2·0.50+3·0.60)/5: {result.avg_price!r}"
+    assert result.fee_rate_bps == Decimal("10"), \
+        f"fee_rate_bps uniform (evidence): {result.fee_rate_bps!r}"
+    assert result.matched_trade_ids == ("trade_dup_taker_1", "trade_unique_taker_2"), \
+        f"matched_trade_ids deduped (dup id bir kez): {result.matched_trade_ids!r}"
+    assert result.accounting_source == "CONFIRMED_TRADE", \
+        f"accounting_source: {result.accounting_source!r}"

@@ -160,16 +160,28 @@ def _aggregate_taker_confirmed_fills(trades, our_order_id):
       - fee_rate_bps: TÜM trade'ler aynı parseable rate ise o Decimal; aksi halde None (farklı-fee
         policy SONRAKİ RED — burada blend/weight YOK).
     Herhangi size/price parse fail veya total_size ≤ 0 → fail-closed None. Saf — I/O yok; next_cursor/
-    scan davranışına dokunmaz. Tek trade'de single-helper ile aynı sonucu verir (Decimal-only)."""
+    scan davranışına dokunmaz. Tek trade'de single-helper ile aynı sonucu verir (Decimal-only).
+
+    IDENTICAL-duplicate dedup: aynı scan payload'ı içinde BİREBİR AYNI satır (id+status+taker_order_id+
+    side+size+price+fee_rate_bps) tekrar görünürse (pagination overlap yankısı) BİR KEZ sayılır.
+    Conflicting duplicate (aynı id, FARKLI payload) farklı identity → dedup EDİLMEZ (fail-closed policy
+    SONRAKİ RED). DB run-arası idempotency burada YOK (matched_trade_ids dedup anahtarı driver/DB'ye)."""
     sizes_prices = []
     ids = []
     fee_raws = []
+    seen = set()
     for tr in (trades or {}).get("data", []) or []:
         tr = tr or {}
         if _norm_status(tr.get("status")) != "CONFIRMED":
             continue
         if tr.get("taker_order_id") != our_order_id:
             continue
+        # Identical-duplicate skip: birebir aynı taker satırı ikinci kez sayılmaz (ham alanlar)
+        identity = (str(tr.get("id")), tr.get("status"), tr.get("taker_order_id"),
+                    tr.get("side"), tr.get("size"), tr.get("price"), tr.get("fee_rate_bps"))
+        if identity in seen:
+            continue
+        seen.add(identity)
         try:
             size = Decimal(str(tr.get("size")))
             price = Decimal(str(tr.get("price")))
