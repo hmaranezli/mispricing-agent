@@ -489,6 +489,25 @@ _MIGRATIONS = [
         force                 INTEGER NOT NULL DEFAULT 0,
         verified              INTEGER NOT NULL DEFAULT 0
     )""",
+    # ARAF B1 — A3-pure resolution shadow ledger (paper-first). decide_araf_resolution'ın
+    # ResolutionResult'ı yalnız BURAYA yazılır; order_intents/positions DOKUNULMAZ (canlı state
+    # machine / pozisyon yok). Idempotency anahtarı = order_intent_id (intent başına tek resolution).
+    # Decimal alanlar TEXT (float yok). matched_trade_ids kanonik metin (data-order). Raw payload YOK.
+    """CREATE TABLE IF NOT EXISTS araf_resolution_shadow (
+        order_intent_id    TEXT PRIMARY KEY,
+        exchange_order_id  TEXT,
+        resolution_state   TEXT NOT NULL,
+        matched_size       TEXT,
+        avg_price          TEXT,
+        fee_rate_bps       TEXT,
+        matched_trade_ids  TEXT,
+        accounting_source  TEXT,
+        resolver_contract  TEXT NOT NULL DEFAULT 'v0',
+        adapter_contract   TEXT NOT NULL DEFAULT 'v0',
+        schema_version     INTEGER NOT NULL DEFAULT 1,
+        recovery_reason    TEXT,
+        created_at         TEXT NOT NULL
+    )""",
 ]
 
 
