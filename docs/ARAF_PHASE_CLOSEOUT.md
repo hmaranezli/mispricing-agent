@@ -111,6 +111,52 @@ Bu doğrulanmadan resolve driver, B2 ledger, fee amount ve canlı reconcile YAZI
 4. (Opsiyonel) **B2 ledger** — forensic ihtiyaç netleşirse.
 5. **Paper P&L / shadow** uçtan uca → sonra canlı (yalnız insanın yazılı komutuyla, DRY_RUN=False).
 
+## 8. Canlı `get_trades` şema kalibrasyonu (2026-06-13, read-only örnekleme)
+
+> NEW_ENTRIES_ENABLED=False altında, yalnız GET; emir/cancel/POST yok. Canlı `logs/mispricing.db`
+> değiştirilmedi (mtime/size önce==sonra doğrulandı). Raw payload/gerçek ID/adres/miktar bu dosyaya
+> yazılmaz — yalnız şema/tip/fark bilgisi. Tek trade + tek order_id'lik gözlem (örneklem dar).
+
+### 8.1 İlk read-only `get_order`
+- `positions.order_id` (`0x`+64hex) en son kayıttan seçildi → `get_order(order_id)`.
+- Sonuç: **GET başarılı (auth/HTTP hatası yok) ama response `None`.** Muhtemel: bu `order_id` eski/arşiv
+  dışı VEYA `positions.order_id` `get_order` için uygun CLOB order-hash değil (örn. tx-hash olabilir).
+  → get_order'dan dar scope **türetilemedi**; settlement şeması get_trades üzerinden alındı.
+
+### 8.2 İlk read-only `get_trades_paginated(TradeParams())` (tek sayfa, next_cursor default)
+- Page top-level keys: **`trades`, `next_cursor`, `limit`, `count`** (closeout dict şekliyle birebir).
+- **`count=300`, `limit=300`, `trades_len=300`** → sayfa dolu, daha fazla sayfa var.
+- **`next_cursor="MzAw"`** = base64("300") → cursor = offset'in base64'ü (`INITIAL_CURSOR="MA=="`=base64("0")
+  ile tutarlı). **`END_CURSOR="LTE="` sabiti doğrulandı** (bu sayfa son değil).
+
+### 8.3 Canlı trade top-level keys (18)
+`id, taker_order_id, market, asset_id, side, size, fee_rate_bps, price, status, match_time,
+last_update, outcome, bucket_index, owner, maker_address, transaction_hash, maker_orders, trader_side`
+- `maker_orders` = `list[dict]` (örnekte len=1). Slot keys: `order_id, owner, maker_address,
+  matched_amount, price, fee_rate_bps, asset_id, outcome, side`.
+
+### 8.4 fixture-contract v0 → v1 farkları (kalibrasyon haritası)
+- **`id` (live) → resolver `trade_id`** : top-level alan adı `id`, tip str (UUID-formatı len36). RENAME.
+- **`status` = düz `"CONFIRMED"`** : varsayılan `TRADE_STATUS_` prefix'i YOK. Enum eşlemesi güncellenecek.
+- **Konum:** top-level `size` (taker); maker slot `matched_amount`. (taker top-level / maker nested ayrımı uyumlu.)
+- **Tüm numerikler string** (`size`/`price`/`fee_rate_bps`/`matched_amount`) → Decimal parse string'den.
+- **`fee_amount` YOK, sadece `fee_rate_bps`** (oran). Fee tutarı formülü hâlâ canlı-gated açık kapı.
+- **`asset_id` var (str len77, decimal token-id), `token_id` adı YOK.**
+- **`market` var (str `0x`+64hex = condition_id formatı), `condition_id` adı YOK.**
+- **`match_time` / `last_update` = unix saniye (string)** (`created_at` adı YOK).
+- **`trader_side` var** (top-level, str) → taker/maker rolü için ek/explicit sinyal (resolver konumdan çıkarıyordu).
+- **`transaction_hash` var** (`0x`+64hex) → forensic/B2 ledger için ileride değerli on-chain settlement referansı.
+- **`maker_orders[].order_id`** şimdilik maker slot discriminator adayı; **multi-slot henüz kanıtlanmadı**
+  (gözlemde tek slot).
+
+### 8.5 Net karar
+- **ARAF pure resolver SEALED kalır;** canlı payload doğrudan resolver'a bağlanmayacak.
+- Sıradaki teknik iş = **v0→v1 adapter / ACL (anti-corruption layer) tasarımı + test-first pin**
+  (alan-adı/enum/birim eşlemesi resolver dışında; resolver fixture-contract'ı değişmez).
+- **Fee amount formülü** canlı-gated açık kapı (rate var, tutar yok).
+- **B2 settlement ledger** hâlâ BACKLOG / live-schema-gated (`transaction_hash` + `id` forensic lineage adayı;
+  maker multi-slot discriminator kanıtlanana kadar şema dondurulmaz).
+
 ## Forbidden next actions
 
 - Spec/canlı örnek olmadan `get_trades` şeması uydurma yok.
