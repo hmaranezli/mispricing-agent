@@ -75,3 +75,49 @@ async def test_filled_resolution_persists_shadow_record(tmp_path):
             "positions'a yazım YOK (A3-pure)"
     finally:
         conn.close()
+
+
+@pytest.mark.asyncio
+async def test_duplicate_resolution_shadow_is_idempotent(tmp_path):
+    """Aynı order_intent_id için ikinci record_araf_resolution → "DUPLICATE", tek satır kalır,
+    ilk satır OVERWRITE EDİLMEZ; order_intents/positions dokunulmaz (A3-pure idempotency)."""
+    from execution.araf_resolve_shadow import record_araf_resolution
+
+    db = str(tmp_path / "araf_shadow_dup.db")
+    from db.schema import init_schema
+    async with aiosqlite.connect(db) as conn:
+        await init_schema(conn)
+        await conn.commit()
+
+    resolution = ResolutionResult(
+        state="FILLED",
+        matched_size=Decimal("10"),
+        avg_price=Decimal("0.42"),
+        fee_rate_bps=Decimal("0"),
+        matched_trade_ids=("trade-001",),
+        accounting_source="CONFIRMED_TRADE",
+    )
+
+    first = await record_araf_resolution(db, "iid-dup-1", "0xexch-dup-1", resolution)
+    assert first == "RECORDED", f"ilk kayıt RECORDED: {first!r}"
+
+    # İkinci çağrı — aynı order_intent_id + aynı evidence → idempotent DUPLICATE.
+    second = await record_araf_resolution(db, "iid-dup-1", "0xexch-dup-1", resolution)
+    assert second == "DUPLICATE", f"aynı intent ikinci kez DUPLICATE: {second!r}"
+
+    conn = sqlite3.connect(db)
+    try:
+        rows = conn.execute(
+            "SELECT matched_size, avg_price, matched_trade_ids FROM araf_resolution_shadow "
+            "WHERE order_intent_id=?", ("iid-dup-1",)).fetchall()
+        assert len(rows) == 1, f"tek satır kalmalı (overwrite/çift YOK): {len(rows)}"
+        assert rows[0][0] == "10", f"matched_size ilk kayıtla aynı: {rows[0][0]!r}"
+        assert rows[0][1] == "0.42", f"avg_price ilk kayıtla aynı: {rows[0][1]!r}"
+        assert rows[0][2] == "trade-001", f"matched_trade_ids ilk kayıtla aynı: {rows[0][2]!r}"
+
+        assert conn.execute("SELECT COUNT(*) FROM order_intents").fetchone()[0] == 0, \
+            "order_intents'e yazım YOK (A3-pure)"
+        assert conn.execute("SELECT COUNT(*) FROM positions").fetchone()[0] == 0, \
+            "positions'a yazım YOK (A3-pure)"
+    finally:
+        conn.close()
