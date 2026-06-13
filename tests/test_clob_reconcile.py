@@ -1060,3 +1060,96 @@ def test_dead_residual_maker_multi_trade_partial_aggregates_vwap_accounting():
     assert result.fee_rate_bps != Decimal("999"), "top-level fee_rate_bps POISON sızdı (trade 1)"
     assert result.avg_price != Decimal("0.88"), "top-level price POISON sızdı (trade 2)"
     assert result.fee_rate_bps != Decimal("888"), "top-level fee_rate_bps POISON sızdı (trade 2)"
+
+
+# ── 15) RED: dead-residual TAKER multi-trade partial → terminal PARTIAL_FILLED + VWAP aggregation ──
+
+def test_dead_residual_taker_multi_trade_partial_aggregates_vwap_accounting():
+    """CANCELED/dead-residual taker partial: İKİ CONFIRMED taker trade (top-level size 2 + 3),
+    toplam 5 < target 10, order ÖLÜ (CANCELED). state PARTIAL_FILLED (terminal, residual-live
+    RECOVERY_REQUIRED dalına düşmez) KALIR; ama accounting tek trade ile yetinmemeli → AGGREGATE:
+    matched_size = Σsize = 5, avg_price = taker VWAP = Σ(size·price)/Σsize = (2·0.50+3·0.60)/5 = 0.56,
+    matched_trade_ids = data-order iki id, accounting_source = CONFIRMED_TRADE. Taker'da gerçek kaynak
+    top-level (2/0.50/10, 3/0.60/10); her trade'e UNRELATED nuisance maker_orders eklenir → bunlar
+    KULLANILMAMALI (taker aggregate maker_orders okumaz).
+
+    Yalnız taker dead-residual partial aggregation. Maker partial aggregation (a44d8ef), residual-live,
+    full-fill (ef030a0), mixed-fee/fee amount, trade dedup/idempotency DIŞINDA.
+    """
+    from decimal import Decimal
+    from data.clob_reconcile import decide_araf_resolution
+
+    our_id = "dead_multi_taker_order_1"
+
+    intent = {
+        "order_id": our_id,
+        "exchange_order_id": our_id,     # decide_araf_resolution contract bridge
+        "side": "BUY",
+        "intended_size": "10",
+    }
+
+    # Dead-residual: status CANCELED (LIVE/MATCHED DEĞİL) + size_matched("5") < original_size("10")
+    order = {
+        "status": "ORDER_STATUS_CANCELED",
+        "original_size": "10",
+        "size_matched": "5",
+    }
+
+    # İki CONFIRMED taker trade (taker_order_id bizim). top-level = gerçek kaynak. maker_orders =
+    # unrelated nuisance → taker aggregate okumamalı (sızma yok regression guard ile ispatlanır).
+    trades = {
+        "next_cursor": "LTE=",
+        "data": [
+            {
+                "id": "trade_dead_multi_taker_1",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": our_id,
+                "side": "BUY",
+                "size": "2",
+                "price": "0.50",
+                "fee_rate_bps": "10",
+                "maker_orders": [
+                    {"order_id": "nuisance_1", "matched_amount": "77", "price": "0.77", "fee_rate_bps": "777"},
+                ],
+            },
+            {
+                "id": "trade_dead_multi_taker_2",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": our_id,
+                "side": "BUY",
+                "size": "3",
+                "price": "0.60",
+                "fee_rate_bps": "10",
+                "maker_orders": [
+                    {"order_id": "nuisance_2", "matched_amount": "66", "price": "0.66", "fee_rate_bps": "666"},
+                ],
+            },
+        ],
+    }
+
+    result = decide_araf_resolution(intent=intent, order=order, trades=trades)
+
+    # State doğru olmalı (residual-live'a düşmez); birincil RED accounting aggregation'da
+    assert result.state == "PARTIAL_FILLED", \
+        f"dead-residual taker partial terminal PARTIAL_FILLED: {result.state}"
+    assert result.state != "RECOVERY_REQUIRED", \
+        f"dead-residual residual-live dalına düşmemeli: {result.state}"
+
+    # Aggregate taker partial accounting (tek trade ile yetinme)
+    assert result.matched_size == Decimal("5"), \
+        f"matched_size = Σsize (2+3): {result.matched_size!r}"
+    assert result.avg_price == Decimal("0.56"), \
+        f"avg_price = taker VWAP (2·0.50+3·0.60)/5: {result.avg_price!r}"
+    assert result.fee_rate_bps == Decimal("10"), \
+        f"fee_rate_bps uniform (evidence): {result.fee_rate_bps!r}"
+    assert result.matched_trade_ids == ("trade_dead_multi_taker_1", "trade_dead_multi_taker_2"), \
+        f"matched_trade_ids data-order iki id: {result.matched_trade_ids!r}"
+    assert result.accounting_source == "CONFIRMED_TRADE", \
+        f"accounting_source: {result.accounting_source!r}"
+
+    # ── nuisance-maker regression guard: unrelated maker_orders sızMAMALI ──
+    assert result.matched_size != Decimal("77"), "nuisance maker matched_amount sızdı (trade 1)"
+    assert result.avg_price != Decimal("0.77"), "nuisance maker price sızdı (trade 1)"
+    assert result.fee_rate_bps != Decimal("777"), "nuisance maker fee_rate_bps sızdı (trade 1)"
+    assert result.avg_price != Decimal("0.66"), "nuisance maker price sızdı (trade 2)"
+    assert result.fee_rate_bps != Decimal("666"), "nuisance maker fee_rate_bps sızdı (trade 2)"
