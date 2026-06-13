@@ -375,12 +375,13 @@ def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
 
     # Dead-residual partial (FAK kalanı öldü: order canonical CANCELED/CANCELLED vb.) → terminal
     # PARTIAL_FILLED. Final/kesin exposure olduğundan accounting evidence yüzeye çıkar. Önce taker
-    # (top-level alanlar) yolu KORUNUR; taker yoksa maker slot (nested) evidence denenir. İkisi de
-    # yoksa eski davranış katı korunur: PARTIAL_FILLED, accounting None. Top-level değerler maker
-    # için KÖR değil. (Full-fill ile aynı taker→maker dispatch sırası.)
+    # (top-level alanlar, single — taker partial aggregation KAPSAM DIŞI) KORUNUR; taker yoksa maker
+    # slot AGGREGATE (nested, çok trade/slot toplamı = maker VWAP) denenir. İkisi de yoksa eski
+    # davranış katı korunur: PARTIAL_FILLED, accounting None. Top-level değerler maker için KÖR değil.
+    # Tek maker slot'ta aggregate = single → mevcut maker dead-residual single testi bozulmaz.
     ev = _extract_taker_accounting_evidence(trades, our_order_id)
     if ev is None:
-        ev = _extract_maker_accounting_evidence(trades, our_order_id)
+        ev = _aggregate_maker_confirmed_fills(trades, our_order_id)
     if ev is not None:
         return ResolutionResult(
             state="PARTIAL_FILLED",

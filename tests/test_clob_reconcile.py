@@ -956,3 +956,107 @@ def test_multi_trade_maker_full_fill_aggregates_vwap_accounting():
     assert result.fee_rate_bps != Decimal("999"), "top-level fee_rate_bps POISON sızdı (trade 1)"
     assert result.avg_price != Decimal("0.88"), "top-level price POISON sızdı (trade 2)"
     assert result.fee_rate_bps != Decimal("888"), "top-level fee_rate_bps POISON sızdı (trade 2)"
+
+
+# ── 14) RED: dead-residual MAKER multi-trade partial → terminal PARTIAL_FILLED + VWAP aggregation ──
+
+def test_dead_residual_maker_multi_trade_partial_aggregates_vwap_accounting():
+    """CANCELED/dead-residual maker partial: İKİ CONFIRMED trade'de bizim maker slotlarımız
+    (matched_amount 2 + 3), toplam 5 < target 10, order ÖLÜ (CANCELED). state PARTIAL_FILLED
+    (terminal, residual-live RECOVERY_REQUIRED dalına düşmez) KALIR; ama accounting tek slot ile
+    yetinmemeli → AGGREGATE: matched_size = Σmatched_amount = 5, avg_price = maker VWAP =
+    Σ(amount·price)/Σamount = (2·0.50+3·0.60)/5 = 0.56, matched_trade_ids = data-order iki id,
+    accounting_source = CONFIRMED_TRADE. Kaynak top-level POISON DEĞİL, maker slotlar. fee uniform "10".
+
+    Yalnız maker dead-residual partial aggregation. Taker partial aggregation, residual-live, full-fill
+    (b035fab), farklı-fee/fee amount, trade başına çok slot, DB idempotency DIŞINDA.
+    """
+    from decimal import Decimal
+    from data.clob_reconcile import decide_araf_resolution
+
+    our_id = "dead_multi_maker_order_1"
+
+    intent = {
+        "order_id": our_id,
+        "exchange_order_id": our_id,     # decide_araf_resolution contract bridge
+        "side": "BUY",
+        "intended_size": "10",
+    }
+
+    # Dead-residual: status CANCELED (LIVE/MATCHED DEĞİL) + size_matched("5") < original_size("10")
+    order = {
+        "status": "ORDER_STATUS_CANCELED",
+        "original_size": "10",
+        "size_matched": "5",
+    }
+
+    # İki CONFIRMED trade; bizim slot YALNIZ maker_orders[] içinde (side="BUY"). top-level POISON.
+    # taker_order_id bizim değil → taker aggregate/extractor'a sızmaz; tek doğru kaynak maker slotlar.
+    trades = {
+        "next_cursor": "LTE=",
+        "data": [
+            {
+                "id": "trade_dead_multi_maker_1",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": "someone_else_dead_taker_1",
+                "side": "SELL",
+                "size": "99",
+                "price": "0.99",
+                "fee_rate_bps": "999",
+                "maker_orders": [
+                    {
+                        "order_id": our_id,
+                        "side": "BUY",
+                        "matched_amount": "2",
+                        "price": "0.50",
+                        "fee_rate_bps": "10",
+                    },
+                ],
+            },
+            {
+                "id": "trade_dead_multi_maker_2",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": "someone_else_dead_taker_2",
+                "side": "SELL",
+                "size": "88",
+                "price": "0.88",
+                "fee_rate_bps": "888",
+                "maker_orders": [
+                    {
+                        "order_id": our_id,
+                        "side": "BUY",
+                        "matched_amount": "3",
+                        "price": "0.60",
+                        "fee_rate_bps": "10",
+                    },
+                ],
+            },
+        ],
+    }
+
+    result = decide_araf_resolution(intent=intent, order=order, trades=trades)
+
+    # State doğru olmalı (residual-live'a düşmez); birincil RED accounting aggregation'da
+    assert result.state == "PARTIAL_FILLED", \
+        f"dead-residual maker partial terminal PARTIAL_FILLED: {result.state}"
+    assert result.state != "RECOVERY_REQUIRED", \
+        f"dead-residual residual-live dalına düşmemeli: {result.state}"
+
+    # Aggregate maker partial accounting (tek slot ile yetinme)
+    assert result.matched_size == Decimal("5"), \
+        f"matched_size = Σmatched_amount (2+3): {result.matched_size!r}"
+    assert result.avg_price == Decimal("0.56"), \
+        f"avg_price = maker VWAP (2·0.50+3·0.60)/5: {result.avg_price!r}"
+    assert result.fee_rate_bps == Decimal("10"), \
+        f"fee_rate_bps uniform maker slot (evidence): {result.fee_rate_bps!r}"
+    assert result.matched_trade_ids == ("trade_dead_multi_maker_1", "trade_dead_multi_maker_2"), \
+        f"matched_trade_ids data-order iki id: {result.matched_trade_ids!r}"
+    assert result.accounting_source == "CONFIRMED_TRADE", \
+        f"accounting_source: {result.accounting_source!r}"
+
+    # ── poison-pill regression guard: kaynak top-level DEĞİL, maker slotlar ──
+    assert result.matched_size != Decimal("99"), "top-level size POISON sızdı (trade 1)"
+    assert result.avg_price != Decimal("0.99"), "top-level price POISON sızdı (trade 1)"
+    assert result.fee_rate_bps != Decimal("999"), "top-level fee_rate_bps POISON sızdı (trade 1)"
+    assert result.avg_price != Decimal("0.88"), "top-level price POISON sızdı (trade 2)"
+    assert result.fee_rate_bps != Decimal("888"), "top-level fee_rate_bps POISON sızdı (trade 2)"
