@@ -1228,3 +1228,92 @@ def test_taker_aggregation_dedupes_identical_trade_id_once():
         f"matched_trade_ids deduped (dup id bir kez): {result.matched_trade_ids!r}"
     assert result.accounting_source == "CONFIRMED_TRADE", \
         f"accounting_source: {result.accounting_source!r}"
+
+
+# ── 17) RED: identical duplicate maker trade payload içinde bir kez sayılmalı (maker dedup) ──
+
+def test_maker_aggregation_dedupes_identical_trade_id_once():
+    """Aynı scan payload'ı İÇİNDE birebir aynı maker trade (id + payload) iki kez gelirse, maker
+    aggregation duplicate'i BİR KEZ saymalı: matched_size = unique Σmatched_amount = 5 (2+3, ikinci "2"
+    sayılmaz), avg_price = unique-set maker VWAP = (2·0.50+3·0.60)/5 = 0.56, matched_trade_ids = deduped
+    (dup id bir kez). State dead-residual partial (PARTIAL_FILLED). Kaynak top-level POISON DEĞİL, maker
+    slotlar.
+
+    Yalnız IDENTICAL duplicate dedup, maker-side. Taker dedup (8ee7f8e), conflicting duplicate
+    (fail-closed RECOVERY), DB run-arası idempotency, pagination, fee amount/policy DIŞINDA.
+    """
+    from decimal import Decimal
+    from data.clob_reconcile import decide_araf_resolution
+
+    our_id = "dedup_maker_order_1"
+
+    intent = {
+        "order_id": our_id,
+        "exchange_order_id": our_id,     # decide_araf_resolution contract bridge
+        "side": "BUY",
+        "intended_size": "10",
+    }
+
+    # Dead-residual: status CANCELED (LIVE/MATCHED DEĞİL) + unique-toplam(5) < original_size(10)
+    order = {
+        "status": "ORDER_STATUS_CANCELED",
+        "original_size": "10",
+        "size_matched": "5",
+    }
+
+    # trade_dup_maker_1 birebir aynı payload ile İKİ kez; trade_unique_maker_2 bir kez. top-level POISON.
+    dup = {
+        "id": "trade_dup_maker_1",
+        "status": "TRADE_STATUS_CONFIRMED",
+        "taker_order_id": "other_taker_1",
+        "side": "SELL",
+        "size": "99",
+        "price": "0.99",
+        "fee_rate_bps": "999",
+        "maker_orders": [
+            {"order_id": our_id, "side": "BUY", "matched_amount": "2", "price": "0.50", "fee_rate_bps": "10"},
+        ],
+    }
+    trades = {
+        "next_cursor": "LTE=",
+        "data": [
+            {**dup, "maker_orders": [dict(dup["maker_orders"][0])]},     # birinci görünüm
+            {**dup, "maker_orders": [dict(dup["maker_orders"][0])]},     # birebir aynı (overlap yankısı)
+            {
+                "id": "trade_unique_maker_2",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": "other_taker_2",
+                "side": "SELL",
+                "size": "88",
+                "price": "0.88",
+                "fee_rate_bps": "888",
+                "maker_orders": [
+                    {"order_id": our_id, "side": "BUY", "matched_amount": "3", "price": "0.60", "fee_rate_bps": "10"},
+                ],
+            },
+        ],
+    }
+
+    result = decide_araf_resolution(intent=intent, order=order, trades=trades)
+
+    assert result.state == "PARTIAL_FILLED", \
+        f"dead-residual maker partial PARTIAL_FILLED: {result.state}"
+
+    # Duplicate bir kez sayılmalı → unique maker aggregation
+    assert result.matched_size == Decimal("5"), \
+        f"matched_size = unique Σmatched_amount (2+3, dup sayılmaz): {result.matched_size!r}"
+    assert result.avg_price == Decimal("0.56"), \
+        f"avg_price = unique-set maker VWAP (2·0.50+3·0.60)/5: {result.avg_price!r}"
+    assert result.fee_rate_bps == Decimal("10"), \
+        f"fee_rate_bps uniform maker slot (evidence): {result.fee_rate_bps!r}"
+    assert result.matched_trade_ids == ("trade_dup_maker_1", "trade_unique_maker_2"), \
+        f"matched_trade_ids deduped (dup id bir kez): {result.matched_trade_ids!r}"
+    assert result.accounting_source == "CONFIRMED_TRADE", \
+        f"accounting_source: {result.accounting_source!r}"
+
+    # ── poison-pill regression guard: kaynak top-level DEĞİL, maker slotlar ──
+    assert result.matched_size != Decimal("99"), "top-level size POISON sızdı (trade 1)"
+    assert result.avg_price != Decimal("0.99"), "top-level price POISON sızdı (trade 1)"
+    assert result.fee_rate_bps != Decimal("999"), "top-level fee_rate_bps POISON sızdı (trade 1)"
+    assert result.avg_price != Decimal("0.88"), "top-level price POISON sızdı (trade 2)"
+    assert result.fee_rate_bps != Decimal("888"), "top-level fee_rate_bps POISON sızdı (trade 2)"
