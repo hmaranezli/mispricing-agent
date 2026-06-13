@@ -188,6 +188,55 @@ async def test_recovery_required_shadow_writes_null_accounting(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_shadow_write_failure_raises(tmp_path):
+    """DB yazım altyapısı bozuksa (araf_resolution_shadow tablosu yok) record_araf_resolution
+    hatayı YUTMAZ → fail-closed exception propagate; "RECORDED"/"DUPLICATE" DÖNMEZ. Canlı state
+    tabloları (order_intents/positions) yan-etkisiz kalır."""
+    from execution.araf_resolve_shadow import record_araf_resolution
+
+    db = str(tmp_path / "araf_shadow_dbfail.db")
+    from db.schema import init_schema
+    async with aiosqlite.connect(db) as conn:
+        await init_schema(conn)
+        await conn.commit()
+
+    # Şema kurulduktan SONRA yalnız shadow tablosunu boz (DROP) — diğer tablolar sağlam kalır.
+    boot = sqlite3.connect(db)
+    try:
+        boot.execute("DROP TABLE araf_resolution_shadow")
+        boot.commit()
+    finally:
+        boot.close()
+
+    resolution = ResolutionResult(
+        state="FILLED",
+        matched_size=Decimal("10"),
+        avg_price=Decimal("0.42"),
+        fee_rate_bps=Decimal("0"),
+        matched_trade_ids=("trade-001",),
+        accounting_source="CONFIRMED_TRADE",
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        await record_araf_resolution(db, "iid-dbfail-1", "0xexch-dbfail-1", resolution)
+
+    # Gevşek altyapı-hatası kontrolü (sqlite "no such table" / tablo adı).
+    msg = str(exc_info.value).lower()
+    assert "no such table" in msg or "araf_resolution_shadow" in msg, \
+        f"DB altyapı hatası beklenir (yutulmamalı): {exc_info.value!r}"
+
+    # Exception sonrası canlı state tabloları okunabiliyorsa yan-etki yok (A3-pure).
+    conn = sqlite3.connect(db)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM order_intents").fetchone()[0] == 0, \
+            "order_intents'e yazım YOK"
+        assert conn.execute("SELECT COUNT(*) FROM positions").fetchone()[0] == 0, \
+            "positions'a yazım YOK"
+    finally:
+        conn.close()
+
+
+@pytest.mark.asyncio
 async def test_duplicate_resolution_shadow_is_idempotent(tmp_path):
     """Aynı order_intent_id için ikinci record_araf_resolution → "DUPLICATE", tek satır kalır,
     ilk satır OVERWRITE EDİLMEZ; order_intents/positions dokunulmaz (A3-pure idempotency)."""
