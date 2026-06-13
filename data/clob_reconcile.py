@@ -250,15 +250,17 @@ def _aggregate_maker_confirmed_fills(trades, our_order_id):
     next_cursor/scan davranışına dokunmaz. Tek slot'ta single-helper ile aynı sonucu verir.
     Bu RED: trade başına ≤1 eşleşen maker slot varsayımı (multi-slot-per-trade dedup KAPSAM DIŞI).
 
-    IDENTICAL-duplicate dedup (taker simetriği): aynı scan payload'ı içinde BİREBİR AYNI maker katkısı
-    (top-level id+status+taker_order_id + slot order_id+side+matched_amount+price+fee_rate_bps) tekrar
-    görünürse (pagination overlap yankısı) BİR KEZ sayılır. Conflicting duplicate (aynı id, FARKLI
-    payload) farklı identity → dedup EDİLMEZ (fail-closed policy SONRAKİ RED). DB run-arası idempotency
-    burada YOK (matched_trade_ids dedup anahtarı driver/DB'ye)."""
+    Duplicate karar matrisi (taker simetriği, her eşleşen maker slot için):
+      - yeni key (trade.id, slot.order_id) → normal aggregate
+      - identity (top-level id+status+taker_order_id + slot order_id+side+matched_amount+price+
+        fee_rate_bps) seen'de → IDENTICAL duplicate (overlap yankısı) → skip (bir kez say)
+      - aynı key + FARKLI identity → CONFLICT → ortak `_ACCOUNTING_CONFLICT` dön (sessiz sum/seçim YOK).
+    DB run-arası idempotency burada YOK (matched_trade_ids dedup anahtarı driver/DB'ye)."""
     amounts_prices = []
     ids = []
     fee_raws = []
     seen = set()
+    key_to_identity = {}
     for tr in (trades or {}).get("data", []) or []:
         tr = tr or {}
         if _norm_status(tr.get("status")) != "CONFIRMED":
@@ -267,12 +269,17 @@ def _aggregate_maker_confirmed_fills(trades, our_order_id):
             m = m or {}
             if m.get("order_id") != our_order_id:
                 continue
-            # Identical-duplicate skip: birebir aynı maker katkısı ikinci kez sayılmaz (ham alanlar)
             identity = (str(tr.get("id")), tr.get("status"), tr.get("taker_order_id"),
                         m.get("order_id"), m.get("side"), m.get("matched_amount"),
                         m.get("price"), m.get("fee_rate_bps"))
+            # Identical-duplicate skip: birebir aynı maker katkısı ikinci kez sayılmaz (ham alanlar)
             if identity in seen:
                 continue
+            # Conflict: aynı (trade.id, slot.order_id) daha önce FARKLI identity ile → tutarsız → fail-closed
+            key = (str(tr.get("id")), m.get("order_id"))
+            if key in key_to_identity:
+                return _ACCOUNTING_CONFLICT
+            key_to_identity[key] = identity
             seen.add(identity)
             try:
                 amount = Decimal(str(m.get("matched_amount")))
@@ -379,6 +386,9 @@ def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
     # birebir korunur. Partial/dead-residual ve taker aggregation KAPSAM DIŞI.
     if _slot == "maker" and target > 0:
         maker_agg = _aggregate_maker_confirmed_fills(trades, our_order_id)
+        if maker_agg is _ACCOUNTING_CONFLICT:
+            # Aynı (trade.id, slot.order_id) farklı payload → tutarsız → terminal yazma, fail-closed
+            return ResolutionResult(state="RECOVERY_REQUIRED")
         if maker_agg is not None and maker_agg["matched_size"] == target:
             return ResolutionResult(
                 state="FILLED",
@@ -429,6 +439,9 @@ def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
         return ResolutionResult(state="RECOVERY_REQUIRED")
     if ev is None:
         ev = _aggregate_maker_confirmed_fills(trades, our_order_id)
+        if ev is _ACCOUNTING_CONFLICT:
+            # Maker tarafı tutarsız (aynı trade.id+slot.order_id farklı payload) → fail-closed
+            return ResolutionResult(state="RECOVERY_REQUIRED")
     if ev is not None:
         return ResolutionResult(
             state="PARTIAL_FILLED",
