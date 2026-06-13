@@ -68,3 +68,107 @@ async def test_discover_eligible_intents_returns_unresolved_only(tmp_path):
     assert r["market_token_id"] == "tok-iid-a-unknown"
     assert r["side"] == "BUY"
     assert r["status"] == "SUBMITTED_UNKNOWN"
+
+
+class _StubClient:
+    """İmza-uyumlu async stub (driver enjekte edilen client'ı await eder). Çağrıları kaydeder —
+    NOT: gerçek ClobClient SENKRON; bu async stub, driver'ın async-client-port beklentisini
+    yansıtır (production'da sync ClobClient için ince async adapter gerekecek = GREEN açık-kararı)."""
+
+    def __init__(self, order, page):
+        self._order = order
+        self._page = page
+        self.get_order_calls = []
+        self.get_trades_calls = []
+
+    async def get_order(self, order_id):
+        self.get_order_calls.append(order_id)
+        return self._order
+
+    async def get_trades_paginated(self, params, next_cursor=None):
+        self.get_trades_calls.append((params, next_cursor))
+        return self._page
+
+
+@pytest.mark.asyncio
+async def test_resolve_intent_filled_writes_shadow(tmp_path):
+    """Eligible intent + stub client (CONFIRMED taker full-fill, next_cursor=LTE=) →
+    resolve_intent_to_shadow → araf_resolution_shadow FILLED + accounting evidence;
+    order_intents/positions DOKUNULMAZ (A3-pure). Stub client çağrılmış olmalı.
+
+    İlk RED structural: resolve_intent_to_shadow henüz yok → ImportError."""
+    # Import test GÖVDESİNDE → fonksiyon yoksa temiz "1 failed" (collection error DEĞİL).
+    from execution.araf_resolve_driver import resolve_intent_to_shadow
+
+    db = str(tmp_path / "araf_orch_filled.db")
+    from db.schema import init_schema
+    async with aiosqlite.connect(db) as conn:
+        await init_schema(conn)
+        await conn.commit()
+
+    intent_row = {
+        "order_intent_id": "iid-orch-filled-1",
+        "exchange_order_id": "0xorder-orch-filled-1",
+        "slug": "slug-orch-1",
+        "market_token_id": "tok-orch-1",
+        "side": "BUY",
+        "intended_size": "10",
+        "intended_price": "0.42",
+        "status": "SUBMITTED_UNKNOWN",
+    }
+
+    # get_order lifecycle dict (resolver target_raw için original_size).
+    order = {
+        "order_id": "0xorder-orch-filled-1",
+        "status": "ORDER_STATUS_MATCHED",
+        "original_size": "10",
+        "size_matched": "10",
+    }
+    # get_trades_paginated canlı-şekilli page. NOT: trade'e "side":"BUY" eklendi — resolver taker
+    # yön doğrulaması (intent side ile) için ZORUNLU; aksi halde FILLED değil RECOVERY_REQUIRED olur.
+    page = {
+        "trades": [
+            {
+                "id": "trade-orch-001",
+                "taker_order_id": "0xorder-orch-filled-1",
+                "status": "CONFIRMED",
+                "side": "BUY",
+                "size": "10",
+                "price": "0.42",
+                "fee_rate_bps": "0",
+                "maker_orders": [],
+            }
+        ],
+        "next_cursor": "LTE=",
+        "limit": 300,
+        "count": 1,
+    }
+    client = _StubClient(order, page)
+
+    result = await resolve_intent_to_shadow(client, intent_row, db_path=db)
+    assert result == "RECORDED", f"FILLED resolution RECORDED bekler: {result!r}"
+
+    # Stub client çağrıldı mı?
+    assert client.get_order_calls == ["0xorder-orch-filled-1"], \
+        f"get_order çağrısı: {client.get_order_calls}"
+    assert len(client.get_trades_calls) >= 1, "get_trades_paginated çağrılmalı"
+
+    conn = sqlite3.connect(db)
+    try:
+        rows = conn.execute(
+            "SELECT resolution_state, matched_size, avg_price, matched_trade_ids, accounting_source "
+            "FROM araf_resolution_shadow WHERE order_intent_id=?", ("iid-orch-filled-1",)).fetchall()
+        assert len(rows) == 1, f"tek shadow satırı: {len(rows)}"
+        r = rows[0]
+        assert r[0] == "FILLED", f"resolution_state: {r[0]!r}"
+        assert r[1] == "10", f"matched_size: {r[1]!r}"
+        assert r[2] == "0.42", f"avg_price: {r[2]!r}"
+        assert r[3] == "trade-orch-001", f"matched_trade_ids: {r[3]!r}"
+        assert r[4] == "CONFIRMED_TRADE", f"accounting_source: {r[4]!r}"
+
+        assert conn.execute("SELECT COUNT(*) FROM order_intents").fetchone()[0] == 0, \
+            "order_intents'e yazım YOK (A3-pure)"
+        assert conn.execute("SELECT COUNT(*) FROM positions").fetchone()[0] == 0, \
+            "positions'a yazım YOK (A3-pure)"
+    finally:
+        conn.close()
