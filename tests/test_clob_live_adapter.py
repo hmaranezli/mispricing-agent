@@ -117,3 +117,70 @@ def test_adapt_live_trades_page_trade_element_not_dict_fail_closed():
     from data.clob_live_adapter import adapt_live_trades_page, LiveSchemaError
     with pytest.raises(LiveSchemaError):
         adapt_live_trades_page({"trades": ["not-a-dict"], "next_cursor": "LTE="})
+
+
+# ── 3) Integration: ACL çıktısı sealed resolver tarafından bozulmadan tüketilir ──
+
+def test_adapted_live_page_feeds_resolver_taker_full_fill():
+    """Maskeli live-shaped page → adapt_live_trades_page → decide_araf_resolution: ACL'in envelope
+    transform'u (trades→data, next_cursor taşıma, limit/count drop) sealed resolver'ın taker CONFIRMED
+    full-fill yolunu BOZMADAN besler. Canlı düz `status="CONFIRMED"` (prefix yok) resolver `_norm_status`
+    ile çalışır; numerikler string kalır (Decimal parse resolver-owned). Saf, I/O yok."""
+    from decimal import Decimal
+    from data.clob_live_adapter import adapt_live_trades_page
+    from data.clob_reconcile import decide_araf_resolution
+
+    our_id = "0x" + "1" * 64  # maskeli bizim taker order_id (gerçek değer değil)
+
+    # Canlı get_trades_paginated page şekli (§8.3): envelope key `trades`, düz status, +limit/count.
+    live_page = {
+        "trades": [
+            {
+                "id": "00000000-0000-0000-0000-000000000001",
+                "status": "CONFIRMED",
+                "taker_order_id": our_id,
+                "side": "BUY",
+                "size": "10",
+                "price": "0.42",
+                "fee_rate_bps": "0",
+                "maker_orders": [
+                    {
+                        "order_id": "0x" + "2" * 64,   # karşı taraf — bizim değil
+                        "matched_amount": "10",
+                        "price": "0.42",
+                        "fee_rate_bps": "0",
+                        "side": "SELL",
+                    }
+                ],
+            }
+        ],
+        "next_cursor": "LTE=",
+        "limit": 300,
+        "count": 1,
+    }
+
+    trades = adapt_live_trades_page(live_page)
+
+    intent = {
+        "order_id": our_id,
+        "exchange_order_id": our_id,   # resolver contract bridge
+        "side": "BUY",
+        "original_size": "10",
+    }
+    order = {
+        "order_id": our_id,
+        "status": "ORDER_STATUS_MATCHED",
+        "original_size": "10",
+        "size_matched": "10",
+    }
+
+    result = decide_araf_resolution(intent=intent, order=order, trades=trades)
+
+    assert result.state == "FILLED", f"taker CONFIRMED full fill FILLED olmalı: {result.state}"
+    assert result.matched_size == Decimal("10"), f"matched_size Decimal: {result.matched_size!r}"
+    assert result.avg_price == Decimal("0.42"), f"avg_price Decimal: {result.avg_price!r}"
+    assert result.fee_rate_bps == Decimal("0"), f"fee_rate_bps Decimal (evidence): {result.fee_rate_bps!r}"
+    assert result.matched_trade_ids == ("00000000-0000-0000-0000-000000000001",), \
+        f"matched_trade_ids tuple (live `id`): {result.matched_trade_ids!r}"
+    assert result.accounting_source == "CONFIRMED_TRADE", \
+        f"accounting_source: {result.accounting_source!r}"
