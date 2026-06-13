@@ -492,3 +492,69 @@ def test_maker_confirmed_full_fill_returns_decimal_accounting_evidence():
     assert result.matched_size != Decimal("99"), "top-level size POISON sızdı"
     assert result.avg_price != Decimal("0.99"), "top-level price POISON sızdı"
     assert result.fee_rate_bps != Decimal("999"), "top-level fee_rate_bps POISON sızdı"
+
+
+# ── 8) RED: confirmed partial + residual-LIVE → terminal DÜŞÜRME (state-machine koruması) ──
+
+def test_confirmed_partial_with_residual_live_order_is_not_terminal():
+    """CONFIRMED partial fill VAR (size_matched=4) ama order hâlâ ORDER_STATUS_LIVE ve
+    size_matched < original_size → residual kitapta açık. Bu durumda decide_araf_resolution
+    TERMINAL state DÖNDÜRMEMELİ. Özellikle PARTIAL_FILLED YASAK: order_intent state-machine'de
+    PARTIAL_FILLED ∈ TERMINAL_STATES (terminal sonrası transition strict blok) → residual sonradan
+    dolarsa ek fill kaybolur / pozisyon boyutu yanlış donar. Live-residual = FAK invariant breach →
+    fail-closed non-terminal RECOVERY_REQUIRED (araf takipte kalır, token yeni emre BLOK).
+
+    Bu state-machine RED'inde accounting evidence yüzeye ÇIKMAZ (None) — non-terminal partial
+    exposure accounting + DB idempotency AYRI/sonraki RED (bu turda çift-sayım riski açılmaz).
+    """
+    from data.clob_reconcile import decide_araf_resolution
+
+    our_id = "our_residual_order_1"
+
+    intent = {
+        "order_id": our_id,
+        "exchange_order_id": our_id,     # decide_araf_resolution contract bridge
+        "side": "BUY",
+        "intended_size": "10",
+    }
+
+    # Residual canlılığı: status LIVE + size_matched("4") < original_size("10")
+    order = {
+        "status": "ORDER_STATUS_LIVE",
+        "original_size": "10",
+        "size_matched": "4",
+    }
+
+    # Tek CONFIRMED partial trade (taker-side, intent BUY ile uyumlu)
+    trades = {
+        "next_cursor": "LTE=",
+        "data": [
+            {
+                "id": "trade_partial_1",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": our_id,
+                "side": "BUY",
+                "size": "4",
+                "price": "0.50",
+            },
+        ],
+    }
+
+    result = decide_araf_resolution(intent=intent, order=order, trades=trades)
+
+    # Terminal YASAK (özellikle PARTIAL_FILLED, çünkü o terminal = takipten düşme)
+    assert result.state != "FILLED", f"residual-live partial FILLED olamaz: {result.state}"
+    assert result.state != "CANCELLED", f"residual-live partial CANCELLED olamaz: {result.state}"
+    assert result.state != "PARTIAL_FILLED", \
+        f"PARTIAL_FILLED terminal → residual-live takipten düşmemeli: {result.state}"
+    assert result.state == "RECOVERY_REQUIRED", \
+        f"fail-closed non-terminal RECOVERY_REQUIRED beklenir: {result.state}"
+
+    # State-machine RED'i: accounting evidence yüzeye çıkmaz (None)
+    assert result.matched_size is None, f"matched_size None olmalı: {result.matched_size!r}"
+    assert result.avg_price is None, f"avg_price None olmalı: {result.avg_price!r}"
+    assert result.fee_rate_bps is None, f"fee_rate_bps None olmalı: {result.fee_rate_bps!r}"
+    assert result.matched_trade_ids is None, \
+        f"matched_trade_ids None olmalı: {result.matched_trade_ids!r}"
+    assert result.accounting_source is None, \
+        f"accounting_source None olmalı: {result.accounting_source!r}"

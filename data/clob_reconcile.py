@@ -206,6 +206,18 @@ def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
                 accounting_source=ev["accounting_source"],
             )
         return ResolutionResult(state="FILLED")
+
+    # Residual-live partial: confirmed 0 < filled < target VE order borsada hâlâ açık
+    # (canonical LIVE/MATCHED) → residual kitapta, daha fazla dolabilir. PARTIAL_FILLED ∈
+    # TERMINAL_STATES (terminal sonrası transition strict blok) olduğundan burada terminal
+    # YAZILMAZ; fail-closed non-terminal RECOVERY_REQUIRED (araf takipte kalır). FAK için
+    # residual-live = invariant breach. Accounting evidence yüzeye ÇIKMAZ (None) — non-terminal
+    # partial accounting + DB idempotency AYRI adım. (PARTIAL_FILLED terminal tanımı DEĞİŞMEZ.)
+    if filled < target and _norm_status(order.get("status")) in ("LIVE", "MATCHED"):
+        return ResolutionResult(state="RECOVERY_REQUIRED")
+
+    # Dead-residual partial (FAK kalanı öldü: order canonical CANCELED/CANCELLED vb.) → mevcut
+    # terminal PARTIAL_FILLED davranışı KORUNUR.
     return ResolutionResult(state="PARTIAL_FILLED")
 
 
