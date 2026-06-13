@@ -558,3 +558,69 @@ def test_confirmed_partial_with_residual_live_order_is_not_terminal():
         f"matched_trade_ids None olmalı: {result.matched_trade_ids!r}"
     assert result.accounting_source is None, \
         f"accounting_source None olmalı: {result.accounting_source!r}"
+
+
+# ── 9) RED: dead-residual taker partial → terminal PARTIAL_FILLED + accounting evidence ──
+
+def test_dead_residual_taker_partial_returns_terminal_with_accounting_evidence():
+    """CONFIRMED taker partial fill (size=4) VAR ve order canonical CANCELED (residual ÖLÜ, FAK
+    kalanı öldürülmüş, daha fazla fill imkânsız) → terminal PARTIAL_FILLED DOĞRU (residual-live'ın
+    aksine; o RECOVERY_REQUIRED). Final/kesin exposure olduğundan accounting evidence YÜZEYE ÇIKAR:
+    matched_size/avg_price/fee_rate_bps/matched_trade_ids/accounting_source (top-level taker trade).
+    Discriminator = order.status: LIVE/MATCHED → residual-live; CANCELED → dead-residual.
+
+    Yalnız taker-side, tek trade. Maker-side partial accounting, multi-trade/VWAP, fee amount,
+    DB idempotency DIŞINDA (sonraki RED'ler).
+    """
+    from decimal import Decimal
+    from data.clob_reconcile import decide_araf_resolution
+
+    our_id = "dead_residual_order_1"
+
+    intent = {
+        "order_id": our_id,
+        "exchange_order_id": our_id,     # decide_araf_resolution contract bridge
+        "side": "BUY",
+        "intended_size": "10",
+    }
+
+    # Dead-residual: status CANCELED (LIVE/MATCHED DEĞİL) + size_matched("4") < original_size("10")
+    order = {
+        "status": "ORDER_STATUS_CANCELED",
+        "original_size": "10",
+        "size_matched": "4",
+    }
+
+    # Tek CONFIRMED taker partial trade (intent BUY ile uyumlu); evidence kaynağı top-level
+    trades = {
+        "next_cursor": "LTE=",
+        "data": [
+            {
+                "id": "trade_dead_partial_1",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": our_id,
+                "side": "BUY",
+                "size": "4",
+                "price": "0.50",
+                "fee_rate_bps": "10",
+            },
+        ],
+    }
+
+    result = decide_araf_resolution(intent=intent, order=order, trades=trades)
+
+    # Dead-residual → terminal PARTIAL_FILLED (residual-live RECOVERY_REQUIRED dalına DÜŞMEMELİ)
+    assert result.state == "PARTIAL_FILLED", \
+        f"dead-residual partial terminal PARTIAL_FILLED olmalı: {result.state}"
+    assert result.state != "RECOVERY_REQUIRED", \
+        f"dead-residual residual-live dalına düşmemeli: {result.state}"
+
+    # Terminal partial accounting evidence (final exposure → güvenle yüzeye çıkar)
+    assert result.matched_size == Decimal("4"), \
+        f"matched_size confirmed taker partial: {result.matched_size!r}"
+    assert result.avg_price == Decimal("0.50"), f"avg_price: {result.avg_price!r}"
+    assert result.fee_rate_bps == Decimal("10"), f"fee_rate_bps (evidence): {result.fee_rate_bps!r}"
+    assert result.matched_trade_ids == ("trade_dead_partial_1",), \
+        f"matched_trade_ids: {result.matched_trade_ids!r}"
+    assert result.accounting_source == "CONFIRMED_TRADE", \
+        f"accounting_source: {result.accounting_source!r}"
