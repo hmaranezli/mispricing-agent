@@ -78,6 +78,63 @@ async def test_filled_resolution_persists_shadow_record(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_conflicting_duplicate_shadow_fails_closed(tmp_path):
+    """Aynı order_intent_id için FARKLI evidence ile ikinci çağrı → sessiz "DUPLICATE" YASAK,
+    overwrite YASAK → fail-closed (exception). Tek satır A olarak kalır; order_intents/positions
+    dokunulmaz. (Conflict ≠ identical-duplicate: identical → DUPLICATE no-op; farklı payload →
+    tutarsız veri → kayıt bozulmasını maskelememek için fail-closed — pure resolver felsefesi.)"""
+    from execution.araf_resolve_shadow import record_araf_resolution
+
+    db = str(tmp_path / "araf_shadow_conflict.db")
+    from db.schema import init_schema
+    async with aiosqlite.connect(db) as conn:
+        await init_schema(conn)
+        await conn.commit()
+
+    resolution_a = ResolutionResult(
+        state="FILLED",
+        matched_size=Decimal("10"),
+        avg_price=Decimal("0.42"),
+        fee_rate_bps=Decimal("0"),
+        matched_trade_ids=("trade-001",),
+        accounting_source="CONFIRMED_TRADE",
+    )
+    first = await record_araf_resolution(db, "iid-conflict-1", "0xexch-conflict-1", resolution_a)
+    assert first == "RECORDED", f"ilk kayıt RECORDED: {first!r}"
+
+    # FARKLI evidence (B) — aynı intent. Tutarsız → fail-closed beklenir.
+    resolution_b = ResolutionResult(
+        state="FILLED",
+        matched_size=Decimal("9"),
+        avg_price=Decimal("0.43"),
+        fee_rate_bps=Decimal("0"),
+        matched_trade_ids=("trade-999",),
+        accounting_source="CONFIRMED_TRADE",
+    )
+    # GREEN'de özel ArafShadowConflictError eklenebilir; şimdilik generic Exception kabul.
+    with pytest.raises(Exception):
+        await record_araf_resolution(db, "iid-conflict-1", "0xexch-conflict-1", resolution_b)
+
+    conn = sqlite3.connect(db)
+    try:
+        rows = conn.execute(
+            "SELECT matched_size, avg_price, matched_trade_ids FROM araf_resolution_shadow "
+            "WHERE order_intent_id=?", ("iid-conflict-1",)).fetchall()
+        assert len(rows) == 1, f"tek satır kalmalı: {len(rows)}"
+        # İlk (A) evidence korunmalı — B ile overwrite YASAK.
+        assert rows[0][0] == "10", f"matched_size A korunmalı: {rows[0][0]!r}"
+        assert rows[0][1] == "0.42", f"avg_price A korunmalı: {rows[0][1]!r}"
+        assert rows[0][2] == "trade-001", f"matched_trade_ids A korunmalı: {rows[0][2]!r}"
+
+        assert conn.execute("SELECT COUNT(*) FROM order_intents").fetchone()[0] == 0, \
+            "order_intents'e yazım YOK (A3-pure)"
+        assert conn.execute("SELECT COUNT(*) FROM positions").fetchone()[0] == 0, \
+            "positions'a yazım YOK (A3-pure)"
+    finally:
+        conn.close()
+
+
+@pytest.mark.asyncio
 async def test_duplicate_resolution_shadow_is_idempotent(tmp_path):
     """Aynı order_intent_id için ikinci record_araf_resolution → "DUPLICATE", tek satır kalır,
     ilk satır OVERWRITE EDİLMEZ; order_intents/positions dokunulmaz (A3-pure idempotency)."""
