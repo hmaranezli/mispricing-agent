@@ -212,6 +212,69 @@ def _aggregate_taker_confirmed_fills(trades, our_order_id):
     }
 
 
+def _aggregate_maker_confirmed_fills(trades, our_order_id):
+    """Bizim TÜM CONFIRMED maker slotlarımızı (maker_orders[].order_id == our_order_id) topla →
+    aggregate accounting evidence dict, yoksa None. KAPSAM: yalnız maker-side; top-level trade
+    size/price/fee_rate_bps / taker_order_id OKUNMAZ.
+      - matched_size = Σmatched_amount, avg_price = VWAP = Σ(matched_amount·price)/Σmatched_amount,
+        matched_trade_ids = data-order tuple (eşleşen maker slot başına trade id).
+      - fee_rate_bps: TÜM slotlar aynı parseable rate ise o Decimal; aksi halde None (farklı-fee
+        policy SONRAKİ konu — burada blend/weight YOK).
+    Herhangi matched_amount/price parse fail veya total ≤ 0 → fail-closed None. Saf — I/O yok;
+    next_cursor/scan davranışına dokunmaz. Tek slot'ta single-helper ile aynı sonucu verir.
+    Bu RED: trade başına ≤1 eşleşen maker slot varsayımı (multi-slot-per-trade dedup KAPSAM DIŞI)."""
+    amounts_prices = []
+    ids = []
+    fee_raws = []
+    for tr in (trades or {}).get("data", []) or []:
+        tr = tr or {}
+        if _norm_status(tr.get("status")) != "CONFIRMED":
+            continue
+        for m in (tr.get("maker_orders") or []):
+            m = m or {}
+            if m.get("order_id") != our_order_id:
+                continue
+            try:
+                amount = Decimal(str(m.get("matched_amount")))
+                price = Decimal(str(m.get("price")))
+            except (InvalidOperation, TypeError, ValueError):
+                return None
+            amounts_prices.append((amount, price))
+            ids.append(str(tr.get("id")))
+            fee_raws.append(m.get("fee_rate_bps"))
+
+    if not amounts_prices:
+        return None
+    total_size = sum((ap[0] for ap in amounts_prices), Decimal("0"))
+    if total_size <= 0:
+        return None
+    total_notional = sum((ap[0] * ap[1] for ap in amounts_prices), Decimal("0"))
+    avg_price = total_notional / total_size     # maker VWAP — keyfi quantize YOK
+
+    fee_rate_bps = None
+    parsed_fees = []
+    uniform = True
+    for fr in fee_raws:
+        if fr is None:
+            uniform = False
+            break
+        try:
+            parsed_fees.append(Decimal(str(fr)))
+        except (InvalidOperation, TypeError, ValueError):
+            uniform = False
+            break
+    if uniform and parsed_fees and len(set(parsed_fees)) == 1:
+        fee_rate_bps = parsed_fees[0]
+
+    return {
+        "matched_size": total_size,
+        "avg_price": avg_price,
+        "fee_rate_bps": fee_rate_bps,
+        "matched_trade_ids": tuple(ids),
+        "accounting_source": "CONFIRMED_TRADE",
+    }
+
+
 def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
     """Araf intent için dual-oracle kararı (saf, I/O yok). `intent`/`order`/`trades` önceden
     çekilmiş ham dict'ler (client/pagination ayrı katman = sonraki adım).
@@ -264,6 +327,23 @@ def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
                 fee_rate_bps=taker_agg["fee_rate_bps"],
                 matched_trade_ids=taker_agg["matched_trade_ids"],
                 accounting_source=taker_agg["accounting_source"],
+            )
+
+    # Multi-trade MAKER full-fill (aggregate): taker'a simetrik. Bizim TÜM CONFIRMED maker
+    # slotlarımızın matched_amount TOPLAMI target'a EŞİTSE → FILLED + maker VWAP aggregate accounting
+    # (kaynak maker slotlar, top-level KÖR değil). YALNIZ maker slot + full-fill; toplam ≠ target ise
+    # atlanır (eski tek-slot davranışı sürer). Tek slot'ta aggregate = single → maker full-fill testi
+    # birebir korunur. Partial/dead-residual ve taker aggregation KAPSAM DIŞI.
+    if _slot == "maker" and target > 0:
+        maker_agg = _aggregate_maker_confirmed_fills(trades, our_order_id)
+        if maker_agg is not None and maker_agg["matched_size"] == target:
+            return ResolutionResult(
+                state="FILLED",
+                matched_size=maker_agg["matched_size"],
+                avg_price=maker_agg["avg_price"],
+                fee_rate_bps=maker_agg["fee_rate_bps"],
+                matched_trade_ids=maker_agg["matched_trade_ids"],
+                accounting_source=maker_agg["accounting_source"],
             )
 
     if target > 0 and filled == target:

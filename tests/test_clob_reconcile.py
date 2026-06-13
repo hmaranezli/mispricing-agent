@@ -854,3 +854,105 @@ def test_multi_trade_taker_mixed_fee_rate_yields_none_fee_evidence():
     # mixed fee → fail-safe None (blend/first-rate YOK); fee policy kontratı kilitli
     assert result.fee_rate_bps is None, \
         f"mixed fee_rate_bps → None olmalı (belirsiz tek rate iddia edilmez): {result.fee_rate_bps!r}"
+
+
+# ── 13) RED: multi-trade MAKER full-fill → VWAP accounting aggregation (tek slot ile yetinme) ──
+
+def test_multi_trade_maker_full_fill_aggregates_vwap_accounting():
+    """Aynı maker order için İKİ CONFIRMED trade, her birinde bizim maker_orders[] slotumuz
+    (matched_amount 4 + 6). decide_araf_resolution tek slot/trade ile yetinmemeli: toplam (10) ==
+    target → state FILLED; maker-side accounting AGGREGATE:
+    matched_size = Σmatched_amount = 10, avg_price = VWAP = Σ(amount·price)/Σamount = 0.56,
+    matched_trade_ids = data-order iki id, accounting_source = CONFIRMED_TRADE. Kaynak top-level
+    POISON alanlar DEĞİL, maker slotlar. fee_rate_bps iki slot da "10" (uniform) → Decimal("10").
+
+    fee aggregation policy (mixed→None) taker'da kilitli; bu RED uniform tutar. Yalnız maker-side
+    full-fill; taker aggregation (ef030a0), dead-residual partial aggregation, farklı-fee/fee amount,
+    trade başına çok slot, DB idempotency DIŞINDA.
+    """
+    from decimal import Decimal
+    from data.clob_reconcile import decide_araf_resolution
+
+    our_id = "multi_maker_order_1"
+
+    intent = {
+        "order_id": our_id,
+        "exchange_order_id": our_id,     # decide_araf_resolution contract bridge
+        "side": "BUY",
+        "intended_size": "10",
+    }
+
+    order = {
+        "status": "ORDER_STATUS_FILLED",
+        "original_size": "10",
+        "size_matched": "10",
+    }
+
+    # İki CONFIRMED trade; bizim slot YALNIZ maker_orders[] içinde. top-level POISON (bizim değil).
+    # taker_order_id bizim değil → taker aggregate/extractor'a sızmaz; tek doğru kaynak maker slotlar.
+    trades = {
+        "next_cursor": "LTE=",
+        "data": [
+            {
+                "id": "trade_multi_maker_1",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": "someone_else_taker_order_1",
+                "side": "SELL",
+                "size": "99",
+                "price": "0.99",
+                "fee_rate_bps": "999",
+                "maker_orders": [
+                    {
+                        "order_id": our_id,
+                        "side": "BUY",
+                        "matched_amount": "4",
+                        "price": "0.50",
+                        "fee_rate_bps": "10",
+                    },
+                ],
+            },
+            {
+                "id": "trade_multi_maker_2",
+                "status": "TRADE_STATUS_CONFIRMED",
+                "taker_order_id": "someone_else_taker_order_2",
+                "side": "SELL",
+                "size": "88",
+                "price": "0.88",
+                "fee_rate_bps": "888",
+                "maker_orders": [
+                    {
+                        "order_id": our_id,
+                        "side": "BUY",
+                        "matched_amount": "6",
+                        "price": "0.60",
+                        "fee_rate_bps": "10",
+                    },
+                ],
+            },
+        ],
+    }
+
+    result = decide_araf_resolution(intent=intent, order=order, trades=trades)
+
+    # Birincil: aggregate toplam (10) == target → FILLED (tek-slot short-circuit PARTIAL_FILLED YASAK)
+    assert result.state == "FILLED", \
+        f"multi-trade maker toplam fill target → FILLED olmalı (tek slot ile yetinme): {result.state}"
+
+    # Aggregate maker accounting evidence (kaynak maker slotlar)
+    assert result.matched_size == Decimal("10"), \
+        f"matched_size = Σmatched_amount (4+6): {result.matched_size!r}"
+    assert result.avg_price == Decimal("0.56"), \
+        f"avg_price = maker VWAP (4·0.50+6·0.60)/10: {result.avg_price!r}"
+    assert result.fee_rate_bps == Decimal("10"), \
+        f"fee_rate_bps uniform maker slot (evidence): {result.fee_rate_bps!r}"
+    assert result.matched_trade_ids == ("trade_multi_maker_1", "trade_multi_maker_2"), \
+        f"matched_trade_ids data-order iki id: {result.matched_trade_ids!r}"
+    assert result.accounting_source == "CONFIRMED_TRADE", \
+        f"accounting_source: {result.accounting_source!r}"
+
+    # ── poison-pill regression guard: kaynak top-level DEĞİL, maker slotlar ──
+    assert result.matched_size != Decimal("99"), "top-level size POISON sızdı (trade 1)"
+    assert result.avg_price != Decimal("0.99"), "top-level price POISON sızdı (trade 1)"
+    assert result.fee_rate_bps != Decimal("999"), "top-level fee_rate_bps POISON sızdı (trade 1)"
+    assert result.avg_price != Decimal("0.88"), "top-level price POISON sızdı (trade 2)"
+    assert result.fee_rate_bps != Decimal("888"), "top-level fee_rate_bps POISON sızdı (trade 2)"
