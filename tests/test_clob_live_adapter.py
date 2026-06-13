@@ -8,6 +8,7 @@ taşınır (zero-fill scan-complete `=="LTE="` için); limit/count resolver dict
 Adapter Decimal/math/fee_amount ÜRETMEZ; numerikler string kalır (Decimal parse resolver-owned).
 Fixture maskeli (gerçek ID/adres/miktar yok — nötr placeholder). Canlı API/DB yok (saf, I/O-free).
 """
+import pytest
 
 
 # ── 1) RED: page envelope transform (trades → data) + pass-through + metadata sınırı ──
@@ -79,3 +80,40 @@ def test_adapt_live_trades_page_renames_trades_to_data():
     assert m["price"] == "0.42"
     assert m["fee_rate_bps"] == "0"
     assert m["side"] == "SELL"
+
+
+# ── 2) Structural fail-closed matrix: yapısal ihlalde LiveSchemaError (resolver'a bozuk dict gitmez) ──
+
+def test_adapt_live_trades_page_non_dict_page_fail_closed():
+    """page dict değilse → LiveSchemaError (uydurma boş sayfa DÖNDÜRÜLMEZ)."""
+    from data.clob_live_adapter import adapt_live_trades_page, LiveSchemaError
+    with pytest.raises(LiveSchemaError):
+        adapt_live_trades_page(["not", "a", "dict"])
+
+
+def test_adapt_live_trades_page_missing_trades_fail_closed():
+    """page'de 'trades' yoksa → LiveSchemaError."""
+    from data.clob_live_adapter import adapt_live_trades_page, LiveSchemaError
+    with pytest.raises(LiveSchemaError):
+        adapt_live_trades_page({"next_cursor": "LTE=", "limit": 300, "count": 0})
+
+
+def test_adapt_live_trades_page_trades_not_list_fail_closed():
+    """page['trades'] list değilse → LiveSchemaError."""
+    from data.clob_live_adapter import adapt_live_trades_page, LiveSchemaError
+    with pytest.raises(LiveSchemaError):
+        adapt_live_trades_page({"trades": {"not": "a list"}, "next_cursor": "LTE="})
+
+
+def test_adapt_live_trades_page_missing_next_cursor_fail_closed():
+    """page'de 'next_cursor' yoksa → LiveSchemaError (resolver zero-fill scan-complete için zorunlu)."""
+    from data.clob_live_adapter import adapt_live_trades_page, LiveSchemaError
+    with pytest.raises(LiveSchemaError):
+        adapt_live_trades_page({"trades": [], "limit": 300, "count": 0})
+
+
+def test_adapt_live_trades_page_trade_element_not_dict_fail_closed():
+    """trades list elemanı dict değilse → LiveSchemaError (sığ shape check)."""
+    from data.clob_live_adapter import adapt_live_trades_page, LiveSchemaError
+    with pytest.raises(LiveSchemaError):
+        adapt_live_trades_page({"trades": ["not-a-dict"], "next_cursor": "LTE="})
