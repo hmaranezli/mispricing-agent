@@ -217,10 +217,13 @@ def decide_araf_resolution(intent, order, trades) -> ResolutionResult:
         return ResolutionResult(state="RECOVERY_REQUIRED")
 
     # Dead-residual partial (FAK kalanı öldü: order canonical CANCELED/CANCELLED vb.) → terminal
-    # PARTIAL_FILLED. Final/kesin exposure olduğundan YALNIZ taker-side accounting evidence (top-level
-    # alanlar) yüzeye çıkar. Maker-side partial accounting KAPSAM DIŞI (maker fallback YOK; sonraki
-    # RED). Taker evidence yoksa eski davranış katı korunur: PARTIAL_FILLED, accounting None.
+    # PARTIAL_FILLED. Final/kesin exposure olduğundan accounting evidence yüzeye çıkar. Önce taker
+    # (top-level alanlar) yolu KORUNUR; taker yoksa maker slot (nested) evidence denenir. İkisi de
+    # yoksa eski davranış katı korunur: PARTIAL_FILLED, accounting None. Top-level değerler maker
+    # için KÖR değil. (Full-fill ile aynı taker→maker dispatch sırası.)
     ev = _extract_taker_accounting_evidence(trades, our_order_id)
+    if ev is None:
+        ev = _extract_maker_accounting_evidence(trades, our_order_id)
     if ev is not None:
         return ResolutionResult(
             state="PARTIAL_FILLED",

@@ -624,3 +624,86 @@ def test_dead_residual_taker_partial_returns_terminal_with_accounting_evidence()
         f"matched_trade_ids: {result.matched_trade_ids!r}"
     assert result.accounting_source == "CONFIRMED_TRADE", \
         f"accounting_source: {result.accounting_source!r}"
+
+
+# ── 10) RED: dead-residual MAKER partial → terminal PARTIAL_FILLED + maker-slot accounting ──
+
+def test_dead_residual_maker_partial_returns_terminal_with_accounting_evidence():
+    """CONFIRMED maker-side partial fill (maker slot matched_amount=4) VAR ve order canonical
+    CANCELED (residual ÖLÜ) → terminal PARTIAL_FILLED. Accounting evidence top-level POISON
+    alanlardan DEĞİL, bizim order_id ile eşleşen maker_orders[] slot'undan gelmeli. Discriminator
+    = order.status (LIVE/MATCHED → residual-live RECOVERY_REQUIRED; CANCELED → dead-residual).
+
+    Yalnız maker-side dead-residual partial, tek trade. Taker dead-residual (d36d8f0), residual-live,
+    multi-trade/VWAP, fee amount, DB idempotency DIŞINDA.
+    """
+    from decimal import Decimal
+    from data.clob_reconcile import decide_araf_resolution
+
+    our_id = "dead_residual_maker_order_1"
+
+    intent = {
+        "order_id": our_id,
+        "exchange_order_id": our_id,     # decide_araf_resolution contract bridge
+        "side": "BUY",
+        "intended_size": "10",
+    }
+
+    # Dead-residual: status CANCELED (LIVE/MATCHED DEĞİL) + size_matched("4") < original_size("10")
+    order = {
+        "status": "ORDER_STATUS_CANCELED",
+        "original_size": "10",
+        "size_matched": "4",
+    }
+
+    # Tek CONFIRMED trade: top-level POISON (bizim değil), bizim slot YALNIZ maker_orders[] içinde.
+    # taker_order_id bizim değil → taker extractor'a sızmaz; tek doğru kaynak maker slot.
+    trades = {
+        "next_cursor": "LTE=",
+        "data": [
+            {
+                "id": "trade_dead_maker_partial_1",
+                "status": "TRADE_STATUS_CONFIRMED",
+                # ── top-level POISON (kör kullanılmamalı) ──
+                "taker_order_id": "someone_else_taker_order",
+                "side": "SELL",
+                "size": "99",
+                "price": "0.99",
+                "fee_rate_bps": "999",
+                # ── bizim slot (tek doğru accounting kaynağı) ──
+                "maker_orders": [
+                    {
+                        "order_id": our_id,
+                        "side": "BUY",
+                        "matched_amount": "4",
+                        "price": "0.50",
+                        "fee_rate_bps": "10",
+                    },
+                ],
+            },
+        ],
+    }
+
+    result = decide_araf_resolution(intent=intent, order=order, trades=trades)
+
+    # Dead-residual → terminal PARTIAL_FILLED (residual-live RECOVERY_REQUIRED dalına DÜŞMEMELİ)
+    assert result.state == "PARTIAL_FILLED", \
+        f"dead-residual maker partial terminal PARTIAL_FILLED olmalı: {result.state}"
+    assert result.state != "RECOVERY_REQUIRED", \
+        f"dead-residual residual-live dalına düşmemeli: {result.state}"
+
+    # Terminal maker partial accounting evidence (maker slot kaynağı)
+    assert result.matched_size == Decimal("4"), \
+        f"matched_size maker slot matched_amount: {result.matched_size!r}"
+    assert result.avg_price == Decimal("0.50"), f"avg_price maker slot price: {result.avg_price!r}"
+    assert result.fee_rate_bps == Decimal("10"), \
+        f"fee_rate_bps maker slot (evidence): {result.fee_rate_bps!r}"
+    assert result.matched_trade_ids == ("trade_dead_maker_partial_1",), \
+        f"matched_trade_ids trade-level id: {result.matched_trade_ids!r}"
+    assert result.accounting_source == "CONFIRMED_TRADE", \
+        f"accounting_source: {result.accounting_source!r}"
+
+    # ── poison-pill regression guard: kaynak top-level DEĞİL, maker slot ──
+    assert result.matched_size != Decimal("99"), "top-level size POISON sızdı"
+    assert result.avg_price != Decimal("0.99"), "top-level price POISON sızdı"
+    assert result.fee_rate_bps != Decimal("999"), "top-level fee_rate_bps POISON sızdı"
