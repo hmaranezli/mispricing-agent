@@ -34,6 +34,9 @@ class RiskStateSnapshot:
     effective_mode: str
     updated_at_utc: str
     schema_version: int = _SCHEMA_VERSION
+    # E3b bootstrap audit metadata (opsiyonel; geriye uyumlu — eski 7-alan kurulum çalışmaya devam eder).
+    bootstrap_approved_by: str = None
+    bootstrap_reason: str = None
 
 
 def init_risk_state_store(db_path) -> None:
@@ -91,7 +94,52 @@ def load_risk_state(db_path) -> RiskStateSnapshot:
         effective_mode=data["effective_mode"],
         updated_at_utc=data["updated_at_utc"],
         schema_version=data["schema_version"],
+        bootstrap_approved_by=data.get("bootstrap_approved_by"),
+        bootstrap_reason=data.get("bootstrap_reason"),
     )
+
+
+def initialize_day_zero_state(db_path, trading_day_utc, start_of_day_equity,
+                              updated_at_utc, approved_by, reason) -> RiskStateSnapshot:
+    """E3b — Day-0 explicit, operatör-onaylı risk-state bootstrap.
+
+    YALNIZ caller değerleri (canlı balance/API/config/clock/env/network YOK). İlk geçerli Operational
+    snapshot'ı üretir; YALNIZ singleton satır GERÇEKTEN yoksa izinlidir. Mevcut GEÇERLİ state →
+    ValueError (sessiz overwrite yok); mevcut BOZUK state → RiskStateCorruptError (her corrupt
+    bootstrap-izinli sayılmaz). Audit metadata (approved_by/reason) snapshot'a persist edilir.
+    """
+    if not isinstance(start_of_day_equity, (int, float)) or isinstance(start_of_day_equity, bool) \
+            or start_of_day_equity <= 0:
+        raise ValueError(f"start_of_day_equity > 0 olmalı: {start_of_day_equity!r}")
+    for _name, _v in (("trading_day_utc", trading_day_utc), ("updated_at_utc", updated_at_utc),
+                      ("approved_by", approved_by), ("reason", reason)):
+        if not isinstance(_v, str) or not _v.strip():
+            raise ValueError(f"{_name} boş olmayan string olmalı: {_v!r}")
+    # Mevcut satır var mı? (missing vs present ayrımı — load None'da da raise eder, o yüzden raw bak)
+    conn = sqlite3.connect(str(db_path))
+    try:
+        row = conn.execute(
+            "SELECT payload FROM risk_state WHERE state_key=?", (_STATE_KEY,)).fetchone()
+    finally:
+        conn.close()
+    if row is not None:
+        # Satır VAR → bootstrap yapma. Geçerliyse ValueError; bozuksa load_risk_state RiskStateCorruptError
+        # fırlatır (propagate). Hiçbir durumda overwrite YOK.
+        load_risk_state(db_path)   # bozuksa burada RiskStateCorruptError yükselir
+        raise ValueError("risk_state zaten initialize edilmiş — bootstrap overwrite etmez")
+    snap = RiskStateSnapshot(
+        trading_day_utc=trading_day_utc,
+        start_of_day_equity=float(start_of_day_equity),
+        realized_pnl_today=0.0,
+        active_blockers=[],
+        effective_mode="Operational",
+        updated_at_utc=updated_at_utc,
+        schema_version=_SCHEMA_VERSION,
+        bootstrap_approved_by=approved_by,
+        bootstrap_reason=reason,
+    )
+    save_risk_state(db_path, snap)
+    return snap
 
 
 def _validate(data: dict) -> None:
