@@ -101,3 +101,20 @@ async def resolve_intent_to_shadow(client, intent_row: dict, db_path=None) -> st
 
     return await record_araf_resolution(
         db_path, intent_row["order_intent_id"], exchange_order_id, resolution)
+
+
+async def run_araf_resolution(client, db_path=None) -> list[dict]:
+    """Paper-only batch entrypoint: eligible (UNRESOLVED) intent'leri keşfet → her biri için
+    resolve_intent_to_shadow. Yalnız shadow yazar; positions/order_intents-terminal-update/
+    confirm_fill_atomic/PnL/canlı-client YOK. Exception YUTULMAZ (fail-closed yollar ayrı).
+    Döner: per-intent sonuç listesi (debug/audit)."""
+    intents = await discover_eligible_intents(db_path)
+    results = []
+    for intent in intents:
+        result = await resolve_intent_to_shadow(client, intent, db_path)
+        results.append({
+            "order_intent_id": intent.get("order_intent_id"),
+            "exchange_order_id": intent.get("exchange_order_id"),
+            "result": result,
+        })
+    return results
