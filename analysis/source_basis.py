@@ -31,6 +31,27 @@ def directional_disagreement_rate(windows) -> float:
     return disagree / len(windows)
 
 
+def directional_disagreement_rate_with_shift(windows, shift_seconds) -> float:
+    """Latency-shifted yön sapma oranı: HL anchor'ı verilen `shift_seconds`'a göre seçilir.
+
+    Gerçek-veride HL ve Chainlink eşzamanlı örneklenmez; bu fonksiyon HL'yi bir zaman ofsetiyle
+    hizalayıp Chainlink yönüyle kıyaslar. Her window için HL anchor = `window["hl_by_shift"][shift_seconds]`
+    (dict: {"hl_start", "hl_end"}); Chainlink yönü `cl_start`/`cl_end`'ten. PM kuralı end ≥ start ⇒ Up.
+
+    `shift_seconds` window'da YOKSA → açık `KeyError` (sessiz shift=0 fallback YOK). Boş liste → 0.0.
+    """
+    if not windows:
+        return 0.0
+    disagree = 0
+    for w in windows:
+        hl = w["hl_by_shift"][shift_seconds]   # eksikse KeyError — sessiz fallback yok
+        hl_up = _direction_up(hl["hl_start"], hl["hl_end"])
+        cl_up = _direction_up(w["cl_start"], w["cl_end"])
+        if hl_up != cl_up:
+            disagree += 1
+    return disagree / len(windows)
+
+
 def source_basis_bps_stats(windows) -> dict:
     """HL ile Chainlink fiyat-kaynağı farkını bps cinsinden ölçer (start + end anchor).
 
