@@ -64,6 +64,18 @@ def test_notify_halt_contains_reason():
     assert "daily_loss_limit" in msg
 
 
+def test_notify_emergency_pause_emits_operator_alert():
+    """D#6 gap: DB emergency_pause TRIP operatöre Telegram alert üretmeli. notify_emergency_pause
+    wrapper'ı reason + source'u mesaja koyar (notify_halt deseniyle simetrik). Network yok
+    (send_telegram patch'li). İlk RED: notify_emergency_pause henüz YOK → AttributeError."""
+    with patch("monitor.notifier.send_telegram") as mock_send:
+        notifier.notify_emergency_pause(reason="FAK_RESIDUAL_LIVE", source="reconcile")
+    assert mock_send.called, "emergency_pause notify send_telegram çağırmalı"
+    msg = mock_send.call_args[0][0]
+    assert "FAK_RESIDUAL_LIVE" in msg, f"reason mesajda olmalı: {msg!r}"
+    assert "reconcile" in msg, f"source mesajda olmalı: {msg!r}"
+
+
 def test_notify_close_shows_pnl_when_exit_price_known():
     """pm_exit_price bilinince mesajda P&L satırı görünür."""
     with patch("monitor.notifier.send_telegram") as mock_send:
