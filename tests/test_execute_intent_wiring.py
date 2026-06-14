@@ -1192,3 +1192,43 @@ async def test_recovery_ladder_emergency_pause_trip_notifies_operator():
     # reason argümanı recovery reason'ı içermeli (source='task_h').
     called_reason = notify_spy.call_args[0][0]
     assert "DB_INCONSISTENCY" in called_reason, f"reason mesajda: {called_reason!r}"
+
+
+# ── D6-T3: kill-switch'siz RECOVERY_REQUIRED başarı kolu operatörü notify etmeli ──
+
+@pytest.mark.asyncio
+async def test_recovery_ladder_success_path_notifies_recovery_required():
+    """D#6 kalan gap: _recovery_ladder BAŞARI kolu (transition→RECOVERY_REQUIRED commit OLDU →
+    `return`) şu an SADECE CRITICAL log basıyor; operatör Telegram alert YOK. Bu yol kill-switch
+    TETİKLEMEZ (emergency_pause=0 kalır) → D6-T2 on_trip notify zinciri çalışmaz → sessizlik.
+
+    Bu temiz recovery durumu emergency_pause'dan SEMANTİK OLARAK FARKLI (sistem duraklatılmadı;
+    intent RECOVERY_REQUIRED'a girdi, 2c-4 reconcile bekliyor) → ayrı wrapper
+    `notifier.notify_recovery_required` beklenir (notify_emergency_pause DEĞİL).
+
+    İnvariantlar:
+      - transition başarılı (RECOVERY_REQUIRED commit) → success kolu, `return`.
+      - set_emergency_pause TETİKLENMEZ (temiz recovery; kill-switch yolu değil).
+      - notifier.notify_recovery_required çağrılmalı → reason + order_intent_id taşımalı.
+
+    Network/Telegram yok (notify spy). Canlı DB yok (transition patch'li AsyncMock → DB'ye yazmaz).
+    İlk RED: success kolu hiçbir notify çağırmıyor + wrapper henüz yok → spy.called False.
+    `create=True`: wrapper henüz tanımsız olduğundan patch attribute'ü oluşturur (temiz RED;
+    patch-setup AttributeError yerine assertion failure)."""
+    from execution.clob_executor import _recovery_ladder
+
+    transition_ok = AsyncMock(return_value=None)          # commit başarılı → success kolu
+    set_pause_spy = AsyncMock()                           # çağrılMAMALI (kill-switch yolu değil)
+    with patch("execution.order_intent.transition", transition_ok), \
+         patch("execution.emergency_pause.set_emergency_pause", set_pause_spy), \
+         patch("monitor.notifier.notify_recovery_required", create=True) as notify_spy:
+        await _recovery_ladder("iid-rec-3", "DB_INCONSISTENCY", "slug-rec-3")
+
+    set_pause_spy.assert_not_called()                     # temiz recovery → kill-switch YOK
+    assert notify_spy.called, \
+        "RECOVERY_REQUIRED başarı kolu → notify_recovery_required çağrılmalı (operatör alert)"
+    # reason + order_intent_id operatöre taşınmalı (hangi intent, neden reconcile bekliyor).
+    blob = " ".join(str(a) for a in notify_spy.call_args[0]) + " " + \
+        " ".join(f"{k}={v}" for k, v in notify_spy.call_args[1].items())
+    assert "DB_INCONSISTENCY" in blob, f"reason notify'da: {notify_spy.call_args!r}"
+    assert "iid-rec-3" in blob, f"order_intent_id notify'da: {notify_spy.call_args!r}"
