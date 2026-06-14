@@ -41,3 +41,44 @@ def reduce_risk_mode(active_blockers) -> str:
         if _MODE_PRIORITY[mode] > _MODE_PRIORITY[effective]:
             effective = mode
     return effective
+
+
+# E4 active_blockers köprüsü: sinyal→blocker dönüşümü + kanonik çıktı sırası.
+_CANONICAL_ORDER = ["kill_switch", "manual_review", "halted", "daily_loss", "cooldown"]
+_INACTIVE_STATUSES = (None, "", "ok", "continue", "no_stop")
+
+
+def build_active_blockers(daily_loss_status=None, circuit_breaker_status=None,
+                          kill_switch_active=False, manual_review_required=False) -> list:
+    """Mevcut risk/breaker sinyallerini reducer'ın anladığı active_blockers listesine çevirir.
+
+    SAF: circuit_breaker/daily_loss_halt ÇAĞIRMAZ, persist/DB YOK, config/env/global YOK, network YOK,
+    effective_mode HESAPLAMAZ, girdileri mutate ETMEZ. Yalnız caller-verilen sinyal değerlerini dönüştürür.
+
+    Map: daily_loss_status=="daily_loss_stop"→"daily_loss"; circuit_breaker_status "soft_stop"→"cooldown",
+    "hard_stop"→"halted"; kill_switch_active→"kill_switch"; manual_review_required→"manual_review".
+    Pasif: None/""/"ok"/"continue"/"no_stop". Bilinmeyen daily_loss/circuit_breaker status → ValueError.
+    Çıktı _CANONICAL_ORDER'a göre süzülür (yalnız aktif olanlar, duplicate yok). circuit_breaker_status
+    tek değerli olduğundan cooldown VE halted aynı anda olamaz (5-öğeli "all active" ulaşılamaz)."""
+    active = set()
+
+    if daily_loss_status not in _INACTIVE_STATUSES:
+        if daily_loss_status == "daily_loss_stop":
+            active.add("daily_loss")
+        else:
+            raise ValueError(f"Bilinmeyen daily_loss_status: {daily_loss_status!r}")
+
+    if circuit_breaker_status not in _INACTIVE_STATUSES:
+        if circuit_breaker_status == "soft_stop":
+            active.add("cooldown")
+        elif circuit_breaker_status == "hard_stop":
+            active.add("halted")
+        else:
+            raise ValueError(f"Bilinmeyen circuit_breaker_status: {circuit_breaker_status!r}")
+
+    if kill_switch_active:
+        active.add("kill_switch")
+    if manual_review_required:
+        active.add("manual_review")
+
+    return [b for b in _CANONICAL_ORDER if b in active]
