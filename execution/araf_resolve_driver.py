@@ -9,7 +9,7 @@ import inspect
 import aiosqlite
 
 from execution.order_intent import DB_FILE, UNRESOLVED_STATES
-from data.clob_live_adapter import adapt_live_trades_page
+from data.clob_live_adapter import adapt_live_trades_page, LiveSchemaError
 from data.clob_reconcile import decide_araf_resolution, ResolutionResult
 from execution.araf_resolve_shadow import record_araf_resolution
 
@@ -88,7 +88,14 @@ async def resolve_intent_to_shadow(client, intent_row: dict, db_path=None) -> st
     params = {"order_id": exchange_order_id}
     page = await _maybe_await(client.get_trades_paginated(params, next_cursor=None))
 
-    adapted = adapt_live_trades_page(page)
+    # Bozuk canlı page (şema kontratı ihlali) → terminal karar VERME; explicit recovery shadow.
+    # Yalnız LiveSchemaError yakalanır (diğer exception'lar YUTULMAZ).
+    try:
+        adapted = adapt_live_trades_page(page)
+    except LiveSchemaError:
+        return await record_araf_resolution(
+            db_path, intent_row["order_intent_id"], exchange_order_id,
+            _recovery_resolution("ADAPTER_ERROR"))
 
     # Tarama eksik (çok sayfa): next_cursor != END_CURSOR → fill'ler sonraki sayfalara yayılabilir →
     # terminal karar (FILLED) UNDERCOUNT riski. decide ÇAĞIRMA; explicit recovery shadow.
