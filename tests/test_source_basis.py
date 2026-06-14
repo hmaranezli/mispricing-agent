@@ -30,3 +30,36 @@ def test_directional_disagreement_rate_counts_sign_flips():
     ]
     rate = directional_disagreement_rate(windows)
     assert rate == 0.5, f"2 pencerede 1 yön-sapması beklenir (0.5): {rate}"
+
+
+def test_tie_boundary_counts_as_up_per_pm_rule():
+    """PM kuralı: end == start (tie) ⇒ Up. Tie hem HL hem Chainlink için Up sayılmalı.
+    - HL tie (Up) + Chainlink Down → DISAGREE.
+    - İki kaynak da tie → ikisi Up → disagreement 0.
+    Mevcut helper >= kullandığı için bu GREEN olabilir (tie kuralının regresyon kilidi)."""
+    from analysis.source_basis import directional_disagreement_rate
+
+    # HL tie ⇒ Up; Chainlink Down (99<100) ⇒ Down → DISAGREE
+    hl_tie_vs_cl_down = [{"hl_start": 100.0, "hl_end": 100.0, "cl_start": 100.0, "cl_end": 99.0}]
+    assert directional_disagreement_rate(hl_tie_vs_cl_down) == 1.0, "HL tie(Up) vs CL Down → disagree"
+
+    # İki kaynak da tie ⇒ ikisi Up → disagreement YOK
+    both_tie = [{"hl_start": 100.0, "hl_end": 100.0, "cl_start": 50.0, "cl_end": 50.0}]
+    assert directional_disagreement_rate(both_tie) == 0.0, "iki tie de Up → disagreement 0"
+
+
+def test_source_basis_bps_stats_start_and_end_anchors():
+    """source_basis_bps_stats(windows): HL ile Chainlink arasındaki kaynak farkını bps cinsinden ölçer.
+    basis_bps = ((hl - cl) / cl) * 10000, hem start hem end anchor'ında → count = 2 * pencere sayısı.
+
+    Örnek pencere: start hl=cl=100 → 0 bps; end hl=101, cl=100 → (1/100)*10000 = 100 bps.
+    Beklenen: mean_abs_basis_bps=50, max_abs_basis_bps=100, count=2.
+    RED: source_basis_bps_stats henüz YOK → ImportError/AttributeError."""
+    import pytest
+    from analysis.source_basis import source_basis_bps_stats
+
+    windows = [{"hl_start": 100.0, "hl_end": 101.0, "cl_start": 100.0, "cl_end": 100.0}]
+    stats = source_basis_bps_stats(windows)
+    assert stats["count"] == 2, f"start+end anchor → 2 ölçüm: {stats}"
+    assert stats["max_abs_basis_bps"] == pytest.approx(100.0), f"max abs basis: {stats}"
+    assert stats["mean_abs_basis_bps"] == pytest.approx(50.0), f"mean abs basis: {stats}"
