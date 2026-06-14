@@ -29,3 +29,27 @@ def directional_disagreement_rate(windows) -> float:
         if hl_up != cl_up:
             disagree += 1
     return disagree / len(windows)
+
+
+def source_basis_bps_stats(windows) -> dict:
+    """HL ile Chainlink fiyat-kaynağı farkını bps cinsinden ölçer (start + end anchor).
+
+    basis_bps = ((hl_price - cl_price) / cl_price) * 10000. Payda = Chainlink fiyatı, çünkü PM
+    resolution Chainlink kullanır (referans odur). Her pencere için 2 ölçüm (start, end) → count =
+    2 * pencere sayısı. Çıktı: mean_abs_basis_bps, max_abs_basis_bps, count.
+
+    Boş girdi → {"mean_abs_basis_bps": 0.0, "max_abs_basis_bps": 0.0, "count": 0}. Canlı fetch YOK.
+    """
+    abs_bps = []
+    for w in windows:
+        for hl_key, cl_key in (("hl_start", "cl_start"), ("hl_end", "cl_end")):
+            cl = w[cl_key]
+            bps = ((w[hl_key] - cl) / cl) * 10000.0
+            abs_bps.append(abs(bps))
+    if not abs_bps:
+        return {"mean_abs_basis_bps": 0.0, "max_abs_basis_bps": 0.0, "count": 0}
+    return {
+        "mean_abs_basis_bps": sum(abs_bps) / len(abs_bps),
+        "max_abs_basis_bps": max(abs_bps),
+        "count": len(abs_bps),
+    }
