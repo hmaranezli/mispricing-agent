@@ -1997,3 +1997,33 @@ def test_install_shutdown_handlers_invokes_installer():
     with patch("main_loop.install_shutdown_signal_handlers", create=True) as install_spy:
         main_loop._install_shutdown_handlers()
     assert install_spy.called, "_install_shutdown_handlers → install_shutdown_signal_handlers çağırmalı"
+
+
+# ── Gemini D#11 follow-up: conn.close() asyncio task-hang'e karşı timeout koruması ──
+
+class _HangingConnection:
+    """conn.close() sonsuza asılan bağlantı (Gemini hidden risk: SIGTERM'de finally'nin conn.close
+    task-hang'inde donması). close() başladığını kaydeder ama asla dönmez."""
+    def __init__(self):
+        self.closed_started = False
+
+    async def close(self):
+        self.closed_started = True
+        await asyncio.sleep(999)
+
+
+@pytest.mark.asyncio
+async def test_close_connection_with_timeout_does_not_hang():
+    """Gemini D#11 önerisi: `main()` finally'sindeki `await conn.close()` olası asyncio task-hang'e
+    karşı zorunlu timeout ile sarılmalı (`_close_connection_with_timeout`). Hang eden conn ile çağrı
+    timeout sonrası DÖNMELİ (TimeoutError propagate ETMEMELİ → graceful shutdown finally'si donmaz).
+
+    İlk RED: `main_loop._close_connection_with_timeout` helper'ı YOK → AttributeError (feature missing).
+    Gerçek DB/restart/sinyal yok; conn fake, timeout 0.01s (5sn bekleme yok)."""
+    import main_loop
+    conn = _HangingConnection()
+
+    # RED: helper yok → AttributeError. GREEN: timeout'ta TimeoutError yutulur, çağrı temiz döner.
+    await main_loop._close_connection_with_timeout(conn, timeout=0.01)
+
+    assert conn.closed_started is True, "close() en azından başlatılmış olmalı (timeout ile kesilse de)"
