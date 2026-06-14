@@ -1926,3 +1926,37 @@ async def test_monitor_sets_first_exit_decision_ts_on_exit():
     assert len(closed) == 1
     assert closed[0].get("first_exit_decision_ts") is not None, \
         "first_exit_decision_ts çıkış kararında set edilmeli"
+
+
+# ── D6-T4: main() ana döngü generic loop-error → operatör notify (D#6 son alt-gap) ──
+
+def test_main_loop_error_notifies_operator():
+    """D#6 son alt-gap: main() ana `while True` iterasyonu hata verince (except Exception, ~main_loop:982)
+    operatör notify ALMALI. Şu an except SADECE `print(f"[bot] Döngü hatası: {e}")` → operatör SESSİZ.
+
+    Bu davranış HALT DEĞİL: loop fail-soft DEVAM eder (notify loop'u durdurMAZ; `notify_halt`='sistem
+    durdu', yalnız break/kill_switch'te kullanılır → semantik yanlış). Döngü devam ettiği için AYRI
+    wrapper `notify_loop_error` beklenir.
+
+    Test edilebilir EN DAR seam = `_handle_loop_error(error)` helper (mevcut `_do_flatten` /
+    `_handle_ws_resolved` / `_heal_pending_resolutions` helper pattern'i) — inline except bloğu
+    main()'in ağır setup'ı (get_connection/ws_prices/create_task/bankroll) olmadan izole edilemez.
+
+    İnvariantlar:
+      - `_handle_loop_error(err)` çağrısı `notify_loop_error`'ı çağırmalı (operatör alert).
+      - Hata detayı (str(err)) notify argümanında taşınmalı.
+
+    İlk RED: `main_loop._handle_loop_error` helper'ı henüz YOK → AttributeError (feature missing;
+    bu projede ilk-RED stiliyle tutarlı — ACL ilk RED'i de ModuleNotFoundError'dı). GREEN: helper +
+    `notify_loop_error` wrapper + except bloğunun helper'a delegasyonu.
+    Network/Telegram yok (notify spy). Canlı DB yok (yalnız izole helper çağrısı). main() ÇALIŞTIRILMAZ."""
+    import main_loop
+    err = RuntimeError("boom in loop iteration")
+    # notify_loop_error henüz main_loop namespace'ine import edilmedi → create=True spy.
+    with patch("main_loop.notify_loop_error", create=True) as notify_spy:
+        main_loop._handle_loop_error(err)          # RED: helper yok → AttributeError
+    assert notify_spy.called, \
+        "main döngü hatası → notify_loop_error çağrılmalı (operatör alert)"
+    blob = " ".join(str(a) for a in notify_spy.call_args[0]) + " " + \
+        " ".join(f"{k}={v}" for k, v in notify_spy.call_args[1].items())
+    assert "boom in loop iteration" in blob, f"hata detayı notify'da: {notify_spy.call_args!r}"
