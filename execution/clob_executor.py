@@ -111,6 +111,14 @@ async def _recovery_ladder(order_intent_id, reason, slug, order_id=None, size=No
                                       reason=reason, server_order_id=order_id, size_matched=size)
         logger.critical("[clob] %s: RECOVERY_REQUIRED (%s) intent=%s — 2c-4 reconcile, yeni emir bloklu",
                         slug, reason, order_intent_id)
+        # D6-T3: temiz RECOVERY_REQUIRED de operatöre bildirilmeli — kill-switch TETİKLENMEZ
+        # (emergency_pause=0), yani D6-T2 on_trip notify zinciri çalışmaz → ayrı wrapper. CRITICAL
+        # log tek başına yeterli değil. Modül-attribute çağrı (test patch'lenebilir); fail-soft
+        # (send_telegram try/except'li) — notify hatası recovery yolunu çökertmez.
+        try:
+            notifier.notify_recovery_required(reason, order_intent_id, slug)
+        except Exception as e_notify:
+            logger.critical("[clob] %s: RECOVERY_REQUIRED notify FAIL (yutuldu): %s", slug, e_notify)
         return
     except Exception as e1:
         logger.critical("[clob] %s: RECOVERY_REQUIRED write FAIL (%s) — kill-switch deneniyor: %s",

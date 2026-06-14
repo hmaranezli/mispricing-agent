@@ -112,6 +112,15 @@ def notify_emergency_pause(reason: str, source: str = "system") -> None:
     send_telegram(f"EMERGENCY PAUSE — otomatik duraklatma. Sebep: {reason} | Kaynak: {source}")
 
 
+def notify_recovery_required(reason: str, order_intent_id: str, slug: str = None) -> None:
+    """RECOVERY_REQUIRED transition BAŞARILI → operatör alert (D#6 kalan gap). Bu emergency_pause
+    DEĞİL: sistem duraklatılmadı, ilgili intent 2c-4 reconcile bekliyor ve yeni emir bloklu.
+    Hangi intent + neden taşınır; send_telegram fail-soft. Caller _recovery_ladder başarı kolu."""
+    send_telegram(
+        f"RECOVERY_REQUIRED — intent reconcile bekliyor (yeni emir bloklu). "
+        f"Sebep: {reason} | Intent: {order_intent_id} | Market: {slug}")
+
+
 def notify_restart(dry_run: bool, bankroll: float) -> None:
     mod = "DRY_RUN" if dry_run else "LIVE"
     send_telegram(f"Bot baslatildi — {mod} | Bankroll: ${bankroll:.2f}")
