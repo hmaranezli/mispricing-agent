@@ -50,3 +50,56 @@ def test_check_restart_safe_passes_when_current_session_unknown():
 
     check_restart_safe(target_session="mispricing", current_session=None)
     check_restart_safe(target_session="mispricing", current_session="")
+
+
+# ── D#8 preflight CLI: tespit (detect_current_tmux_session) + giriş (main) ──────
+# Tespit + karar İKİSİ DE Python'da → gerçek tmux/subprocess çağrılmadan enjeksiyonla test edilir.
+
+def test_detect_current_tmux_session_returns_empty_when_no_tmux_env():
+    """`$TMUX` env YOK (tmux dışı / cron / ssh) → "" döner ve runner HİÇ çağrılmaz (gereksiz subprocess
+    yok). Boş = footgun kanıtlanamaz → check_restart_safe güvenli no-op verir."""
+    from monitor.restart_guard import detect_current_tmux_session
+
+    calls = []
+    def fake_runner():
+        calls.append(1)
+        return "should-not-be-called"
+
+    result = detect_current_tmux_session(env={}, runner=fake_runner)
+    assert result == "", f'TMUX yokken "" beklenir: {result!r}'
+    assert calls == [], "TMUX yokken runner (tmux display-message) çağrılMAMALI"
+
+
+def test_detect_current_tmux_session_uses_runner_and_strips_when_in_tmux():
+    """`$TMUX` set → enjekte runner (gerçekte `tmux display-message -p '#S'`) çıktısını döner, strip'li
+    (trailing newline temizlenir). Gerçek tmux çağrılmaz — runner fake."""
+    from monitor.restart_guard import detect_current_tmux_session
+
+    result = detect_current_tmux_session(
+        env={"TMUX": "/tmp/tmux-0/default,123,0"}, runner=lambda: "mispricing\n")
+    assert result == "mispricing", f"runner çıktısı strip'li dönmeli: {result!r}"
+
+
+def test_main_returns_1_and_writes_footgun_to_stderr_when_target_is_current():
+    """main(["--target","mispricing"], detector=lambda:"mispricing") → footgun → return 1 + stderr mesaj.
+    Gerçek tmux yok (detector enjekte). restart.sh `set -e` ile non-zero'da kill-session'a ULAŞMAZ."""
+    import io
+    from monitor.restart_guard import main
+
+    buf = io.StringIO()
+    rc = main(["--target", "mispricing"], detector=lambda: "mispricing", stderr=buf)
+    assert rc == 1, f"footgun → exit 1 beklenir: {rc}"
+    msg = buf.getvalue().lower()
+    assert "mispricing" in msg and ("footgun" in msg or "reddedildi" in msg or "session" in msg), \
+        f"stderr footgun mesajı içermeli: {buf.getvalue()!r}"
+
+
+def test_main_returns_0_when_target_differs_from_current():
+    """main(["--target","bot"], detector=lambda:"claude") → farklı session → güvenli → return 0.
+    Gerçek tmux yok (detector enjekte)."""
+    import io
+    from monitor.restart_guard import main
+
+    buf = io.StringIO()
+    rc = main(["--target", "bot"], detector=lambda: "claude", stderr=buf)
+    assert rc == 0, f"farklı session → exit 0 beklenir: {rc}"
