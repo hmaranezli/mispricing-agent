@@ -1,0 +1,113 @@
+"""monitor/risk_state_store.py — E3 risk-state persistence (restart'tan sağ çıkma).
+
+E1b: risk state restart'tan sağ çıkmalı; process-memory-only YASAK. Bu modül risk state'i sqlite'a
+JSON payload olarak kalıcılaştırır (tek-satır singleton `state_key='global'`, emergency_pause
+pattern'iyle simetrik). Eksik/bozuk/tanınmayan state'te SESSİZCE Operational'a DÜŞMEZ → RiskStateCorruptError.
+
+Dar kapsam: UTC rollover YOK, active_blockers köprüsü YOK, main_loop wiring YOK, async optimizasyon YOK.
+sqlite3 sync; yalnız caller'ın verdiği db_path. Eşik/loop semantiği bu modülde değil.
+"""
+import json
+import sqlite3
+from dataclasses import dataclass, asdict
+
+from monitor.risk_state import reduce_risk_mode
+
+_SCHEMA_VERSION = 1
+_STATE_KEY = "global"
+_REQUIRED_FIELDS = (
+    "trading_day_utc", "start_of_day_equity", "realized_pnl_today",
+    "active_blockers", "effective_mode", "updated_at_utc", "schema_version",
+)
+
+
+class RiskStateCorruptError(Exception):
+    """Saklı risk state bozuk/eksik/tanınmayan → fail-closed (Operational'a sessiz düşüş YOK)."""
+
+
+@dataclass
+class RiskStateSnapshot:
+    trading_day_utc: str
+    start_of_day_equity: float
+    realized_pnl_today: float
+    active_blockers: list
+    effective_mode: str
+    updated_at_utc: str
+    schema_version: int = _SCHEMA_VERSION
+
+
+def init_risk_state_store(db_path) -> None:
+    """risk_state tablosunu (yoksa) oluştur. Tek-satır singleton; JSON payload."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS risk_state ("
+            "state_key TEXT PRIMARY KEY, payload TEXT NOT NULL)")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def save_risk_state(db_path, snapshot: RiskStateSnapshot) -> None:
+    """Snapshot'ı JSON payload olarak singleton satıra UPSERT. Kaydetmeden önce tutarlılık doğrulanır."""
+    _validate(asdict(snapshot))   # save tarafında da fail-closed (tutarsız snapshot yazılmaz)
+    payload = json.dumps(asdict(snapshot))
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            "INSERT INTO risk_state (state_key, payload) VALUES (?, ?) "
+            "ON CONFLICT(state_key) DO UPDATE SET payload=excluded.payload",
+            (_STATE_KEY, payload))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def load_risk_state(db_path) -> RiskStateSnapshot:
+    """Singleton satırı oku → RiskStateSnapshot. Bozuk/eksik/tanınmayan → RiskStateCorruptError.
+
+    Operational'a SESSİZ düşüş YOK.
+    """
+    conn = sqlite3.connect(str(db_path))
+    try:
+        row = conn.execute(
+            "SELECT payload FROM risk_state WHERE state_key=?", (_STATE_KEY,)).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        raise RiskStateCorruptError("risk_state singleton kaydı yok (init/save yapılmadı)")
+    try:
+        data = json.loads(row[0])
+    except (ValueError, TypeError) as e:
+        raise RiskStateCorruptError(f"risk_state payload geçersiz JSON: {e}")
+    if not isinstance(data, dict):
+        raise RiskStateCorruptError("risk_state payload dict değil")
+    _validate(data)
+    return RiskStateSnapshot(
+        trading_day_utc=data["trading_day_utc"],
+        start_of_day_equity=data["start_of_day_equity"],
+        realized_pnl_today=data["realized_pnl_today"],
+        active_blockers=data["active_blockers"],
+        effective_mode=data["effective_mode"],
+        updated_at_utc=data["updated_at_utc"],
+        schema_version=data["schema_version"],
+    )
+
+
+def _validate(data: dict) -> None:
+    """Tutarlılık: zorunlu alanlar, schema_version==1, active_blockers list, effective_mode reducer ile
+    eşleşir, blocker'lar reduce_risk_mode'dan geçer (bilinmeyen → reddedilir). Hata → RiskStateCorruptError."""
+    missing = [f for f in _REQUIRED_FIELDS if f not in data]
+    if missing:
+        raise RiskStateCorruptError(f"risk_state eksik alan(lar): {missing}")
+    if data["schema_version"] != _SCHEMA_VERSION:
+        raise RiskStateCorruptError(f"risk_state schema_version beklenmeyen: {data['schema_version']}")
+    if not isinstance(data["active_blockers"], list):
+        raise RiskStateCorruptError("active_blockers list değil")
+    try:
+        expected = reduce_risk_mode(data["active_blockers"])  # bilinmeyen blocker → ValueError
+    except ValueError as e:
+        raise RiskStateCorruptError(f"active_blockers tanınmayan blocker içeriyor: {e}")
+    if data["effective_mode"] != expected:
+        raise RiskStateCorruptError(
+            f"effective_mode reducer ile tutarsız: saklı={data['effective_mode']} beklenen={expected}")
