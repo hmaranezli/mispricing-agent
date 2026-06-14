@@ -1981,3 +1981,19 @@ def test_should_stop_for_shutdown_reflects_state_flag():
         assert main_loop._should_stop_for_shutdown() is True     # flag set → loop break etmeli
     finally:
         state.clear_shutdown()                                   # test izolasyonu
+
+
+def test_install_shutdown_handlers_invokes_installer():
+    """D#8 installer wiring seam: `main_loop._install_shutdown_handlers()` çağrıldığında SIGTERM/SIGINT
+    installer (`install_shutdown_signal_handlers`) bir kez çağrılmalı. Bu helper main() başında
+    çağrılacak (entegrasyon GREEN'de). Gerçek asyncio loop/sinyal kaydı YOK — installer spy'la
+    değiştirilir (get_running_loop'a hiç ulaşılmaz).
+
+    İlk RED: `main_loop._install_shutdown_handlers` helper'ı YOK → AttributeError (feature missing).
+    GREEN sözleşmesi: installer main_loop'a import edilip modül-attribute çağrılır → patch yakalar."""
+    import main_loop
+
+    # installer henüz main_loop namespace'ine import edilmedi → create=True spy.
+    with patch("main_loop.install_shutdown_signal_handlers", create=True) as install_spy:
+        main_loop._install_shutdown_handlers()
+    assert install_spy.called, "_install_shutdown_handlers → install_shutdown_signal_handlers çağırmalı"
