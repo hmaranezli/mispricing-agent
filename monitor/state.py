@@ -1,8 +1,9 @@
 """monitor/state.py — Paylasilan bot durumu: main_loop ve telegram_commands arasin da ortak flag'ler."""
 
-SOFT_PAUSED:       bool = False
-HARD_PAUSED:       bool = False
-FLATTEN_REQUESTED: bool = False
+SOFT_PAUSED:        bool = False
+HARD_PAUSED:        bool = False
+FLATTEN_REQUESTED:  bool = False
+SHUTDOWN_REQUESTED: bool = False
 
 
 def soft_pause() -> None:
@@ -38,3 +39,19 @@ def request_flatten() -> None:
 def clear_flatten() -> None:
     global FLATTEN_REQUESTED
     FLATTEN_REQUESTED = False
+
+
+def request_shutdown() -> None:
+    """D#8 graceful shutdown: sinyal handler bunu çağırır (raise değil). main() loop'u flag'i
+    kill_switch_check yanında kontrol edip break eder → mevcut finally temizliği çalışır."""
+    global SHUTDOWN_REQUESTED
+    SHUTDOWN_REQUESTED = True
+
+
+def is_shutdown_requested() -> bool:
+    return SHUTDOWN_REQUESTED
+
+
+def clear_shutdown() -> None:
+    global SHUTDOWN_REQUESTED
+    SHUTDOWN_REQUESTED = False
