@@ -63,3 +63,27 @@ def test_source_basis_bps_stats_start_and_end_anchors():
     assert stats["count"] == 2, f"start+end anchor → 2 ölçüm: {stats}"
     assert stats["max_abs_basis_bps"] == pytest.approx(100.0), f"max abs basis: {stats}"
     assert stats["mean_abs_basis_bps"] == pytest.approx(50.0), f"mean abs basis: {stats}"
+
+
+def test_directional_disagreement_rate_with_shift_uses_shift_seconds():
+    """Gerçek-veride HL ve Chainlink tam eşzamanlı örneklenmez (latency). `directional_disagreement_rate_with_shift(
+    windows, shift_seconds)` HL anchor'ını verilen shift'e göre seçmeli; shift parametresi GERÇEKTEN
+    kullanılmalı (yok sayılmamalı).
+
+    Deterministik kurgu: Chainlink tie ⇒ Up (cl_start==cl_end). Window'da HL anchor'ları shift'e göre:
+      shift=0  → HL Down (101→99... start≥end değil) ⇒ DISAGREE (CL Up vs HL Down) → rate 1.0
+      shift=60 → HL Up (end≥start) ⇒ AGREE → rate 0.0
+    PM kuralı end ≥ start ⇒ Up korunur. RED: directional_disagreement_rate_with_shift YOK → ImportError."""
+    from analysis.source_basis import directional_disagreement_rate_with_shift
+
+    window = {
+        "cl_start": 100.0, "cl_end": 100.0,          # Chainlink: tie ⇒ Up
+        "hl_by_shift": {
+            0:  {"hl_start": 100.0, "hl_end": 99.0},   # HL Down ⇒ CL Up ile DISAGREE
+            60: {"hl_start": 100.0, "hl_end": 101.0},  # HL Up   ⇒ CL Up ile AGREE
+        },
+    }
+    assert directional_disagreement_rate_with_shift([window], shift_seconds=0) == 1.0, \
+        "shift=0 → HL Down vs CL Up → disagree 1.0"
+    assert directional_disagreement_rate_with_shift([window], shift_seconds=60) == 0.0, \
+        "shift=60 → HL Up vs CL Up → disagree 0.0 (shift parametresi kullanılmalı)"
