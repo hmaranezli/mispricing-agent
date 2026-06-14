@@ -121,6 +121,13 @@ def notify_recovery_required(reason: str, order_intent_id: str, slug: str = None
         f"Sebep: {reason} | Intent: {order_intent_id} | Market: {slug}")
 
 
+def notify_loop_error(error) -> None:
+    """main() ana döngü iterasyonu hata verdi → operatör alert (D#6 son alt-gap). Bu HALT DEĞİL:
+    döngü fail-soft DEVAM eder (notify sistemi durdurmaz). Hata detayı mesajda; send_telegram
+    fail-soft. Caller main_loop._handle_loop_error."""
+    send_telegram(f"DÖNGÜ HATASI — main_loop iterasyonu hata verdi (loop devam ediyor). Hata: {error}")
+
+
 def notify_restart(dry_run: bool, bankroll: float) -> None:
     mod = "DRY_RUN" if dry_run else "LIVE"
     send_telegram(f"Bot baslatildi — {mod} | Bankroll: ${bankroll:.2f}")

@@ -31,7 +31,7 @@ from data.shortterm import fetch_by_slug, fetch_resolved, parse_market_window, f
 from data.fair_value import fair_yes, ASSET_VOL
 from data.clob_price import get_quote
 from data.depth_enricher import enrich_entry_depth
-from monitor.notifier import notify_open, notify_close, notify_halt, notify_restart, notify_soft_stop, notify_hard_stop, notify_resolved_late, send_telegram
+from monitor.notifier import notify_open, notify_close, notify_halt, notify_restart, notify_soft_stop, notify_hard_stop, notify_resolved_late, notify_loop_error, send_telegram
 from monitor.kill_switch import check as kill_switch_check
 from monitor.telegram_commands import poll_commands
 from monitor.state import is_paused
@@ -865,6 +865,17 @@ async def _monitor_positions(
     return ws_triggered
 
 
+def _handle_loop_error(error) -> None:
+    """main() ana döngü iterasyonu generic hata handler. Fail-soft: loop DURMAZ (caller `continue`).
+    print KORUNUR (mevcut davranış) + operatör notify (D#6 son alt-gap). notify fail-soft sarılır —
+    bildirim hatası döngüyü çökertmez."""
+    print(f"[bot] Döngü hatası: {error}")
+    try:
+        notify_loop_error(error)
+    except Exception as _ne:
+        print(f"[bot] Döngü hatası notify FAIL (yutuldu): {_ne}")
+
+
 async def main() -> None:
     open_positions: list[dict] = []
     closed_today:   list[dict] = []
@@ -980,7 +991,7 @@ async def main() -> None:
                     positions_cache.set_open_positions(open_positions)
 
             except Exception as e:
-                print(f"[bot] Döngü hatası: {e}")
+                _handle_loop_error(e)
     finally:
         await conn.close()
 
