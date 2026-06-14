@@ -1960,3 +1960,24 @@ def test_main_loop_error_notifies_operator():
     blob = " ".join(str(a) for a in notify_spy.call_args[0]) + " " + \
         " ".join(f"{k}={v}" for k, v in notify_spy.call_args[1].items())
     assert "boom in loop iteration" in blob, f"hata detayı notify'da: {notify_spy.call_args!r}"
+
+
+# ── D#8 main_loop shutdown integration: graceful break predicate ───────────────
+
+def test_should_stop_for_shutdown_reflects_state_flag():
+    """D#8 entegrasyon seam: `main_loop._should_stop_for_shutdown()` ana `while True`'da
+    kill_switch_check yanında graceful break kararı verir → `monitor.state.is_shutdown_requested()`'i
+    yansıtmalı. SIGTERM handler flag set edince loop bu predicate ile break eder (mevcut finally
+    temizliği çalışır). Gerçek sinyal/loop YOK — flag doğrudan set edilir.
+
+    İlk RED: `main_loop._should_stop_for_shutdown` helper'ı YOK → AttributeError (feature missing)."""
+    import main_loop
+    from monitor import state
+
+    state.clear_shutdown()
+    try:
+        assert main_loop._should_stop_for_shutdown() is False   # shutdown istenmedi → devam
+        state.request_shutdown()
+        assert main_loop._should_stop_for_shutdown() is True     # flag set → loop break etmeli
+    finally:
+        state.clear_shutdown()                                   # test izolasyonu
