@@ -312,6 +312,60 @@ async def test_resolve_intent_incomplete_scan_pagination_writes_recovery_shadow(
         conn.close()
 
 
+@pytest.mark.asyncio
+async def test_resolve_intent_live_schema_error_writes_adapter_error_shadow(tmp_path):
+    """adapt_live_trades_page bozuk page için LiveSchemaError atar → driver bunu YAKALAYIP terminal
+    karar üretmeden fail-closed shadow yazmalı: RECOVERY_REQUIRED + recovery_reason="ADAPTER_ERROR",
+    accounting NULL. LiveSchemaError driver DIŞINA KAÇMAMALI. order_intents/positions dokunulmaz."""
+    from execution.araf_resolve_driver import resolve_intent_to_shadow
+
+    db = str(tmp_path / "araf_orch_adaptererr.db")
+    from db.schema import init_schema
+    async with aiosqlite.connect(db) as conn:
+        await init_schema(conn)
+        await conn.commit()
+
+    intent_row = {
+        "order_intent_id": "iid-adaptererr-1",
+        "exchange_order_id": "0xorder-adaptererr-1",
+        "slug": "slug-ae-1",
+        "market_token_id": "tok-ae-1",
+        "side": "BUY",
+        "intended_size": "10",
+        "intended_price": "0.42",
+        "status": "SUBMITTED_UNKNOWN",
+    }
+    order = {"order_id": "0xorder-adaptererr-1", "status": "ORDER_STATUS_MATCHED", "original_size": "10"}
+    bad_page = {"trades": []}   # next_cursor EKSİK → adapt_live_trades_page LiveSchemaError
+    client = _StubClient(order, bad_page)
+
+    result = await resolve_intent_to_shadow(client, intent_row, db_path=db)
+    assert result == "RECORDED", f"adapter-error recovery shadow RECORDED bekler: {result!r}"
+
+    conn = sqlite3.connect(db)
+    try:
+        rows = conn.execute(
+            "SELECT resolution_state, matched_size, avg_price, fee_rate_bps, matched_trade_ids, "
+            "accounting_source, recovery_reason FROM araf_resolution_shadow "
+            "WHERE order_intent_id=?", ("iid-adaptererr-1",)).fetchall()
+        assert len(rows) == 1, f"tek shadow satırı: {len(rows)}"
+        r = rows[0]
+        assert r[0] == "RECOVERY_REQUIRED", f"resolution_state: {r[0]!r}"
+        assert r[1] is None, f"matched_size NULL: {r[1]!r}"
+        assert r[2] is None, f"avg_price NULL: {r[2]!r}"
+        assert r[3] is None, f"fee_rate_bps NULL: {r[3]!r}"
+        assert r[4] is None, f"matched_trade_ids NULL: {r[4]!r}"
+        assert r[5] is None, f"accounting_source NULL: {r[5]!r}"
+        assert r[6] == "ADAPTER_ERROR", f"recovery_reason: {r[6]!r}"
+
+        assert conn.execute("SELECT COUNT(*) FROM order_intents").fetchone()[0] == 0, \
+            "order_intents'e yazım YOK (A3-pure)"
+        assert conn.execute("SELECT COUNT(*) FROM positions").fetchone()[0] == 0, \
+            "positions'a yazım YOK (A3-pure)"
+    finally:
+        conn.close()
+
+
 def _insert_intent_full(conn, iid, exch, status):
     """order_intents test-local satır, explicit order_intent_id + exchange_order_id."""
     conn.execute(
