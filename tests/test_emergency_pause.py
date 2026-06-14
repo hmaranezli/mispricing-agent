@@ -186,3 +186,30 @@ async def test_execute_proceeds_when_not_paused():
                                {"pass": True, "position_usd": 25.0, "kelly_f": 0.15}, [])
     assert result is not None
     fake_client.create_market_order.assert_called_once()
+
+
+# ── D6-T2: on_trip callback seam (operatör notify wiring noktası) ─────────────
+
+@pytest.mark.asyncio
+async def test_set_emergency_pause_trip_invokes_on_trip_callback():
+    """D6-T2 seam C: set_emergency_pause additive `on_trip` callback'i YALNIZ fresh 0→1 trip'te,
+    bir kez, reason/source/order_intent_id ile çağırır. Idempotent ikinci çağrı (zaten paused)
+    callback'i TEKRAR çağırmaz. Hard coupling YOK (callback enjekte; notifier import edilmez).
+    Network/Telegram yok; tmp DB. İlk RED: imza `on_trip` kabul etmiyor → TypeError."""
+    from execution.emergency_pause import set_emergency_pause
+    dbp = await _fresh_db()
+
+    calls = []
+    def spy(reason, source, order_intent_id=None):
+        calls.append((reason, source, order_intent_id))
+
+    await set_emergency_pause(dbp, reason="DB_INCONSISTENCY", source="recovery_ladder",
+                              order_intent_id="iid-x", on_trip=spy)
+    assert calls == [("DB_INCONSISTENCY", "recovery_ladder", "iid-x")], \
+        f"fresh trip callback bir kez: {calls}"
+
+    # Idempotent ikinci çağrı (zaten paused) → callback TEKRAR çağrılmamalı.
+    await set_emergency_pause(dbp, reason="DB_INCONSISTENCY", source="recovery_ladder",
+                              order_intent_id="iid-x", on_trip=spy)
+    assert calls == [("DB_INCONSISTENCY", "recovery_ladder", "iid-x")], \
+        f"idempotent re-trip callback tekrar ÇAĞIRMAMALI: {calls}"
