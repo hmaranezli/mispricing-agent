@@ -9,6 +9,7 @@ sqlite3 sync; yalnız caller'ın verdiği db_path. Eşik/loop semantiği bu mod�
 """
 import json
 import sqlite3
+from datetime import datetime
 from dataclasses import dataclass, asdict
 
 from monitor.risk_state import reduce_risk_mode
@@ -140,6 +141,54 @@ def initialize_day_zero_state(db_path, trading_day_utc, start_of_day_equity,
     )
     save_risk_state(db_path, snap)
     return snap
+
+
+def _require_iso_date(name, value) -> None:
+    """value strict YYYY-MM-DD ISO tarih string'i olmalı (strptime ile doğrulanır; sistem clock YOK)."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} boş olmayan string olmalı: {value!r}")
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError(f"{name} strict YYYY-MM-DD olmalı: {value!r}")
+
+
+def rollover_risk_state_if_new_day(snapshot, current_trading_day_utc,
+                                   new_start_of_day_equity, updated_at_utc) -> RiskStateSnapshot:
+    """E3c — SAF UTC rollover (snapshot→snapshot). Sistem clock/API/balance/config/DB/save/load YOK.
+
+    same-day → unchanged; new-day → yalnız GÜNLÜK sayaçları sıfırla (daily_loss kaldır, pnl=0, equity/
+    updated_at güncelle) ve mod reduce_risk_mode ile yeniden hesapla; kill_switch/halted/manual_review/
+    cooldown KORUNUR; audit alanları KORUNUR. backwards day / equity<=0 / boş string → ValueError.
+    Tarih karşılaştırması ancak strict YYYY-MM-DD doğrulamasından sonra leksikografik yapılır.
+    """
+    if not isinstance(new_start_of_day_equity, (int, float)) or isinstance(new_start_of_day_equity, bool) \
+            or new_start_of_day_equity <= 0:
+        raise ValueError(f"new_start_of_day_equity > 0 olmalı: {new_start_of_day_equity!r}")
+    if not isinstance(updated_at_utc, str) or not updated_at_utc.strip():
+        raise ValueError(f"updated_at_utc boş olmayan string olmalı: {updated_at_utc!r}")
+    _require_iso_date("current_trading_day_utc", current_trading_day_utc)
+    _require_iso_date("snapshot.trading_day_utc", snapshot.trading_day_utc)
+
+    if current_trading_day_utc < snapshot.trading_day_utc:
+        raise ValueError(
+            f"current_trading_day_utc geçmiş olamaz: {current_trading_day_utc} < {snapshot.trading_day_utc}")
+    if current_trading_day_utc == snapshot.trading_day_utc:
+        return snapshot   # same-day → günlük reset yok, değişmeden döner
+
+    # New day → yalnız daily_loss kaldırılır; diğer blocker'lar (kill_switch/halted/manual_review/cooldown) korunur.
+    new_blockers = [b for b in snapshot.active_blockers if b != "daily_loss"]
+    return RiskStateSnapshot(
+        trading_day_utc=current_trading_day_utc,
+        start_of_day_equity=float(new_start_of_day_equity),
+        realized_pnl_today=0.0,
+        active_blockers=new_blockers,
+        effective_mode=reduce_risk_mode(new_blockers),
+        updated_at_utc=updated_at_utc,
+        schema_version=snapshot.schema_version,
+        bootstrap_approved_by=snapshot.bootstrap_approved_by,
+        bootstrap_reason=snapshot.bootstrap_reason,
+    )
 
 
 def _validate(data: dict) -> None:
