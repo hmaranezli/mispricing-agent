@@ -90,6 +90,13 @@ async def resolve_intent_to_shadow(client, intent_row: dict, db_path=None) -> st
 
     adapted = adapt_live_trades_page(page)
 
+    # Tarama eksik (çok sayfa): next_cursor != END_CURSOR → fill'ler sonraki sayfalara yayılabilir →
+    # terminal karar (FILLED) UNDERCOUNT riski. decide ÇAĞIRMA; explicit recovery shadow.
+    if adapted.get("next_cursor") != "LTE=":
+        return await record_araf_resolution(
+            db_path, intent_row["order_intent_id"], exchange_order_id,
+            _recovery_resolution("INCOMPLETE_SCAN_PAGINATION"))
+
     resolution = decide_araf_resolution(intent_row, order or {}, adapted)
 
     return await record_araf_resolution(
