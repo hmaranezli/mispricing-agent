@@ -13,6 +13,26 @@ def reset_streak() -> None:
     _consecutive_losses = 0
 
 
+def daily_loss_halt(start_of_day_equity, realized_pnl_today) -> str | None:
+    """E1 — Anayasa §5 günlük kayıp limiti. SAF + offline (clock/DB/global state YOK).
+
+    daily_loss_pct = max(0, -realized_pnl_today / start_of_day_equity).
+    daily_loss_pct >= DAILY_LOSS_LIMIT → "daily_loss_stop" (yeni girişler durur), aksi None.
+    Status-return stili (on_trade_closed ile simetrik; exception breaker DEĞİL). BUST_PROTECTION_PCT
+    (felaket drawdown) ve streak'ten AYRI gün/seans guard'ı.
+
+    Eşik: getattr(config, "DAILY_LOSS_LIMIT", 0.10) — config sabiti ayrı (anayasa) RED/GREEN'de eklenecek.
+    start_of_day_equity <= 0 → ValueError (sessiz sıfıra bölme YOK).
+    """
+    if start_of_day_equity <= 0:
+        raise ValueError(f"start_of_day_equity pozitif olmalı: {start_of_day_equity}")
+    limit = getattr(config, "DAILY_LOSS_LIMIT", 0.10)
+    daily_loss_pct = max(0.0, -realized_pnl_today / start_of_day_equity)
+    if daily_loss_pct >= limit:
+        return "daily_loss_stop"
+    return None
+
+
 def on_trade_closed(pnl: float, current_bankroll: float, starting_bankroll: float) -> str | None:
     """
     Her trade kapanisinda cagrilir.
