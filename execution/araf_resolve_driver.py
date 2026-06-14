@@ -10,7 +10,7 @@ import aiosqlite
 
 from execution.order_intent import DB_FILE, UNRESOLVED_STATES
 from data.clob_live_adapter import adapt_live_trades_page
-from data.clob_reconcile import decide_araf_resolution
+from data.clob_reconcile import decide_araf_resolution, ResolutionResult
 from execution.araf_resolve_shadow import record_araf_resolution
 
 # Driver fetch'i için intent başına gerekli alanlar (SELECT projeksiyonu).
@@ -48,6 +48,22 @@ async def _maybe_await(value):
     return value
 
 
+def _recovery_resolution(reason: str) -> ResolutionResult:
+    """Fail-closed non-terminal resolution + recovery_reason (shadow'a yazılır). ResolutionResult
+    frozen dataclass + recovery_reason alanı YOK → object.__setattr__ ile eklenir (record_araf_resolution
+    getattr ile okur). Accounting alanları None (anti-hallucination: kanıt yok)."""
+    resolution = ResolutionResult(
+        state="RECOVERY_REQUIRED",
+        matched_size=None,
+        avg_price=None,
+        fee_rate_bps=None,
+        matched_trade_ids=None,
+        accounting_source=None,
+    )
+    object.__setattr__(resolution, "recovery_reason", reason)
+    return resolution
+
+
 async def resolve_intent_to_shadow(client, intent_row: dict, db_path=None) -> str:
     """Tek eligible intent için ARAF resolution orchestration → A3-pure shadow yazımı.
 
@@ -58,6 +74,12 @@ async def resolve_intent_to_shadow(client, intent_row: dict, db_path=None) -> st
     NULL exchange_order_id ve next_cursor != "LTE=" (pagination) recovery yolları SONRAKİ RED'ler.
     """
     exchange_order_id = intent_row.get("exchange_order_id")
+
+    # NULL exchange_order_id: fetch için order_id yok → client'a DOKUNMA; explicit recovery shadow.
+    if not exchange_order_id:
+        return await record_araf_resolution(
+            db_path, intent_row["order_intent_id"], exchange_order_id,
+            _recovery_resolution("MISSING_EXCHANGE_ORDER_ID"))
 
     order = await _maybe_await(client.get_order(exchange_order_id))
 
