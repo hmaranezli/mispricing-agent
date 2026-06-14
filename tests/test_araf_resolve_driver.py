@@ -466,7 +466,8 @@ class _BatchStubClient:
 
     async def get_trades_paginated(self, params, next_cursor=None):
         self.get_trades_calls.append((params, next_cursor))
-        return self.pages[params["order_id"]]
+        # Yeni fetch sözleşmesi: TradeParams(asset_id=market_token_id) — pages asset_id ile key'li.
+        return self.pages[params.asset_id]
 
 
 @pytest.mark.asyncio
@@ -495,10 +496,12 @@ async def test_run_araf_resolution_discovers_and_resolves_all_eligible_intents(t
 
     order_a = {"order_id": "ord-batch-a", "status": "ORDER_STATUS_MATCHED", "original_size": "10"}
     order_b = {"order_id": "ord-batch-b", "status": "ORDER_STATUS_MATCHED", "original_size": "10"}
+    # get_order order_id ile; get_trades_paginated artık asset_id (=market_token_id "tok-{iid}") ile.
+    # Page trade'leri hâlâ taker_order_id=exchange_order_id taşır (resolver order_id konumundan eşleştirir).
     client = _BatchStubClient(
         orders={"ord-batch-a": order_a, "ord-batch-b": order_b},
-        pages={"ord-batch-a": _confirmed_full_fill_page("ord-batch-a"),
-               "ord-batch-b": _confirmed_full_fill_page("ord-batch-b")},
+        pages={"tok-iid-batch-a": _confirmed_full_fill_page("ord-batch-a"),
+               "tok-iid-batch-b": _confirmed_full_fill_page("ord-batch-b")},
     )
 
     await run_araf_resolution(client, db_path=db)

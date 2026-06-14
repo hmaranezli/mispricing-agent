@@ -9,6 +9,8 @@ import inspect
 import aiosqlite
 
 from execution.order_intent import DB_FILE, UNRESOLVED_STATES
+from py_clob_client_v2.clob_types import TradeParams
+
 from data.clob_live_adapter import adapt_live_trades_page, LiveSchemaError
 from data.clob_reconcile import decide_araf_resolution, ResolutionResult
 from execution.araf_resolve_shadow import record_araf_resolution
@@ -83,9 +85,10 @@ async def resolve_intent_to_shadow(client, intent_row: dict, db_path=None) -> st
 
     order = await _maybe_await(client.get_order(exchange_order_id))
 
-    # NOT: get_trades_paginated için nötr parametre. maker/taker ayrımı BUY/SELL yönünden
-    # TÜRETİLMEZ; gerçek dual-fetch (taker_order_id vs maker_address) policy sonraki RED'de.
-    params = {"order_id": exchange_order_id}
+    # get_trades_paginated gerçek client'ta TradeParams ister. TradeParams'ta order_id/taker/maker
+    # FİLTRESİ YOK → asset_id (market_token_id) ile çekilir; resolver bizim order_id'mizi trade
+    # KONUMUNDAN (taker_order_id VEYA maker_orders[].order_id) eşleştirir. Rol BUY/SELL'den türetilmez.
+    params = TradeParams(asset_id=intent_row.get("market_token_id"))
     page = await _maybe_await(client.get_trades_paginated(params, next_cursor=None))
 
     # Bozuk canlı page (şema kontratı ihlali) → terminal karar VERME; explicit recovery shadow.
