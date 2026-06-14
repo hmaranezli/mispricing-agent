@@ -1166,3 +1166,29 @@ async def test_nan_inf_ask_blocked_no_leak_recovery(bad_ask):
     c.close()
     assert irow[0] == "RECOVERY_REQUIRED" and irow[1] == "TELEMETRY_DATA_MISSING"
     assert n == 0, "NaN/Inf telemetri → position YAZILMAZ (sızıntı YASAK)"
+
+
+# ── D6-T2 wiring: _recovery_ladder kill-switch trip'i operatör notify'a bağlar ──
+
+@pytest.mark.asyncio
+async def test_recovery_ladder_emergency_pause_trip_notifies_operator():
+    """D#6 gap closure: _recovery_ladder transition fail → set_emergency_pause (fresh 0→1 trip) →
+    on_trip callback `notifier.notify_emergency_pause`'i çağırmalı (operatör Telegram alert).
+    Network yok (notify_emergency_pause spy). DB tmp (conftest autouse izolasyonu → execution_state).
+
+    GREEN sözleşmesi: callback `monitor.notifier` MODÜL-ATTRIBUTE üzerinden çağırmalı
+    (`notifier.notify_emergency_pause`) ki bu patch yakalasın.
+
+    İlk RED: set_emergency_pause çağrısında on_trip YOK → notify spy çağrılmaz."""
+    from execution.clob_executor import _recovery_ladder
+
+    # transition'ı patlat → kill-switch (set_emergency_pause) dalı çalışsın.
+    with patch("execution.order_intent.transition", new_callable=AsyncMock,
+               side_effect=Exception("forced transition fail")), \
+         patch("monitor.notifier.notify_emergency_pause") as notify_spy:
+        await _recovery_ladder("iid-wire-1", "DB_INCONSISTENCY", "slug-wire")
+
+    assert notify_spy.called, "fresh emergency_pause trip → notify_emergency_pause çağrılmalı"
+    # reason argümanı recovery reason'ı içermeli (source='task_h').
+    called_reason = notify_spy.call_args[0][0]
+    assert "DB_INCONSISTENCY" in called_reason, f"reason mesajda: {called_reason!r}"
