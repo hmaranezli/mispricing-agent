@@ -62,7 +62,7 @@ async def get_pause_record(db_path=None) -> dict | None:
 
 
 async def set_emergency_pause(db_path=None, reason=None, source=None,
-                              order_intent_id=None) -> None:
+                              order_intent_id=None, on_trip=None) -> None:
     """Acil duraklatmayı set et. IDEMPOTENT: zaten paused ise ilk pause'u BOZMA.
 
     Tetikleme (False→True) anında SCREAM: CRITICAL log. Otomatik temizlenmez.
@@ -106,6 +106,15 @@ async def set_emergency_pause(db_path=None, reason=None, source=None,
     logger.critical(
         "[emergency_pause] 🚨 EMERGENCY PAUSE TETİKLENDİ — yeni emir BLOKLU. "
         "reason=%s source=%s order_intent_id=%s", reason, source, order_intent_id)
+    # D6-T2 seam: YALNIZ fresh 0→1 trip'te (idempotent erken-return buraya ulaşmaz) operatör
+    # notify wiring noktası. DB state ZATEN commit edildi → callback hatası pause'u GERİ ALMAZ.
+    # Fail-soft: callback exception YUTULUR (kill-switch yolu bir notify hatasıyla çökmemeli;
+    # notifier'ın kendi fail-soft felsefesiyle simetrik). Notifier IMPORT EDİLMEZ (callback enjekte).
+    if on_trip is not None:
+        try:
+            on_trip(reason, source, order_intent_id)
+        except Exception as e:
+            logger.critical("[emergency_pause] on_trip callback FAIL (yutuldu): %s", e)
 
 
 async def clear_emergency_pause(db_path=None, cleared_by=None, note=None) -> None:
