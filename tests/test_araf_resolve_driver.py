@@ -310,3 +310,107 @@ async def test_resolve_intent_incomplete_scan_pagination_writes_recovery_shadow(
             "positions'a yazım YOK (A3-pure)"
     finally:
         conn.close()
+
+
+def _insert_intent_full(conn, iid, exch, status):
+    """order_intents test-local satır, explicit order_intent_id + exchange_order_id."""
+    conn.execute(
+        """INSERT INTO order_intents
+               (order_intent_id, slug, market_token_id, side, intended_price, intended_size,
+                status, exchange_order_id, reconciliation_status, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (iid, f"slug-{iid}", f"tok-{iid}", "BUY", 0.42, 10.0,
+         status, exch, "pending", "2026-06-14T00:00:00+00:00"))
+
+
+def _confirmed_full_fill_page(taker_order_id):
+    """CONFIRMED taker full-fill (10@0.42), tarama TAM (next_cursor=LTE=)."""
+    return {
+        "trades": [
+            {
+                "id": f"trade-{taker_order_id}",
+                "taker_order_id": taker_order_id,
+                "status": "CONFIRMED",
+                "side": "BUY",
+                "size": "10",
+                "price": "0.42",
+                "fee_rate_bps": "0",
+                "maker_orders": [],
+            }
+        ],
+        "next_cursor": "LTE=",
+        "limit": 300,
+        "count": 1,
+    }
+
+
+class _BatchStubClient:
+    """order_id-keyed async stub: get_order/get_trades_paginated order_id'ye göre döner, çağrı kaydeder."""
+
+    def __init__(self, orders, pages):
+        self.orders = orders   # order_id -> order dict
+        self.pages = pages     # order_id -> page dict
+        self.get_order_calls = []
+        self.get_trades_calls = []
+
+    async def get_order(self, order_id):
+        self.get_order_calls.append(order_id)
+        return self.orders[order_id]
+
+    async def get_trades_paginated(self, params, next_cursor=None):
+        self.get_trades_calls.append((params, next_cursor))
+        return self.pages[params["order_id"]]
+
+
+@pytest.mark.asyncio
+async def test_run_araf_resolution_discovers_and_resolves_all_eligible_intents(tmp_path):
+    """run_araf_resolution batch entrypoint: discover_eligible_intents → her eligible intent için
+    resolve_intent_to_shadow. Yalnız UNRESOLVED intent'ler shadow'a yazılır; terminal (FILLED)
+    discover dışı. positions/order_intents update YOK (paper-only batch).
+
+    İlk RED structural: run_araf_resolution henüz yok → ImportError."""
+    from execution.araf_resolve_driver import run_araf_resolution
+
+    db = str(tmp_path / "araf_orch_batch.db")
+    from db.schema import init_schema
+    async with aiosqlite.connect(db) as conn:
+        await init_schema(conn)
+        await conn.commit()
+
+    boot = sqlite3.connect(db)
+    try:
+        _insert_intent_full(boot, "iid-batch-a", "ord-batch-a", "SUBMITTED_UNKNOWN")
+        _insert_intent_full(boot, "iid-batch-b", "ord-batch-b", "RECOVERY_REQUIRED")
+        _insert_intent_full(boot, "iid-batch-terminal", "ord-batch-terminal", "FILLED")  # discover dışı
+        boot.commit()
+    finally:
+        boot.close()
+
+    order_a = {"order_id": "ord-batch-a", "status": "ORDER_STATUS_MATCHED", "original_size": "10"}
+    order_b = {"order_id": "ord-batch-b", "status": "ORDER_STATUS_MATCHED", "original_size": "10"}
+    client = _BatchStubClient(
+        orders={"ord-batch-a": order_a, "ord-batch-b": order_b},
+        pages={"ord-batch-a": _confirmed_full_fill_page("ord-batch-a"),
+               "ord-batch-b": _confirmed_full_fill_page("ord-batch-b")},
+    )
+
+    await run_araf_resolution(client, db_path=db)
+
+    # Yalnız iki eligible için get_order çağrıldı (terminal hariç).
+    assert sorted(client.get_order_calls) == ["ord-batch-a", "ord-batch-b"], \
+        f"get_order çağrıları: {client.get_order_calls}"
+
+    conn = sqlite3.connect(db)
+    try:
+        sids = sorted(row[0] for row in conn.execute(
+            "SELECT order_intent_id FROM araf_resolution_shadow").fetchall())
+        assert sids == ["iid-batch-a", "iid-batch-b"], f"shadow satırları: {sids}"
+        # terminal intent için shadow YOK.
+        assert "iid-batch-terminal" not in sids
+
+        assert conn.execute("SELECT COUNT(*) FROM order_intents").fetchone()[0] == 3, \
+            "order_intents 3 kalmalı (update/silme YOK)"
+        assert conn.execute("SELECT COUNT(*) FROM positions").fetchone()[0] == 0, \
+            "positions'a yazım YOK (A3-pure)"
+    finally:
+        conn.close()
