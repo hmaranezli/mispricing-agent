@@ -13,6 +13,8 @@ import sqlite3
 import aiosqlite
 import pytest
 
+from py_clob_client_v2.clob_types import TradeParams
+
 
 def _insert_intent(conn, iid, status):
     """order_intents'e test-local minimal satır (schema.py kolonları). status NOT NULL."""
@@ -362,6 +364,57 @@ async def test_resolve_intent_live_schema_error_writes_adapter_error_shadow(tmp_
             "order_intents'e yazım YOK (A3-pure)"
         assert conn.execute("SELECT COUNT(*) FROM positions").fetchone()[0] == 0, \
             "positions'a yazım YOK (A3-pure)"
+    finally:
+        conn.close()
+
+
+@pytest.mark.asyncio
+async def test_resolve_intent_fetches_trades_with_trade_params_asset_id(tmp_path):
+    """get_trades_paginated gerçek client'ta TradeParams ister (düz dict DEĞİL); order_id/
+    taker_order_id/maker_order_id FİLTRESİ YOK (resolver order_id'yi konum'dan eşleştirir).
+    Driver `TradeParams(asset_id=intent.market_token_id)` geçmeli. FILLED happy-path korunur."""
+    from execution.araf_resolve_driver import resolve_intent_to_shadow
+
+    db = str(tmp_path / "araf_orch_params.db")
+    from db.schema import init_schema
+    async with aiosqlite.connect(db) as conn:
+        await init_schema(conn)
+        await conn.commit()
+
+    asset_id = "7700000000000000000000000000000000000000000000000000000000000000000000000001"
+    intent_row = {
+        "order_intent_id": "iid-params-1",
+        "exchange_order_id": "0xorder-params-1",
+        "slug": "slug-params-1",
+        "market_token_id": asset_id,
+        "side": "BUY",
+        "intended_size": "10",
+        "intended_price": "0.42",
+        "status": "SUBMITTED_UNKNOWN",
+    }
+    order = {"order_id": "0xorder-params-1", "status": "ORDER_STATUS_MATCHED", "original_size": "10"}
+    page = _confirmed_full_fill_page("0xorder-params-1")
+    client = _StubClient(order, page)
+
+    result = await resolve_intent_to_shadow(client, intent_row, db_path=db)
+    assert result == "RECORDED", f"FILLED happy-path korunur: {result!r}"
+
+    # get_trades_paginated'e geçen params gerçek TradeParams olmalı (düz dict değil).
+    assert len(client.get_trades_calls) >= 1, "get_trades_paginated çağrılmalı"
+    params = client.get_trades_calls[0][0]
+    assert isinstance(params, TradeParams), f"params TradeParams olmalı (dict değil): {type(params)}"
+    assert params.asset_id == asset_id, f"asset_id == market_token_id: {params.asset_id!r}"
+    # API desteklemediği uydurma filtreler taşınmamalı.
+    assert getattr(params, "order_id", None) is None
+    assert getattr(params, "taker_order_id", None) is None
+    assert getattr(params, "maker_order_id", None) is None
+
+    conn = sqlite3.connect(db)
+    try:
+        rows = conn.execute(
+            "SELECT resolution_state FROM araf_resolution_shadow WHERE order_intent_id=?",
+            ("iid-params-1",)).fetchall()
+        assert len(rows) == 1 and rows[0][0] == "FILLED", f"shadow FILLED: {rows}"
     finally:
         conn.close()
 
