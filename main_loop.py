@@ -876,6 +876,14 @@ def _handle_loop_error(error) -> None:
         print(f"[bot] Döngü hatası notify FAIL (yutuldu): {_ne}")
 
 
+def _should_stop_for_shutdown() -> bool:
+    """D#8 graceful shutdown break kararı: SIGTERM/SIGINT handler `state.request_shutdown()` ile
+    flag set ettiyse True. Ana while True bunu kill_switch_check yanında kontrol edip break eder →
+    mevcut finally: conn.close() temizliği çalışır (graceful)."""
+    import monitor.state as _st
+    return _st.is_shutdown_requested()
+
+
 async def main() -> None:
     open_positions: list[dict] = []
     closed_today:   list[dict] = []
@@ -935,6 +943,11 @@ async def main() -> None:
             if kill_switch_check():
                 notify_halt("kill_switch")
                 print("[bot] Kill switch etkin — sistem durdu.")
+                break
+
+            # D#8 graceful shutdown: SIGTERM/SIGINT → flag → temiz break (finally conn.close çalışır).
+            if _should_stop_for_shutdown():
+                print("[bot] Graceful shutdown istendi (SIGTERM/SIGINT) — döngü temiz kapanıyor.")
                 break
 
             import monitor.state as _st
