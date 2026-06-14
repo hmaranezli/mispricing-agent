@@ -25,6 +25,7 @@ from execution.order_pricing import compute_limit_price
 from execution.emergency_pause import is_emergency_paused
 from execution import emergency_pause
 from execution import order_intent
+import monitor.notifier as notifier
 import aiosqlite
 from data.shadow_quote import get_shadow_quote
 from db.logger import log_entry_air_pocket, update_entry_air_pocket_delayed
@@ -117,7 +118,10 @@ async def _recovery_ladder(order_intent_id, reason, slug, order_id=None, size=No
     try:
         await emergency_pause.set_emergency_pause(
             None, reason=f"task_h_recovery_write_failed:{reason}", source="task_h",
-            order_intent_id=order_intent_id)
+            order_intent_id=order_intent_id,
+            # D6-T2: fresh 0→1 trip'te operatör Telegram alert. Modül-attribute çağrı → test
+            # patch'lenebilir; notify fail-soft (set_emergency_pause callback exception'ı yutar).
+            on_trip=lambda r, s, _iid=None: notifier.notify_emergency_pause(r, s))
         logger.critical("[clob] %s: EMERGENCY_PAUSE set — yeni emir KESİN durdu (%s)", slug, reason)
     except Exception as e2:
         logger.critical("[clob] %s: kill-switch write de FAIL (%s) — is_emergency_paused fail-closed "
