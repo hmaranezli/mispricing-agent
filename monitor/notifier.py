@@ -105,6 +105,13 @@ def notify_halt(reason: str) -> None:
     send_telegram(f"HALT — Sistem durdu. Sebep: {reason}")
 
 
+def notify_emergency_pause(reason: str, source: str = "system") -> None:
+    """DB emergency_pause TRIP → operatör alert. Reaktif/otomatik kill-switch sessiz kalmasın
+    (D#6 gap). reason+source mesajda; send_telegram fail-soft. Wiring (set_emergency_pause/caller)
+    AYRI adım (D6-T2)."""
+    send_telegram(f"EMERGENCY PAUSE — otomatik duraklatma. Sebep: {reason} | Kaynak: {source}")
+
+
 def notify_restart(dry_run: bool, bankroll: float) -> None:
     mod = "DRY_RUN" if dry_run else "LIVE"
     send_telegram(f"Bot baslatildi — {mod} | Bankroll: ${bankroll:.2f}")
