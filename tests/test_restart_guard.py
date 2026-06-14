@@ -30,3 +30,23 @@ def test_check_restart_safe_refuses_when_target_is_current_session():
 
     with pytest.raises(RestartFootgunError):
         check_restart_safe(target_session="mispricing", current_session="mispricing")
+
+
+def test_check_restart_safe_passes_when_different_session():
+    """Hedef session ≠ içinde çalışılan session → güvenli, raise YOK (restart başka session'ı öldürür,
+    bu oturumu değil). Saf karar; gerçek tmux yok."""
+    from monitor.restart_guard import check_restart_safe
+
+    # raise etmemeli → exception sızarsa test fail eder.
+    check_restart_safe(target_session="mispricing", current_session="some-other-session")
+
+
+def test_check_restart_safe_passes_when_current_session_unknown():
+    """`current_session` None/boş (tmux dışı veya tespit edilemedi) → bu SAF karar fonksiyonu için
+    GÜVENLİ no-op (raise YOK): adı bilinmeyen/eşleşmeyen bir oturum hedef session'la çakışmaz, footgun
+    KANITLANAMAZ. Gerçek `$TMUX`/`tmux display-message` güvenilirliği AYRI I/O sarmalayıcının sorumluluğu
+    (sonraki adım). None ve boş string'in ikisi de pass."""
+    from monitor.restart_guard import check_restart_safe
+
+    check_restart_safe(target_session="mispricing", current_session=None)
+    check_restart_safe(target_session="mispricing", current_session="")
