@@ -232,3 +232,81 @@ async def test_resolve_intent_missing_exchange_order_id_writes_recovery_shadow(t
             "positions'a yazım YOK (A3-pure)"
     finally:
         conn.close()
+
+
+@pytest.mark.asyncio
+async def test_resolve_intent_incomplete_scan_pagination_writes_recovery_shadow(tmp_path):
+    """adapted next_cursor != "LTE=" (çok sayfa, tarama eksik) → terminal karar VERME; CONFIRMED
+    full-fill olsa bile FILLED yazma. Explicit shadow RECOVERY_REQUIRED + recovery_reason=
+    "INCOMPLETE_SCAN_PAGINATION", accounting NULL. client çağrılır ama terminal undercount riski
+    yüzünden FILLED engellenir. order_intents/positions dokunulmaz."""
+    from execution.araf_resolve_driver import resolve_intent_to_shadow
+
+    db = str(tmp_path / "araf_orch_pagination.db")
+    from db.schema import init_schema
+    async with aiosqlite.connect(db) as conn:
+        await init_schema(conn)
+        await conn.commit()
+
+    intent_row = {
+        "order_intent_id": "iid-pagination-1",
+        "exchange_order_id": "0xorder-pagination-1",
+        "slug": "slug-pag-1",
+        "market_token_id": "tok-pag-1",
+        "side": "BUY",
+        "intended_size": "10",
+        "intended_price": "0.42",
+        "status": "SUBMITTED_UNKNOWN",
+    }
+    order = {"order_id": "0xorder-pagination-1", "status": "ORDER_STATUS_MATCHED",
+             "original_size": "10", "size_matched": "10"}
+    # CONFIRMED full-fill VAR ama next_cursor != "LTE=" → tarama eksik (sonraki sayfalar olabilir).
+    page = {
+        "trades": [
+            {
+                "id": "trade-pag-001",
+                "taker_order_id": "0xorder-pagination-1",
+                "status": "CONFIRMED",
+                "side": "BUY",
+                "size": "10",
+                "price": "0.42",
+                "fee_rate_bps": "0",
+                "maker_orders": [],
+            }
+        ],
+        "next_cursor": "MzAw",   # base64("300") — END_CURSOR ("LTE=") DEĞİL
+        "limit": 300,
+        "count": 1,
+    }
+    client = _StubClient(order, page)
+
+    result = await resolve_intent_to_shadow(client, intent_row, db_path=db)
+    assert result == "RECORDED", f"recovery shadow RECORDED bekler: {result!r}"
+
+    # client çağrıldı (NULL yolundan farklı — fetch yapıldı sonra pagination guard devreye girdi).
+    assert client.get_order_calls == ["0xorder-pagination-1"], f"get_order: {client.get_order_calls}"
+    assert len(client.get_trades_calls) >= 1, "get_trades_paginated çağrılmalı"
+
+    conn = sqlite3.connect(db)
+    try:
+        rows = conn.execute(
+            "SELECT resolution_state, matched_size, avg_price, fee_rate_bps, matched_trade_ids, "
+            "accounting_source, recovery_reason FROM araf_resolution_shadow "
+            "WHERE order_intent_id=?", ("iid-pagination-1",)).fetchall()
+        assert len(rows) == 1, f"tek shadow satırı: {len(rows)}"
+        r = rows[0]
+        # Pagination eksik → FILLED DEĞİL (undercount riski); terminal yazma engellendi.
+        assert r[0] == "RECOVERY_REQUIRED", f"resolution_state: {r[0]!r}"
+        assert r[1] is None, f"matched_size NULL: {r[1]!r}"
+        assert r[2] is None, f"avg_price NULL: {r[2]!r}"
+        assert r[3] is None, f"fee_rate_bps NULL: {r[3]!r}"
+        assert r[4] is None, f"matched_trade_ids NULL: {r[4]!r}"
+        assert r[5] is None, f"accounting_source NULL: {r[5]!r}"
+        assert r[6] == "INCOMPLETE_SCAN_PAGINATION", f"recovery_reason: {r[6]!r}"
+
+        assert conn.execute("SELECT COUNT(*) FROM order_intents").fetchone()[0] == 0, \
+            "order_intents'e yazım YOK (A3-pure)"
+        assert conn.execute("SELECT COUNT(*) FROM positions").fetchone()[0] == 0, \
+            "positions'a yazım YOK (A3-pure)"
+    finally:
+        conn.close()
