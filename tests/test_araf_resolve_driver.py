@@ -172,3 +172,63 @@ async def test_resolve_intent_filled_writes_shadow(tmp_path):
             "positions'a yazım YOK (A3-pure)"
     finally:
         conn.close()
+
+
+@pytest.mark.asyncio
+async def test_resolve_intent_missing_exchange_order_id_writes_recovery_shadow(tmp_path):
+    """exchange_order_id NULL → client ÇAĞRILMAZ (fetch için order_id yok); explicit shadow
+    RECOVERY_REQUIRED + recovery_reason="MISSING_EXCHANGE_ORDER_ID", accounting NULL. order_intents/
+    positions dokunulmaz. Skip YOK (gözlemlenebilir fail-closed)."""
+    from execution.araf_resolve_driver import resolve_intent_to_shadow
+
+    db = str(tmp_path / "araf_orch_missing.db")
+    from db.schema import init_schema
+    async with aiosqlite.connect(db) as conn:
+        await init_schema(conn)
+        await conn.commit()
+
+    intent_row = {
+        "order_intent_id": "iid-missing-exchange-1",
+        "exchange_order_id": None,
+        "slug": "slug-missing-1",
+        "market_token_id": "tok-missing-1",
+        "side": "BUY",
+        "intended_size": "10",
+        "intended_price": "0.42",
+        "status": "SUBMITTED_UNKNOWN",
+    }
+    # Stub'a geçerli order/page verilir ama NULL yolunda HİÇ çağrılmamalı.
+    order = {"order_id": "0xirrelevant", "status": "ORDER_STATUS_MATCHED", "original_size": "10"}
+    page = {"trades": [], "next_cursor": "LTE=", "limit": 300, "count": 0}
+    client = _StubClient(order, page)
+
+    result = await resolve_intent_to_shadow(client, intent_row, db_path=db)
+    assert result == "RECORDED", f"explicit recovery shadow RECORDED bekler: {result!r}"
+
+    # KRİTİK: order_id yokken client ÇAĞRILMAMALI.
+    assert client.get_order_calls == [], f"get_order çağrılmamalı: {client.get_order_calls}"
+    assert client.get_trades_calls == [], f"get_trades_paginated çağrılmamalı: {client.get_trades_calls}"
+
+    conn = sqlite3.connect(db)
+    try:
+        rows = conn.execute(
+            "SELECT exchange_order_id, resolution_state, matched_size, avg_price, fee_rate_bps, "
+            "matched_trade_ids, accounting_source, recovery_reason FROM araf_resolution_shadow "
+            "WHERE order_intent_id=?", ("iid-missing-exchange-1",)).fetchall()
+        assert len(rows) == 1, f"tek shadow satırı: {len(rows)}"
+        r = rows[0]
+        assert r[0] is None, f"exchange_order_id NULL: {r[0]!r}"
+        assert r[1] == "RECOVERY_REQUIRED", f"resolution_state: {r[1]!r}"
+        assert r[2] is None, f"matched_size NULL: {r[2]!r}"
+        assert r[3] is None, f"avg_price NULL: {r[3]!r}"
+        assert r[4] is None, f"fee_rate_bps NULL: {r[4]!r}"
+        assert r[5] is None, f"matched_trade_ids NULL: {r[5]!r}"
+        assert r[6] is None, f"accounting_source NULL: {r[6]!r}"
+        assert r[7] == "MISSING_EXCHANGE_ORDER_ID", f"recovery_reason: {r[7]!r}"
+
+        assert conn.execute("SELECT COUNT(*) FROM order_intents").fetchone()[0] == 0, \
+            "order_intents'e yazım YOK (A3-pure)"
+        assert conn.execute("SELECT COUNT(*) FROM positions").fetchone()[0] == 0, \
+            "positions'a yazım YOK (A3-pure)"
+    finally:
+        conn.close()
