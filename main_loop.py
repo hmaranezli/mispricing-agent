@@ -891,6 +891,20 @@ def _install_shutdown_handlers() -> None:
     install_shutdown_signal_handlers()
 
 
+async def _close_connection_with_timeout(conn, timeout: float = 2.0) -> None:
+    """Gemini D#11 hidden risk: graceful shutdown finally'sindeki `await conn.close()` olası asyncio
+    task-hang'inde sonsuza donabilir. Zorunlu timeout ile sar: TimeoutError fail-soft yutulur (log) →
+    finally donmaz, süreç temiz çıkar. Diğer exception'lar mevcut bare-close semantiğindeki gibi
+    propagate eder (yalnız TimeoutError yutulur)."""
+    close_task = asyncio.ensure_future(conn.close())
+    await asyncio.sleep(0)   # close()'un ilk adımını çalıştır (gerçekten başlasın), sonra timeout uygula
+    try:
+        await asyncio.wait_for(close_task, timeout=timeout)
+    except asyncio.TimeoutError:
+        close_task.cancel()
+        print(f"[bot] conn.close() {timeout}s içinde dönmedi — timeout ile geçildi (fail-soft).")
+
+
 async def main() -> None:
     open_positions: list[dict] = []
     closed_today:   list[dict] = []
@@ -1014,7 +1028,7 @@ async def main() -> None:
             except Exception as e:
                 _handle_loop_error(e)
     finally:
-        await conn.close()
+        await _close_connection_with_timeout(conn)
 
 
 if __name__ == "__main__":
