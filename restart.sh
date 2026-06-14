@@ -6,6 +6,11 @@ set -e
 
 SESSION="mispricing"
 
+# D#8 preflight: içinde bulunulan tmux session hedef ile aynıysa restart KENDİ oturumunu öldürür
+# (footgun). Guard non-zero dönerse `set -e` burada durdurur → hiçbir şey öldürülmez/başlatılmaz.
+echo "[restart] Tmux self-kill footgun preflight..."
+venv/bin/python -m monitor.restart_guard --target "$SESSION"
+
 echo "[restart] Mevcut process'ler kontrol ediliyor..."
 PIDS=$(pgrep -f "python.*main_loop.py" || true)
 if [ -n "$PIDS" ]; then
