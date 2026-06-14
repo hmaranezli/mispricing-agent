@@ -28,3 +28,37 @@ def test_shutdown_flag_request_and_clear():
     assert state.is_shutdown_requested() is True        # request → flag set
     state.clear_shutdown()
     assert state.is_shutdown_requested() is False       # clear → tekrar temiz (test izolasyonu)
+
+
+# ── SIGTERM handler installer (gerçek sinyal göndermeden test) ─────────────────
+
+class _FakeLoop:
+    """asyncio event loop yerine geçer: add_signal_handler çağrılarını handlers dict'ine kaydeder
+    (gerçek sinyal kaydı YOK)."""
+    def __init__(self):
+        self.handlers = {}
+
+    def add_signal_handler(self, sig, callback, *args):
+        self.handlers[sig] = (callback, args)
+
+
+def test_install_shutdown_signal_handlers_binds_sigterm_to_request_shutdown():
+    """install_shutdown_signal_handlers(loop) SIGTERM'i loop'a bağlamalı; callback çağrılınca
+    monitor.state.request_shutdown() flag'i set olmalı. Gerçek sinyal GÖNDERİLMEZ — fake loop +
+    callback doğrudan çağrılır.
+
+    İlk RED: monitor.shutdown / install_shutdown_signal_handlers YOK → ImportError (feature missing)."""
+    import signal
+    from monitor.shutdown import install_shutdown_signal_handlers
+    from monitor import state
+
+    state.clear_shutdown()
+    fake_loop = _FakeLoop()
+    install_shutdown_signal_handlers(loop=fake_loop)
+
+    assert signal.SIGTERM in fake_loop.handlers, "SIGTERM loop'a bağlanmalı"
+    callback, _args = fake_loop.handlers[signal.SIGTERM]
+    assert state.is_shutdown_requested() is False       # henüz tetiklenmedi
+    callback()                                          # SIGTERM geldi (simülasyon)
+    assert state.is_shutdown_requested() is True, "SIGTERM callback → request_shutdown flag set"
+    state.clear_shutdown()                              # test izolasyonu
