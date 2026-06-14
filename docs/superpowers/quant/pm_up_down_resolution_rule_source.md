@@ -1,67 +1,72 @@
 # F1a — PM Up/Down resolution rule source
 
 > **PM Up/Down resolution rule source** capture kapısı. F1 data fidelity audit'inin
-> `resolution-source/index` blocker'ını daraltır. Amaç: repo'nun hedeflediği spesifik Up/Down crypto
-> market'lerinin TAM çözüm kuralını (resolution source / index / timestamp / edge cases) repo'ya
-> KAYDETMEK. **offline data only · no live API.** Tarih: 2026-06-14.
+> `resolution-source/index` blocker'ını daraltır/çözer. **offline data only** stance; tek istisna:
+> aşağıda kayıtlı, insan-onaylı, unauthenticated tek public read. Tarih: 2026-06-14.
 
 ## 1. Verdict
 
-- **VERDICT = BLOCKED-UNTIL-DOCS / DATA FIDELITY NOT VERIFIED.** PASS YOK.
-- Exact Up/Down `resolution-source/index` repo/local docs'ta KAYITLI DEĞİL; spesifik per-market/event
-  rule metni kaydedilene kadar bloklu. Bu, F1'in `Poly API data fidelity` blocker'ını ve üst seviye
-  edge correctness BLOCKED durumunu destekler. `production canary NOT approved`.
+- **VERDICT = SOURCE-RESOLVED / DATA FIDELITY CONFOUNDER CONFIRMED.**
+- Üst denetim: **Poly API data fidelity** (F1) `resolution-source/index` blocker'ı — bu artifact onu
+  BTC 15m için çözer, ama yeni bir besleme confounder'ı açar.
+- BTC 15m örnek market'i için exact resolution source + rule + edge-case YAKALANDI (§2/§3).
+- **YENİ BLOCKER:** bot `fair_value` **Hyperliquid mark/mid** kullanıyor, PM ise **Chainlink BTC/USD**
+  ile resolve ediyor → **HL ≠ Chainlink kaynak uyuşmazlığı = DOĞRULANMIŞ data fidelity confounder** (§5).
+- Bu yüzden veri besleme HÂLÂ **DATA FIDELITY NOT VERIFIED** (kaynak bulundu ama besleme YANLIŞ kaynağı
+  kullanıyor); diğer asset/interval'lar için kural metni hâlâ **BLOCKED-UNTIL-DOCS** (§4).
+  `production canary NOT approved`.
 
-## 2. Targeted market inventory (repo'dan, kanıtlı)
+## 2. Captured evidence (insan-onaylı tek public read)
 
-- Slug builder `data/shortterm.py:78 slugs_for_now` → **`{asset}-updown-{interval}m-{ts}`**;
-  `data/shortterm.py:141 slugs_for_now_4h` → **`{asset}-updown-4h-{ts}`**.
-- Evren: **btc / eth / sol / xrp** × **5m / 15m / 4h**. `ts = (now // (interval*60)) * (interval*60)`
-  (interval'e hizalı epoch). Örnek: `btc-updown-15m-1718000000`.
-- Lookup: `_fetch_slug` → **Gamma markets/events by slug** (`params={"slug": slug}`).
+- **Fetched slug:** `btc-updown-15m-1781455500` (repo `slugs_for_now`, BTC 15m, güncel pencere).
+- **Endpoint:** unauthenticated public **Gamma markets/events by slug** — `/markets?slug=<slug>`
+  (auth header yok, API key yok, order/trade/balance yok). HTTP 200, 1 sonuç.
+- **resolutionSource (resolution source):** `https://data.chain.link/streams/btc-usd`.
+- **source/index:** **Chainlink BTC/USD data stream**.
+- **timestamp rule:** Bitcoin fiyatı **time range SONU** vs **time range BAŞI** karşılaştırılır
+  (başı = `eventStartTime/startDate`, sonu = `endDate`).
+- **edge cases:** **greater than or equal ⇒ Up**; aksi halde **Down**.
+- Mevcut rule-ilgili alanlar: `resolutionSource`, `description` (513 char), `umaResolutionStatuses`
+  (boş `[]` — henüz UMA'ya gitmemiş aktif market).
 
-## 3. What the repo parses (and does NOT)
+## 3. Rule text (description özeti)
 
-- Parse edilen: `slug`, `endDate` / `eventStartTime` / `startDate` (→ `seconds_remaining`),
-  `clobTokenIds` (`_parse_token_ids` → asset_id). [`parse_market_window`]
-- **Parse/kayıt EDİLMEYEN:** resolution rule / **resolution source** / index / `umaResolutionStatus` /
-  `description` / clarification / edge-case metni. (grep: data/ + council/ → YOK.) Yani repo market'in
-  NASIL resolve olduğunu hiç görmüyor — yalnız pencere + token.
+> "resolve to **Up** if the Bitcoin price at the **end** of the time range … is **greater than or
+> equal to** the price at the **beginning** of that range. Otherwise … **Down**. The resolution source
+> … is **Chainlink, BTC/USD data stream** (https://data.chain.link/streams/btc-usd)…"
 
-## 4. General official docs basis (yalnız genel kanıt)
+(Not: description'ın son ~113 karakterlik kuyruğu raporlama sırasında ekrana kesik basıldı; tam-verbatim
+kayıt istenirse onaylı ikinci read gerekir. Core source+rule+edge-case yukarıda tamdır.)
 
-- Polymarket Resolution docs: marketler **UMA Optimistic Oracle** ile resolve olur; her market'in
-  **per-market resolution rules** vardır — **resolution source**, **end date**, **edge cases**; kuralı
-  "title" değil bu metin belirler.
-- Polymarket Fetching Markets docs: market/event verisi **Gamma markets/events by slug** ile çekilir
-  (`/events`, `/markets`; active/closed filtre, pagination).
-- **Bunlar GENEL.** Bizim spesifik crypto Up/Down market'in hangi fiyat index'i / hangi timestamp /
-  hangi snapshot ile resolve olduğunu SÖYLEMEZ.
+## 4. Scope limit — bir örnek tüm evreni çözmez
 
-## 5. Why generic docs cannot unblock (do not infer index from generic docs)
+- Bu read **yalnız BTC 15m** market'inin source/pattern'ini kanıtlar. **Diğer asset/interval'lar
+  (eth/sol/xrp × 5m/15m/4h) için kural metni HENÜZ kaydedilmedi** → onlar için
+  **BLOCKED-UNTIL-DOCS** sürer (per-asset Chainlink stream farklı olabilir: eth-usd/sol-usd/xrp-usd;
+  varsayım ÇIKARILMAZ — **do not infer index from generic docs** / tek örnekten genelleme yok).
+- Genel docs zaten: marketler **UMA Optimistic Oracle** ile resolve; **per-market resolution rules**
+  (**resolution source** + **end date** + **edge cases**). Spesifik index ancak per-market read ile
+  doğrulanır.
 
-- **do not infer index from generic docs:** Genel "UMA + per-market rules" ifadesinden spesifik
-  index/timestamp ÇIKARILAMAZ. Çıkarım yapmak = uydurma = anayasa madde 3 ihlali. Bu yüzden
-  `resolution-source/index` BLOCKED kalır; varsayımla doldurulmaz.
+## 5. Confirmed confounder — fair-vs-realized
 
-## 6. fair-vs-realized confounder linkage
+- **fair-vs-realized confounder DOĞRULANDI:** `data/fair_value.py::fair_yes(p_now, p_ref, …)` girdi
+  olarak **Hyperliquid** mid/mark alıyor (`data/hyperliquid.py`), ama PM **Chainlink BTC/USD stream**
+  ile resolve ediyor. İki kaynak arasındaki basis/latency → model overconfidence GİBİ görünen
+  sistematik sapma (recorded Brier 0.39 / fair-67-vs-win-14) **veri kaynağı uyuşmazlığı** olabilir.
+- Ek: p_ref pencere **başına** (start), p_now pencere **sonuna** (end) **Chainlink** fiyatına anchor'lı
+  olmalı — HL anlık değil.
 
-- **fair-vs-realized confounder:** `fair_value` p_now = HL mid/mark. PM resolve index'i HL mark'tan
-  farklıysa, recorded Brier 0.39 / fair-67-vs-win-14 sapması model overconfidence DEĞİL **veri basis'i**
-  olabilir. Bu kural metni kaydedilip HL↔PM index eşleşmesi doğrulanmadan kalibrasyon yanıltıcıdır →
-  F1a, calibration metriklerinin ÖN-koşuludur.
+## 6. Next remediation (calibration'dan ÖNCE)
 
-## 7. Exact source required before GREEN-PASS
+1. **Chainlink-aligned price source** entegrasyonu VEYA explicit **HL↔Chainlink basis validation**
+   (offline: kayıtlı HL serisi vs Chainlink BTC/USD; sistematik fark/latency ölç).
+2. Diğer asset/interval source capture (eth/sol/xrp; per-asset Chainlink stream).
+3. p_ref start-anchor + window timestamp doğrulaması.
+4. Ancak bunlar netleşince → offline **calibration metrics** (Brier/reliability) anlamlı olur.
 
-GREEN-PASS (data fidelity VERIFIED) için kaydedilmesi gereken kesin kaynak:
-1. Hedef market/event'in resmi resolution rule metni: **resolution source** (hangi index/oracle),
-   **timestamp/snapshot** kuralı, **edge cases** (tie / veri-yok / gecikme).
-2. Tercih edilen yol (insan onayı gerekir): (a) **public Gamma markets/events by slug** yanıtındaki
-   rule/description alanının ham kaydı; veya (b) docs.polymarket.com ilgili market rule sayfasının ham
-   metni (paste). İkisi de offline-first; canlı trading/auth YOK.
+## 7. Live/API NO-GO confirmation
 
-## 8. Live/API NO-GO confirmation
-
-- **no live API**, no Telegram, no live DB; `D#7 phase-2 balance/auth probe not run`;
-  `production canary NOT approved`. Exact rule capture için public Gamma fetch / web-docs onayı
-  AYRI ve insanın açık komutuyla.
+- **no live API** (trading/auth), no Telegram, no live DB; `D#7 phase-2 balance/auth probe not run`;
+  `production canary NOT approved`. §2'deki tek read insan-onaylı, unauthenticated, no-trade public
+  Gamma idi; başka fetch yapılmadı. Ek read/entegrasyon yalnız insanın açık komutuyla.
