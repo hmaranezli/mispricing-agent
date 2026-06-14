@@ -35,6 +35,7 @@ from monitor.notifier import notify_open, notify_close, notify_halt, notify_rest
 from monitor.kill_switch import check as kill_switch_check
 from monitor.telegram_commands import poll_commands
 from monitor.state import is_paused
+from monitor.shutdown import install_shutdown_signal_handlers
 from monitor import circuit_breaker
 from monitor import positions_cache
 from db.logger import log_candidate, log_shadow_candidate, log_position_open, log_position_close, load_closed_today, get_connection, patch_position_resolution, log_partial_fill_update
@@ -884,11 +885,18 @@ def _should_stop_for_shutdown() -> bool:
     return _st.is_shutdown_requested()
 
 
+def _install_shutdown_handlers() -> None:
+    """D#8: SIGTERM/SIGINT'i graceful shutdown flag'ine bağla. main() başında (çalışan loop içinde)
+    çağrılır. Modül-attribute çağrı (test patch'lenebilir). monitor.shutdown fail-soft."""
+    install_shutdown_signal_handlers()
+
+
 async def main() -> None:
     open_positions: list[dict] = []
     closed_today:   list[dict] = []
     failed_slugs:   set[str]   = set()
     print(f"[bot] Başladı — DRY_RUN={config.DRY_RUN}, tarama={SCAN_INTERVAL_SECS}s")
+    _install_shutdown_handlers()   # D#8: SIGTERM/SIGINT → graceful shutdown (ağır setup öncesi)
     asyncio.create_task(poll_commands())
     conn = await get_connection()
     open_positions = await _load_open_positions(conn)
