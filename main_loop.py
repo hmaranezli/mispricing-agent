@@ -268,6 +268,7 @@ async def _scan_and_execute(
                 # log_position_open ÇAĞRILMAZ — DB accounting execute() içinde atomik yapıldı.
                 open_positions.append(pos)
                 _increment_session_trade_count()  # E10c: gerçek açılış → seans sayacı +1
+                _reset_no_fill_streak()           # E11b: gerçek açılış → ardışık no-fill sayacı sıfır
                 open_slugs.add(slug)
                 _exit_tok = (pos.get("yes_token_id") if pos.get("action") == "YES"
                              else pos.get("no_token_id"))
@@ -287,6 +288,7 @@ async def _scan_and_execute(
                 logging.getLogger("main_loop").error(
                     "[main_loop] %s: RECOVERY_REQUIRED (%s) — append/ws/write YOK",
                     slug, res.get("recovery_reason"))
+                _increment_no_fill_streak()  # E11b: capital açılmadı → ardışık no-fill +1
         elif position:
             # Legacy/dry path: flat dict (accounting_persisted YOK) → eski davranış KORUNUR.
             ask_at_decision = finding.get("best_ask")
@@ -297,6 +299,7 @@ async def _scan_and_execute(
             await log_position_open(conn, position)
             open_positions.append(position)
             _increment_session_trade_count()  # E10c: gerçek açılış → seans sayacı +1
+            _reset_no_fill_streak()           # E11b: gerçek açılış → ardışık no-fill sayacı sıfır
             open_slugs.add(slug)
             # Faz 4A-0: Shadow Mode — position_id belli olduktan SONRA, fire-and-forget
             _exit_tok = (position.get("yes_token_id") if position["action"] == "YES"
@@ -310,7 +313,8 @@ async def _scan_and_execute(
                 t for t in (position.get("yes_token_id"), position.get("no_token_id")) if t
             ])
         else:
-            pass  # FAK kill — capital riske girmedi, bir sonraki taramada yeniden dene
+            # FAK kill / no-open — capital riske girmedi, bir sonraki taramada yeniden dene.
+            _increment_no_fill_streak()  # E11b: ardışık no-fill +1 (execute() None)
 
     t_total = time.time() - t0
     print(
@@ -925,6 +929,30 @@ def _reset_session_trade_count() -> None:
     """E10c — seans sayacını 0'a çeker (process start / test izolasyonu)."""
     global _SESSION_TRADE_COUNT
     _SESSION_TRADE_COUNT = 0
+
+
+# E11b — process-runtime, in-memory ARDIŞIK no-fill/no-open sayacı (no-fill burst gate için).
+# execute() None (FAK kill/no-open) + RECOVERY_REQUIRED → +1; gerçek açılış (OPENED/legacy) → 0'a reset;
+# DUPLICATE ne artırır ne resetler; council veto / pre-execute → dokunmaz. Restart-safe DEĞİL
+# (process-memory), DB COUNT YOK, RiskStateSnapshot şeması değişmez. Gate (no_fill_burst_halt) E11c'de bağlanır.
+_NO_FILL_STREAK: int = 0
+
+
+def _no_fill_streak() -> int:
+    """E11b — bu seanstaki ardışık no-fill/no-open sayısı (process-runtime in-memory)."""
+    return _NO_FILL_STREAK
+
+
+def _increment_no_fill_streak() -> None:
+    """E11b — ardışık no-fill sayacını +1 (execute() None / RECOVERY_REQUIRED)."""
+    global _NO_FILL_STREAK
+    _NO_FILL_STREAK += 1
+
+
+def _reset_no_fill_streak() -> None:
+    """E11b — gerçek açılışta / process start / test izolasyonunda no-fill sayacını 0'a çeker."""
+    global _NO_FILL_STREAK
+    _NO_FILL_STREAK = 0
 
 
 def _effective_risk_mode() -> str:
