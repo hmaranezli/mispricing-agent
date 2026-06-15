@@ -45,12 +45,12 @@ SLUG = "btc-updown-15m-t"
 def _reset_streaks():
     """Seanslar arası in-memory sayaç sızıntısını engelle. GREEN reset seam'i varsa kullan;
     RED-safe: yokken sessiz geç (asıl RED, streak/seam assertion'ları olsun, fixture hatası DEĞİL)."""
-    for name in ("_reset_no_fill_streak", "_reset_session_trade_count"):
+    for name in ("_reset_no_fill_streak", "_reset_session_trade_count", "_reset_session_submit_count"):
         fn = getattr(main_loop, name, None)
         if callable(fn):
             fn()
     yield
-    for name in ("_reset_no_fill_streak", "_reset_session_trade_count"):
+    for name in ("_reset_no_fill_streak", "_reset_session_trade_count", "_reset_session_submit_count"):
         fn = getattr(main_loop, name, None)
         if callable(fn):
             fn()
@@ -91,6 +91,7 @@ async def _run_one_scan(execute_return, council_result=({}, {})):
     with patch.object(config, "NEW_ENTRIES_ENABLED", True), \
          patch("main_loop._effective_risk_mode", new=MagicMock(return_value="Operational")), \
          patch("main_loop._session_trade_count", new=MagicMock(return_value=0)), \
+         patch("main_loop._session_submit_count", new=MagicMock(return_value=0)), \
          patch("main_loop.scan_edges", new_callable=AsyncMock, return_value=[_finding()]), \
          patch("main_loop._run_council", new_callable=AsyncMock, return_value=council_result), \
          patch("main_loop.log_position_open", new_callable=AsyncMock), \
