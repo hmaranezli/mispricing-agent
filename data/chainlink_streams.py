@@ -35,3 +35,45 @@ def fetch_stream_reports(stream_id, start_ms, end_ms, *, client):
             raise ValueError(f"report[{i}] dict olmalı, bulundu: {type(r).__name__}")
 
     return reports
+
+
+def _is_number(v) -> bool:
+    """Numeric int/float — bool REDDEDİLİR (True/False fiyat/scale/timestamp değildir)."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def normalize_crypto_v3_report(report, *, price_scale):
+    """Zaten-DECODE-edilmiş Crypto v3 report dict'ini sade {feed_id, timestamp_ms, price}'a çevirir.
+
+    fullReport blob DECODE EDİLMEZ; raw REST (fullReport var ama decoded price yok) → ValueError. feed id
+    feedID/feedId (non-empty str); observationsTimestamp int saniye (bool red); price price/benchmarkPrice/
+    BenchmarkPrice numeric (bool red); price_scale pozitif numeric (bool red). Çıktı YALNIZ
+    feed_id/timestamp_ms/price — opak/fullReport/validFromTimestamp TAŞINMAZ. İhlal → ValueError.
+    Canlı fetch/secret YOK."""
+    if not isinstance(report, dict):
+        raise ValueError(f"report dict olmalı, bulundu: {type(report).__name__}")
+
+    feed_id = report.get("feedID", report.get("feedId"))
+    if not isinstance(feed_id, str) or not feed_id:
+        raise ValueError(f"feed id (feedID/feedId) non-empty str olmalı: {feed_id!r}")
+
+    ts = report.get("observationsTimestamp")
+    if not isinstance(ts, int) or isinstance(ts, bool):
+        raise ValueError(f"observationsTimestamp int saniye olmalı (bool değil): {ts!r}")
+
+    price = None
+    for key in ("price", "benchmarkPrice", "BenchmarkPrice"):
+        if key in report:
+            price = report[key]
+            break
+    if not _is_number(price):
+        raise ValueError(f"price (price/benchmarkPrice/BenchmarkPrice) numeric olmalı: {price!r}")
+
+    if not _is_number(price_scale) or price_scale <= 0:
+        raise ValueError(f"price_scale pozitif numeric olmalı: {price_scale!r}")
+
+    return {
+        "feed_id": feed_id,
+        "timestamp_ms": ts * 1000,
+        "price": price / price_scale,
+    }
