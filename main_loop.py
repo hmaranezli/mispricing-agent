@@ -37,6 +37,7 @@ from monitor.telegram_commands import poll_commands
 from monitor.state import is_paused
 from monitor.shutdown import install_shutdown_signal_handlers
 from monitor.risk_state_store import load_risk_state, RiskStateCorruptError
+from monitor.risk_sync import sync_risk_state_from_runtime_signals
 from db.logger import DB_FILE
 from monitor import circuit_breaker
 from monitor import positions_cache
@@ -911,6 +912,24 @@ def _effective_risk_mode() -> str:
     return mode
 
 
+def _sync_runtime_risk_state(closed_today, current_equity, circuit_breaker_status, kill_switch_active):
+    """E9b — runtime risk sinyallerini persist risk-state'e senkronize et (entry gate'ten ÖNCE çağrılır).
+    realized_pnl_today closed_today'den TOPLANIR (canlı DB PnL sorgusu YOK; None/eksik→0). Day/updated_at
+    UTC clock'tan (wiring katmanı sınırı). RiskStateCorruptError PROPAGATE eder → caller iterasyonda yeni
+    girişi fail-closed atlar. Bootstrap/repair YOK (sync helper sahibi). RISK_STATE_DB_FILE kullanır."""
+    realized_pnl_today = sum((p.get("realized_pnl") or 0) for p in closed_today)
+    now = datetime.now(timezone.utc)
+    return sync_risk_state_from_runtime_signals(
+        RISK_STATE_DB_FILE,
+        current_trading_day_utc=now.strftime("%Y-%m-%d"),
+        updated_at_utc=now.isoformat(),
+        current_equity=current_equity,
+        realized_pnl_today=realized_pnl_today,
+        circuit_breaker_status=circuit_breaker_status,
+        kill_switch_active=kill_switch_active,
+    )
+
+
 def _should_stop_for_shutdown() -> bool:
     """D#8 graceful shutdown break kararı: SIGTERM/SIGINT handler `state.request_shutdown()` ile
     flag set ettiyse True. Ana while True bunu kill_switch_check yanında kontrol edip break eder →
@@ -1052,8 +1071,19 @@ async def main() -> None:
                     # REST heartbeat: scan + heal + cache yenile
                     n_open_before = len(open_positions)
                     effective_bankroll = await get_effective_bankroll(BANKROLL_CONFIG)
-                    await _scan_and_execute(open_positions, closed_today, effective_bankroll,
-                                            conn=conn, failed_slugs=failed_slugs)
+                    # E9b: runtime risk sinyallerini persist risk-state'e senkronize et — entry/gate'ten
+                    # ÖNCE. circuit_breaker_status = sticky pause durumundan; kill_switch = dosya kontrolü.
+                    _cb_status = "hard_stop" if _st.HARD_PAUSED else ("soft_stop" if _st.SOFT_PAUSED else None)
+                    try:
+                        _sync_runtime_risk_state(closed_today, effective_bankroll,
+                                                 _cb_status, kill_switch_check())
+                    except RiskStateCorruptError:
+                        # Fail-closed: risk-state okunamadı/bozuk → bu iterasyonda YENİ ENTRY YOK
+                        # (monitor/exit zaten yukarıda çalıştı). Bootstrap/repair YAPILMAZ.
+                        print("[risk_sync] fail-closed — risk-state okunamadı, yeni entry atlandı")
+                    else:
+                        await _scan_and_execute(open_positions, closed_today, effective_bankroll,
+                                                conn=conn, failed_slugs=failed_slugs)
                     for pos in open_positions[n_open_before:]:
                         notify_open(pos)
                     await _heal_pending_resolutions(conn, closed_today)
