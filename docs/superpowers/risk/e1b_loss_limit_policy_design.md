@@ -85,3 +85,56 @@
 - **no live API**, no Chainlink/HL/Polymarket fetch, no DB/Telegram/CLOB/auth/D#7/restart/kill.
   **no production trading code changed.** **Paper Soak blocked until policy and wiring are verified.**
   Canlıya/canary'e geçiş yalnız insanın açık yazılı komutuyla.
+
+## 12. Micro-Canary Policy Deviation (E7)
+
+Yalnız POLİTİKA revizyonu — config/kod/runtime değişikliği YOK. Aşağıdaki config sabitleri SONRADAN
+**operatör (insan) eliyle** eklenecek (anayasa madde 1; bu doküman config.py'ye dokunmaz).
+
+### 12.1 DAILY_LOSS_LIMIT = NET realized PnL tabanlıdır (gross losing trades DEĞİL)
+- Ölçüm start-of-day equity'den **net realized** kayıptır, brüt kaybeden işlemler değil.
+- **Formül:** `loss_pct = max(0.0, -realized_pnl_today / start_of_day_equity)`.
+- **Yukarı volatilite CEZALANDIRILMAZ.** Kârlı bir günün bir kısmını geri vermesi, start-of-day
+  equity'nin ALTINA düşmekle AYNI şey değildir.
+
+### 12.2 Örnek: +1000 sonra −50 → HALT YOK
+- `start_of_day_equity = $25`; gün içi `realized_pnl_today` +$1000'a ulaşır, sonra $50 geri verir.
+- Net `realized_pnl_today = +$950` → `loss_pct = max(0, -950/25) = 0` → **daily_loss_halt TETİKLENMEZ**
+  (No Halt, çünkü net PnL pozitif kalır).
+
+### 12.3 Profit giveback ≠ daily loss (ayrı gelecek özellik)
+- Pozitif gün-içi tepeden kâr geri verme, DAILY_LOSS_LIMIT'in işi DEĞİLDİR. Bu ayrı bir gelecek
+  özelliktir: **High-Water Mark / Intraday Profit Lock / trailing drawdown guard.** Bu policy
+  revizyonu onu KAPSAMAZ.
+
+### 12.4 Micro-canary için trade-budget tabanlı eşik (10% neden yetersiz)
+- $25 micro-canary bankroll, ~$1.25 trade size → bir tam kaybeden işlem ≈ bankroll'un **%5'i**.
+- Legacy **%10** günlük limit yalnızca ~**2 tam kayba** izin verir → 6-loss streak/cooldown breaker
+  pratikte **ULAŞILAMAZ** (gün limiti streak'ten önce vurur).
+- Bu yüzden, **yalnız micro-canary için**, DAILY_LOSS_LIMIT trade-budget tabanlı olmalı:
+  `risk_per_trade_pct * streak_threshold = 0.05 * 6 = 0.30`.
+- Fee/slippage/yuvarlama için execution buffer eklenir → **önerilen micro-canary DAILY_LOSS_LIMIT = 0.35**.
+- **0.35 vs 0.10 gerekçesi:** 0.10 streak breaker'ı gözlemlenemez kılar; 0.35 (=0.05×6 + buffer) en az
+  6-loss streak'in gözlemlenmesine izin verir → cooldown/risk-state geçişleri gerçekten test edilebilir.
+
+### 12.5 0.35 = veri-edinme bütçesi, üretim risk iştahı DEĞİL
+- Bu 0.35 limiti küçük bankroll üzerinde slippage, fill davranışı, streak breaker davranışı ve
+  risk-state geçişlerini GÖZLEMLEMEK için bir **data-acquisition budget**'tır. Production-scale risk
+  appetite DEĞİLDİR. Ölçek büyüdüğünde yeniden değerlendirilir (Pre-F / üretim risk parametreleri).
+
+### 12.6 Anti-burst cap
+- **MAX_OPEN_POSITIONS = 1** canary anti-burst cap olarak KALIR (mevcut 5; canary için 1).
+
+### 12.7 Explicit config sabitleri ve human-in-the-loop politikası (bu task EKLEMEZ)
+```
+DAILY_LOSS_LIMIT = 0.35
+MAX_OPEN_POSITIONS = 1
+```
+- **`DAILY_LOSS_LIMIT` ve `MAX_OPEN_POSITIONS` insan-sahipli (human-owned) risk-iştahı sabitleridir.**
+- Bunlar YALNIZCA (a) operatör tarafından elle, VEYA (b) explicit, dar kapsamlı, operatör-yetkili
+  config-only bir task ile değiştirilebilir.
+- **Claude bu değerleri icat edemez, çıkaramaz (infer), genişletemez veya sessizce değiştiremez.**
+- Herhangi bir config task'i: yalnız `config.py`'yi düzenler, yalnız operatörün istediği sabit(ler)i
+  değiştirir, diff'i gösterir, doğrulamayı koşar ve — ayrıca onaylanmadıkça — commit/push ÖNCESİ DURUR.
+- `daily_loss_halt` şu an `getattr(config, "DAILY_LOSS_LIMIT", 0.10)` fallback'i kullanıyor; explicit
+  0.35 sabiti eklenince micro-canary eşiği yürürlüğe girer.
