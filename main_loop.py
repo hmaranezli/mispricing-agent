@@ -263,6 +263,7 @@ async def _scan_and_execute(
         t2 = time.time()
         position = await execute(finding, gate_result, risk_result, open_positions,
                                  conn=conn, council_pass_ts=council_pass_ts)
+        _increment_session_submit_count()  # E11e: gerçek execute() çağrısı → submit +1 (sonuç önemsiz)
         t_execute_total += time.time() - t2
         res = position
         _acct = res.get("accounting_result") if isinstance(res, dict) else None
@@ -959,6 +960,30 @@ def _reset_no_fill_streak() -> None:
     """E11b — gerçek açılışta / process start / test izolasyonunda no-fill sayacını 0'a çeker."""
     global _NO_FILL_STREAK
     _NO_FILL_STREAK = 0
+
+
+# E11e — process-runtime, in-memory seans SUBMIT sayacı (fill-to-submit oran breaker için). HER gerçek
+# execute() çağrısında (sonuç ne olursa olsun) +1; gate-blok/council-veto/pre-execute ARTIRMAZ (execute
+# çağrılmadı). opened = E10c _SESSION_TRADE_COUNT; oran in-memory hesaplanır. Restart-safe DEĞİL,
+# DB COUNT YOK, RiskStateSnapshot şeması değişmez. Gate (fill_to_submit_halt) E11f'de bağlanır.
+_SESSION_SUBMIT_COUNT: int = 0
+
+
+def _session_submit_count() -> int:
+    """E11e — bu seansta yapılan gerçek execute() (submit) sayısı (process-runtime in-memory)."""
+    return _SESSION_SUBMIT_COUNT
+
+
+def _increment_session_submit_count() -> None:
+    """E11e — her gerçek execute() çağrısında submit sayacını +1 (sonuç önemsiz)."""
+    global _SESSION_SUBMIT_COUNT
+    _SESSION_SUBMIT_COUNT += 1
+
+
+def _reset_session_submit_count() -> None:
+    """E11e — submit sayacını 0'a çeker (process start / test izolasyonu)."""
+    global _SESSION_SUBMIT_COUNT
+    _SESSION_SUBMIT_COUNT = 0
 
 
 def _effective_risk_mode() -> str:
