@@ -180,6 +180,17 @@ async def _run_council(
     return gate_result, rk
 
 
+def _format_scan_perf(total_ms, scan_edges_ms, council_ms, execute_ms, candidates) -> str:
+    """Tek `[scan_perf]` döngü-latency satırını üretir (observability sözleşmesi). Format mevcut inline
+    f-string'den DAVRANIŞ KORUNARAK çıkarıldı: alan adları/sıra/birim/boşluk/`:.0f` aynı. Saf string;
+    metrics/cache/aggregation YOK."""
+    return (
+        f"[scan_perf] total_ms={total_ms:.0f} scan_edges_ms={scan_edges_ms:.0f} "
+        f"council_ms={council_ms:.0f} execute_ms={execute_ms:.0f} "
+        f"candidates={candidates}"
+    )
+
+
 async def _scan_and_execute(
     open_positions: list[dict],
     closed_today:   list[dict],
@@ -331,11 +342,13 @@ async def _scan_and_execute(
             _increment_no_fill_streak()  # E11b: ardışık no-fill +1 (execute() None)
 
     t_total = time.time() - t0
-    print(
-        f"[scan_perf] total_ms={t_total*1000:.0f} scan_edges_ms={t_scan_edges*1000:.0f} "
-        f"council_ms={t_council_total*1000:.0f} execute_ms={t_execute_total*1000:.0f} "
-        f"candidates={len(findings)}"
-    )
+    print(_format_scan_perf(
+        total_ms=t_total * 1000,
+        scan_edges_ms=t_scan_edges * 1000,
+        council_ms=t_council_total * 1000,
+        execute_ms=t_execute_total * 1000,
+        candidates=len(findings),
+    ))
 
 
 async def _handle_ws_resolved(
