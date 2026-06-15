@@ -21,9 +21,10 @@ DATABASE_URL            = os.getenv("DATABASE_URL", "postgresql://localhost/misp
 # ── KILITLI GUARDRAIL KURALLARI ──
 DRY_RUN              = False  # LIVE — gercek orderlar gidiyor
 MAX_TRADE_PCT        = 0.05   # Tek trade max sermayenin %5'i
-MAX_OPEN_POSITIONS   = 5      # Ayni anda max 5 acik pozisyon
+MAX_OPEN_POSITIONS   = 1      # Micro-canary anti-burst cap (E7/E8: 5→1)
 BUST_PROTECTION_PCT  = 0.50   # Bankroll baslangicin %50'sine dusunce → HARD STOP
 STREAK_WARN_COUNT    = 6      # N arka arkaya kayip → SOFT STOP (karda da zararda da)
+DAILY_LOSS_LIMIT     = 0.35   # Gunluk NET realized kayip limiti (E7 micro-canary: 0.05*6+buffer)
 MIN_EDGE_PCT         = 0.05   # Min %5 edge yoksa trade onerilmez
 CONFIDENCE_THRESHOLD = 50     # Konsey guven skoru esigi (0-100) — 75→50 darboğaz düzeltmesi
 MAX_HOLD_MINUTES     = 20     # 15m marketlerin resolve'a kadar tutulabilmesi icin (14→20, hold-to-resolution)
