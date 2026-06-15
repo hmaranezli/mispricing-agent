@@ -267,6 +267,7 @@ async def _scan_and_execute(
                 pos = res["position"]          # PURE position (accounting metadata YOK)
                 # log_position_open ÇAĞRILMAZ — DB accounting execute() içinde atomik yapıldı.
                 open_positions.append(pos)
+                _increment_session_trade_count()  # E10c: gerçek açılış → seans sayacı +1
                 open_slugs.add(slug)
                 _exit_tok = (pos.get("yes_token_id") if pos.get("action") == "YES"
                              else pos.get("no_token_id"))
@@ -295,6 +296,7 @@ async def _scan_and_execute(
                 position["slippage_pct"] = (fill_price - ask_at_decision) / ask_at_decision
             await log_position_open(conn, position)
             open_positions.append(position)
+            _increment_session_trade_count()  # E10c: gerçek açılış → seans sayacı +1
             open_slugs.add(slug)
             # Faz 4A-0: Shadow Mode — position_id belli olduktan SONRA, fire-and-forget
             _exit_tok = (position.get("yes_token_id") if position["action"] == "YES"
@@ -901,12 +903,28 @@ _VALID_RISK_MODES = ("Operational", "Cooldown", "Exit-Only", "Halted", "Kill-Swi
 RISK_STATE_DB_FILE = DB_FILE
 
 
+# E10c — process-runtime, in-memory seans açılan-işlem sayacı. YALNIZ gerçek bir position açıldığında
+# (atomic OPENED + legacy open) +1; başarısız/no-open/DUPLICATE/RECOVERY_REQUIRED ARTIRMAZ. Restart-safe
+# DEĞİL (process-memory), DB COUNT YOK, RiskStateSnapshot şeması değişmez. E10b gate bunu okur.
+_SESSION_TRADE_COUNT: int = 0
+
+
 def _session_trade_count() -> int:
-    """E10b — bu seansta açılan işlem sayısı (max-trades-first-session gate için). Conservative +
-    side-effect-free default: 0 (henüz güvenilir in-memory seans sayacı yok; restart-safe DEĞİL,
-    DB COUNT YOK, RiskStateSnapshot şeması değişmez). Gerçek sayaç ayrı slice'ta bağlanacak; testler
-    bunu enjekte eder."""
-    return 0
+    """E10c — bu seansta gerçekten açılan işlem sayısı (max-trades-first-session gate için).
+    Process-runtime in-memory sayaç (restart-safe DEĞİL, DB COUNT YOK, schema değişmez)."""
+    return _SESSION_TRADE_COUNT
+
+
+def _increment_session_trade_count() -> None:
+    """E10c — gerçek bir position açıldığında sayacı tam +1 artırır (atomic OPENED + legacy open)."""
+    global _SESSION_TRADE_COUNT
+    _SESSION_TRADE_COUNT += 1
+
+
+def _reset_session_trade_count() -> None:
+    """E10c — seans sayacını 0'a çeker (process start / test izolasyonu)."""
+    global _SESSION_TRADE_COUNT
+    _SESSION_TRADE_COUNT = 0
 
 
 def _effective_risk_mode() -> str:
