@@ -51,6 +51,27 @@ def max_trades_first_session_halt(trades_today, *, limit=None) -> str | None:
     return None
 
 
+def no_fill_burst_halt(no_fill_streak, *, limit=None) -> str | None:
+    """E11a — arka arkaya no-fill/no-open burst breaker. SAF + offline (DB/API/canlı state YOK;
+    no_fill_streak enjekte). FAK_ZERO_FILL / RECOVERY_REQUIRED / prevalidation-reject gibi capital
+    riske girmeyen ama submit gürültüsü üreten ardışık çıktılar eşiğe ulaşınca yeni girişler durmalı.
+
+    no_fill_streak >= limit → "no_fill_burst_stop" (yeni girişler durur), aksi None. Status-return stili
+    (daily_loss_halt / max_trades_first_session_halt simetrisi). limit None → getattr(config,
+    "NO_FILL_BURST_LIMIT", 3) [conservative fallback; config sabiti AYRI human-owned task].
+    no_fill_streak<0 veya limit<=0 → ValueError. Restart-safe DEĞİL (enjekte sayaç); main_loop wiring
+    / RiskStateSnapshot şeması bu fonksiyona dahil DEĞİL."""
+    if limit is None:
+        limit = getattr(config, "NO_FILL_BURST_LIMIT", 3)
+    if limit <= 0:
+        raise ValueError(f"limit pozitif olmalı: {limit}")
+    if no_fill_streak < 0:
+        raise ValueError(f"no_fill_streak negatif olamaz: {no_fill_streak}")
+    if no_fill_streak >= limit:
+        return "no_fill_burst_stop"
+    return None
+
+
 def on_trade_closed(pnl: float, current_bankroll: float, starting_bankroll: float) -> str | None:
     """
     Her trade kapanisinda cagrilir.
