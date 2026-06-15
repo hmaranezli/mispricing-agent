@@ -39,6 +39,7 @@ from monitor.shutdown import install_shutdown_signal_handlers
 from monitor.risk_state_store import load_risk_state, RiskStateCorruptError
 from monitor.risk_sync import sync_risk_state_from_runtime_signals
 from monitor.circuit_breaker import max_trades_first_session_halt, no_fill_burst_halt, fill_to_submit_halt
+from monitor.execution_stats import ExecutionStats
 from db.logger import DB_FILE
 from monitor import circuit_breaker
 from monitor import positions_cache
@@ -923,73 +924,56 @@ RISK_STATE_DB_FILE = DB_FILE
 # E10c — process-runtime, in-memory seans açılan-işlem sayacı. YALNIZ gerçek bir position açıldığında
 # (atomic OPENED + legacy open) +1; başarısız/no-open/DUPLICATE/RECOVERY_REQUIRED ARTIRMAZ. Restart-safe
 # DEĞİL (process-memory), DB COUNT YOK, RiskStateSnapshot şeması değişmez. E10b gate bunu okur.
-_SESSION_TRADE_COUNT: int = 0
+# E12c — üç process-runtime sayacı (E10c trade_count + E11b no_fill_streak + E11e submit_count) tek
+# modül-seviyesi ExecutionStats instance'ında merkezileştirildi. Public helper ADLARI + DAVRANIŞI korunur
+# (E10c/E11b/E11e eşdeğer); modül-seviyesi singleton mevcut sayaçlarla parite içindir (DI ayrı slice).
+# Restart-safe DEĞİL (process-memory), DB COUNT YOK, RiskStateSnapshot şeması değişmez.
+_EXECUTION_STATS = ExecutionStats()
 
 
 def _session_trade_count() -> int:
-    """E10c — bu seansta gerçekten açılan işlem sayısı (max-trades-first-session gate için).
-    Process-runtime in-memory sayaç (restart-safe DEĞİL, DB COUNT YOK, schema değişmez)."""
-    return _SESSION_TRADE_COUNT
+    """E10c — bu seansta gerçekten açılan işlem sayısı (max-trades-first-session gate için)."""
+    return _EXECUTION_STATS.trade_count
 
 
 def _increment_session_trade_count() -> None:
     """E10c — gerçek bir position açıldığında sayacı tam +1 artırır (atomic OPENED + legacy open)."""
-    global _SESSION_TRADE_COUNT
-    _SESSION_TRADE_COUNT += 1
+    _EXECUTION_STATS.increment_trade_count()
 
 
 def _reset_session_trade_count() -> None:
-    """E10c — seans sayacını 0'a çeker (process start / test izolasyonu)."""
-    global _SESSION_TRADE_COUNT
-    _SESSION_TRADE_COUNT = 0
-
-
-# E11b — process-runtime, in-memory ARDIŞIK no-fill/no-open sayacı (no-fill burst gate için).
-# execute() None (FAK kill/no-open) + RECOVERY_REQUIRED → +1; gerçek açılış (OPENED/legacy) → 0'a reset;
-# DUPLICATE ne artırır ne resetler; council veto / pre-execute → dokunmaz. Restart-safe DEĞİL
-# (process-memory), DB COUNT YOK, RiskStateSnapshot şeması değişmez. Gate (no_fill_burst_halt) E11c'de bağlanır.
-_NO_FILL_STREAK: int = 0
+    """E10c — seans işlem sayacını 0'a çeker (process start / test izolasyonu)."""
+    _EXECUTION_STATS.reset_trade_count()
 
 
 def _no_fill_streak() -> int:
     """E11b — bu seanstaki ardışık no-fill/no-open sayısı (process-runtime in-memory)."""
-    return _NO_FILL_STREAK
+    return _EXECUTION_STATS.no_fill_streak
 
 
 def _increment_no_fill_streak() -> None:
     """E11b — ardışık no-fill sayacını +1 (execute() None / RECOVERY_REQUIRED)."""
-    global _NO_FILL_STREAK
-    _NO_FILL_STREAK += 1
+    _EXECUTION_STATS.increment_no_fill_streak()
 
 
 def _reset_no_fill_streak() -> None:
     """E11b — gerçek açılışta / process start / test izolasyonunda no-fill sayacını 0'a çeker."""
-    global _NO_FILL_STREAK
-    _NO_FILL_STREAK = 0
-
-
-# E11e — process-runtime, in-memory seans SUBMIT sayacı (fill-to-submit oran breaker için). HER gerçek
-# execute() çağrısında (sonuç ne olursa olsun) +1; gate-blok/council-veto/pre-execute ARTIRMAZ (execute
-# çağrılmadı). opened = E10c _SESSION_TRADE_COUNT; oran in-memory hesaplanır. Restart-safe DEĞİL,
-# DB COUNT YOK, RiskStateSnapshot şeması değişmez. Gate (fill_to_submit_halt) E11f'de bağlanır.
-_SESSION_SUBMIT_COUNT: int = 0
+    _EXECUTION_STATS.reset_no_fill_streak()
 
 
 def _session_submit_count() -> int:
     """E11e — bu seansta yapılan gerçek execute() (submit) sayısı (process-runtime in-memory)."""
-    return _SESSION_SUBMIT_COUNT
+    return _EXECUTION_STATS.submit_count
 
 
 def _increment_session_submit_count() -> None:
     """E11e — her gerçek execute() çağrısında submit sayacını +1 (sonuç önemsiz)."""
-    global _SESSION_SUBMIT_COUNT
-    _SESSION_SUBMIT_COUNT += 1
+    _EXECUTION_STATS.increment_submit_count()
 
 
 def _reset_session_submit_count() -> None:
     """E11e — submit sayacını 0'a çeker (process start / test izolasyonu)."""
-    global _SESSION_SUBMIT_COUNT
-    _SESSION_SUBMIT_COUNT = 0
+    _EXECUTION_STATS.reset_submit_count()
 
 
 def _effective_risk_mode() -> str:
