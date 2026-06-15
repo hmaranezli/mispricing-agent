@@ -33,6 +33,24 @@ def daily_loss_halt(start_of_day_equity, realized_pnl_today) -> str | None:
     return None
 
 
+def max_trades_first_session_halt(trades_today, *, limit=None) -> str | None:
+    """E10a — ilk-seans işlem-sayısı capı. SAF + offline (DB/API/canlı state YOK; trades_today enjekte).
+
+    trades_today >= limit → "max_trades_stop" (yeni girişler durur), aksi None. Status-return stili
+    (daily_loss_halt simetrisi). limit None → getattr(config, "MAX_TRADES_FIRST_SESSION", 6) [conservative
+    fallback = STREAK_WARN_COUNT ile hizalı; config sabiti AYRI human-owned task]. trades_today<0 veya
+    limit<=0 → ValueError. Restart-safe DEĞİL (enjekte sayaç); RiskStateSnapshot şemasına dokunmaz."""
+    if limit is None:
+        limit = getattr(config, "MAX_TRADES_FIRST_SESSION", 6)
+    if limit <= 0:
+        raise ValueError(f"limit pozitif olmalı: {limit}")
+    if trades_today < 0:
+        raise ValueError(f"trades_today negatif olamaz: {trades_today}")
+    if trades_today >= limit:
+        return "max_trades_stop"
+    return None
+
+
 def on_trade_closed(pnl: float, current_bankroll: float, starting_bankroll: float) -> str | None:
     """
     Her trade kapanisinda cagrilir.
