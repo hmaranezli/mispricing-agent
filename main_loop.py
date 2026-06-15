@@ -38,7 +38,7 @@ from monitor.state import is_paused
 from monitor.shutdown import install_shutdown_signal_handlers
 from monitor.risk_state_store import load_risk_state, RiskStateCorruptError
 from monitor.risk_sync import sync_risk_state_from_runtime_signals
-from monitor.circuit_breaker import max_trades_first_session_halt
+from monitor.circuit_breaker import max_trades_first_session_halt, no_fill_burst_halt
 from db.logger import DB_FILE
 from monitor import circuit_breaker
 from monitor import positions_cache
@@ -251,6 +251,12 @@ async def _scan_and_execute(
         # ENTRY-ONLY; in-memory session sayacı (DB COUNT YOK); _monitor_positions/exit ETKİLENMEZ.
         if max_trades_first_session_halt(_session_trade_count()) == "max_trades_stop":
             print(f"[risk_gate] {slug} council GEÇTİ ama MAX_TRADES_FIRST_SESSION aşıldı — yeni entry engellendi")
+            continue
+
+        # ── E11c NO-FILL BURST GATE: ardışık no-fill/no-open eşiğe ulaştıysa yeni giriş YOK ──
+        # ENTRY-ONLY; in-memory ardışık no-fill sayacı (DB COUNT YOK); _monitor_positions/exit ETKİLENMEZ.
+        if no_fill_burst_halt(_no_fill_streak()) == "no_fill_burst_stop":
+            print(f"[risk_gate] {slug} council GEÇTİ ama NO_FILL_BURST eşiği aşıldı — yeni entry engellendi")
             continue
 
         council_pass_ts = datetime.now(timezone.utc).isoformat()
