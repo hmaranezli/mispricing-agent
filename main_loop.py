@@ -36,6 +36,8 @@ from monitor.kill_switch import check as kill_switch_check
 from monitor.telegram_commands import poll_commands
 from monitor.state import is_paused
 from monitor.shutdown import install_shutdown_signal_handlers
+from monitor.risk_state_store import load_risk_state, RiskStateCorruptError
+from db.logger import DB_FILE
 from monitor import circuit_breaker
 from monitor import positions_cache
 from db.logger import log_candidate, log_shadow_candidate, log_position_open, log_position_close, load_closed_today, get_connection, patch_position_resolution, log_partial_fill_update
@@ -885,11 +887,28 @@ def _handle_loop_error(error) -> None:
         print(f"[bot] Döngü hatası notify FAIL (yutuldu): {_ne}")
 
 
+_VALID_RISK_MODES = ("Operational", "Cooldown", "Exit-Only", "Halted", "Kill-Switch")
+# Patchable risk-state DB path (kurulu path = db.logger.DB_FILE; emergency_pause ile aynı). Modül-
+# seviyesi → testler bunu izole edebilir (canlı logs/mispricing.db okumadan).
+RISK_STATE_DB_FILE = DB_FILE
+
+
 def _effective_risk_mode() -> str:
-    """E5 entry-gate seam: efektif risk modu. Şimdilik "Operational" döner — risk-mode KAYNAĞI
-    (risk_state_store.load + build_active_blockers → reduce_risk_mode / canlı sinyaller) AYRI sonraki
-    RED/GREEN'de bağlanacak. Bu commit yalnız entry-gate WIRING'ini kanıtlar (DB/persist/config yok)."""
-    return "Operational"
+    """E6 — efektif risk modunu PERSIST edilmiş RiskStateSnapshot'tan okur (SALT-OKUNUR; save/init/
+    bootstrap/rollover ÇAĞIRMAZ). FAIL-CLOSED: load hatası (RiskStateCorruptError / OSError / her
+    Exception) veya geçersiz mod (missing/non-string/bilinmeyen) → "Halted" (ASLA sessiz "Operational").
+    "Operational" YALNIZ geçerli snapshot açıkça öyle derse döner. db_path = RISK_STATE_DB_FILE.
+    Raise ETMEZ — entry-gate fail-closed kalsın."""
+    try:
+        snap = load_risk_state(RISK_STATE_DB_FILE)
+        mode = getattr(snap, "effective_mode", None)
+    except RiskStateCorruptError:
+        return "Halted"
+    except Exception:
+        return "Halted"
+    if not isinstance(mode, str) or mode not in _VALID_RISK_MODES:
+        return "Halted"
+    return mode
 
 
 def _should_stop_for_shutdown() -> bool:

@@ -28,14 +28,23 @@ from main_loop import _run_council, _scan_and_execute, _monitor_positions, _load
 
 @pytest.fixture(autouse=True)
 def _enable_new_entries():
-    """Bu dosyadaki testler entry-açma davranışını test eder → NEW_ENTRIES_ENABLED=True.
-    Canlı default False (acil risk modu); entry kill-switch testi ayrı dosyada (test_new_entries_flag.py).
+    """Bu dosyadaki testler entry-açma davranışını test eder → NEW_ENTRIES_ENABLED=True ve OPERATIONAL
+    risk modu senaryosu. Canlı default False (acil risk modu); entry kill-switch testi ayrı dosyada
+    (test_new_entries_flag.py). E5/E6 risk-gate testleri AYRI dosyalarda (test_e5_*, test_e6_*).
+
+    E6 entry-gate canlı `_effective_risk_mode()` okur; bu fixture onu "Operational"a sabitler →
+    (a) bu legacy testler explicit Operational senaryosudur, (b) canlı logs/mispricing.db OKUNMAZ.
+    Fail-closed davranışı GİZLENMEZ — yalnız test_main_loop.py'nin entry-path varsayımı korunur.
     """
     import config
+    import main_loop
     orig = getattr(config, "NEW_ENTRIES_ENABLED", True)
+    orig_mode = main_loop._effective_risk_mode
     config.NEW_ENTRIES_ENABLED = True
+    main_loop._effective_risk_mode = lambda: "Operational"
     yield
     config.NEW_ENTRIES_ENABLED = orig
+    main_loop._effective_risk_mode = orig_mode
 
 
 @pytest.fixture(autouse=True)
