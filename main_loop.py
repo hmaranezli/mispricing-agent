@@ -235,6 +235,14 @@ async def _scan_and_execute(
             # (edge bucket experiment: düşük-edge adayları da kapsar). Burada sadece log.
             continue
 
+        # ── E5 RISK-STATE ENTRY GATE: efektif risk modu Operational değilse yeni giriş YOK ──
+        # ENTRY-ONLY: yalnız yeni position open atlanır; _monitor_positions/exit/risk yönetimi
+        # ETKİLENMEZ; süreç durmaz/restart olmaz. Risk-mode kaynağı (persistence/sinyal) AYRI adım.
+        _risk_mode = _effective_risk_mode()
+        if _risk_mode != "Operational":
+            print(f"[risk_gate] {slug} council GEÇTİ ama risk modu '{_risk_mode}' (≠Operational) — yeni entry engellendi")
+            continue
+
         council_pass_ts = datetime.now(timezone.utc).isoformat()
         t2 = time.time()
         position = await execute(finding, gate_result, risk_result, open_positions,
@@ -875,6 +883,13 @@ def _handle_loop_error(error) -> None:
         notify_loop_error(error)
     except Exception as _ne:
         print(f"[bot] Döngü hatası notify FAIL (yutuldu): {_ne}")
+
+
+def _effective_risk_mode() -> str:
+    """E5 entry-gate seam: efektif risk modu. Şimdilik "Operational" döner — risk-mode KAYNAĞI
+    (risk_state_store.load + build_active_blockers → reduce_risk_mode / canlı sinyaller) AYRI sonraki
+    RED/GREEN'de bağlanacak. Bu commit yalnız entry-gate WIRING'ini kanıtlar (DB/persist/config yok)."""
+    return "Operational"
 
 
 def _should_stop_for_shutdown() -> bool:
