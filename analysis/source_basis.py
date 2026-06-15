@@ -6,6 +6,60 @@ BTC/USD data stream ile resolve oluyor. Bu modül o kaynak sapmasını OFFLINE s
 SAF fonksiyonlar: pencere çiftlerini GİRDİ alır (canlı fetch YOK). Gerçek Chainlink serisi doldurma
 AYRI onaylı adım. PM kuralı: bir penceredeki yön = (end >= start) ⇒ Up, aksi Down (tie ≥ ⇒ Up).
 """
+import json
+
+_REQUIRED_KEYS = ("hl_start", "hl_end", "cl_start", "cl_end")
+
+
+def _is_number(v) -> bool:
+    """Numeric int/float — bool REDDEDİLİR (True/False fiyat değildir)."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def load_basis_windows(path):
+    """OFFLINE basis-window loader/validator (F1b human-supplied artifact iniş sözleşmesi).
+
+    JSON kök bir LİSTE olmalı; her kayıt dict ve zorunlu numeric anahtarlar hl_start/hl_end/cl_start/
+    cl_end içermeli (bool REDDEDİLİR). Opsiyonel hl_by_shift VARSA: shift-string → {hl_start, hl_end}
+    (numeric) mapping olmalı; YOKSA dokunulmaz (sessiz shift sentezi YOK). timestamp/slug/market_id gibi
+    metadata İZİNLİ, zorunlu değil, korunur. İhlal → ValueError. Canlı fetch/secret YOK; CSV YOK."""
+    with open(path, encoding="utf-8") as f:
+        try:
+            data = json.load(f)
+        except (json.JSONDecodeError, ValueError) as e:
+            raise ValueError(f"bozuk JSON: {e}") from e
+
+    if not isinstance(data, list):
+        raise ValueError(f"kök JSON liste olmalı, bulundu: {type(data).__name__}")
+
+    for i, rec in enumerate(data):
+        if not isinstance(rec, dict):
+            raise ValueError(f"window[{i}] dict olmalı, bulundu: {type(rec).__name__}")
+        for k in _REQUIRED_KEYS:
+            if k not in rec:
+                raise ValueError(f"window[{i}] zorunlu anahtar eksik: {k}")
+            if not _is_number(rec[k]):
+                raise ValueError(f"window[{i}].{k} numeric olmalı, bulundu: {rec[k]!r}")
+
+        if "hl_by_shift" in rec:
+            hbs = rec["hl_by_shift"]
+            if not isinstance(hbs, dict):
+                raise ValueError(f"window[{i}].hl_by_shift dict olmalı, bulundu: {type(hbs).__name__}")
+            for shift_key, anchor in hbs.items():
+                if not isinstance(anchor, dict):
+                    raise ValueError(
+                        f"window[{i}].hl_by_shift[{shift_key!r}] dict olmalı, "
+                        f"bulundu: {type(anchor).__name__}")
+                for k in ("hl_start", "hl_end"):
+                    if k not in anchor:
+                        raise ValueError(
+                            f"window[{i}].hl_by_shift[{shift_key!r}] zorunlu anahtar eksik: {k}")
+                    if not _is_number(anchor[k]):
+                        raise ValueError(
+                            f"window[{i}].hl_by_shift[{shift_key!r}].{k} numeric olmalı, "
+                            f"bulundu: {anchor[k]!r}")
+
+    return data
 
 
 def _direction_up(start: float, end: float) -> bool:
