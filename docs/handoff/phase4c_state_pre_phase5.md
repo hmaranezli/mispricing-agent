@@ -119,6 +119,25 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   fee/slippage/depth evidence sources, aggregation implementation) remain blocked until separate
   authorization.
 
+## Phase 5 contract state update (friction-component schema)
+
+- **`6b2e577` — Add phase 5 friction component schema contract.** Docs/tests only; a
+  planning/contract artifact, **not implementation**.
+- The contract (`docs/protocols/phase5_friction_component_schema_contract.md`, pinned by
+  `tests/test_phase5_friction_component_schema_contract.py`) defines: the required friction
+  components, required per-component fields, provenance (`source_artifact` + `source_field`), numeric
+  representation (no binary-float authority; Decimal or integer-scaled), non-negative deduction sign
+  convention, **fail-closed to `BLOCKED_NEEDS_EVIDENCE`** (never zero), **no defaults/guesses/floor/
+  baseline costs**, **no net-edge calculator**, and **no execution connection**.
+- **Phase 5 remains planning / interface only** — no implementation, no trading authority. Any
+  implementation is separately authorized and TDD/offline first.
+- **No readiness / economic / alpha / PnL / profitability / edge claim** is made by this state.
+- **Next likely contract:** the **no-eligible handling schema** (offline/TDD only, docs+tests, no
+  public-data fetch, no trading). Not yet authorized — it begins behind its own scoped task.
+- **Design rationale:** this memory/handoff is the **decision audit trail**. Recording each Phase 5
+  contract here keeps its assumptions, deferrals, and boundaries from being orphaned, so a later
+  reader can trace why each contract slot is observed, derived, or blocked.
+
 <!-- NO-CLAIMS-START -->
 ## No-claims statement
 
