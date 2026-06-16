@@ -201,6 +201,121 @@ def test_summary_schema_and_flags(tmp_path):
     assert summary["target_snapshots"] == 10
 
 
+# ---- Phase 3D3 multi-asset bounded discovery ----
+
+ALLOWED_3D3 = {"PILOT_SAMPLE_ONLY", "PILOT_INSUFFICIENT_MARKET_DIVERSITY",
+               "PILOT_RATE_LIMITED_PARTIAL", "PILOT_FAILED"}
+_3D3_ASSETS = ("BTC", "ETH", "SOL", "XRP")
+
+
+def _ma_markets(slugs_per_asset=1):
+    out = []
+    for a in _3D3_ASSETS:
+        for j in range(1, slugs_per_asset + 1):
+            out.append({"asset": a, "market_slug": f"{a.lower()}-updown-5m-{j}",
+                        "token_id": f"0x{a}{j}"})
+    return out
+
+
+def _ma_disc(markets):
+    async def d(budget):
+        budget.spend("gamma")
+        return list(markets)
+    return d
+
+
+def _ma_book(two_sided_assets=None):
+    """token-aware fake book; two_sided only for tokens whose asset is in two_sided_assets (None=all)."""
+    log = []
+
+    async def fb(token, budget):
+        budget.spend("book")
+        log.append(token)
+        asset = next((a for a in _3D3_ASSETS if token.startswith(f"0x{a}")), None)
+        if two_sided_assets is None or asset in two_sided_assets:
+            return {"bids": [{"price": "0.48", "size": "100"}], "asks": [{"price": "0.52", "size": "100"}]}
+        return {"bids": [], "asks": []}
+    fb.log = log
+    return fb
+
+
+def _run_3d3(**kw):
+    kw.setdefault("sleep_fn", _Sleeps())
+    return asyncio.run(S.pilot_3d3_multi_asset(**kw))
+
+
+def _asset_of(token):
+    return next((a for a in _3D3_ASSETS if token.startswith(f"0x{a}")), None)
+
+
+def test_3d3_processes_all_four_assets_first(tmp_path):
+    book = _ma_book()
+    summary = _run_3d3(discover_fn=_ma_disc(_ma_markets(1)), fetch_book_fn=book,
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 300)
+    # first 4 book fetches must cover all four assets (fairness, no starvation)
+    first4_assets = {_asset_of(t) for t in book.log[:4]}
+    assert first4_assets == set(_3D3_ASSETS)
+
+
+def test_3d3_no_single_asset_consumes_entire_budget(tmp_path):
+    book = _ma_book()
+    summary = _run_3d3(discover_fn=_ma_disc(_ma_markets(1)), fetch_book_fn=book,
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 301)
+    bba = summary["books_by_asset"]
+    total_books = sum(bba.values())
+    assert total_books > 0
+    assert max(bba.values()) < total_books   # no asset took everything
+    assert len([a for a in bba if bba[a] > 0]) >= 2
+
+
+def test_3d3_summary_reports_per_asset_counts(tmp_path):
+    summary = _run_3d3(discover_fn=_ma_disc(_ma_markets(1)), fetch_book_fn=_ma_book(),
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 302)
+    for field in ("assets_seen", "unique_assets", "books_by_asset", "snapshots_by_asset"):
+        assert field in summary, f"missing {field!r}"
+    assert set(summary["assets_seen"]) == set(_3D3_ASSETS)
+    assert summary["unique_assets"] == 4
+    assert sum(summary["books_by_asset"].values()) == summary["book_requests"]
+    assert sum(summary["snapshots_by_asset"].values()) == summary["snapshots_written"]
+
+
+def test_3d3_sample_only_when_enough_unique(tmp_path):
+    summary = _run_3d3(discover_fn=_ma_disc(_ma_markets(1)), fetch_book_fn=_ma_book(),
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 303)
+    assert summary["verdict"] == "PILOT_SAMPLE_ONLY"
+    assert summary["unique_slugs"] >= S.MIN_PILOT_UNIQUE_SLUGS
+
+
+def test_3d3_single_usable_slug_insufficient_diversity(tmp_path):
+    # only BTC books are two-sided; ETH/SOL/XRP one-sided -> 1 unique usable slug
+    summary = _run_3d3(discover_fn=_ma_disc(_ma_markets(1)), fetch_book_fn=_ma_book(two_sided_assets={"BTC"}),
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 304)
+    assert summary["verdict"] == "PILOT_INSUFFICIENT_MARKET_DIVERSITY"
+    assert summary["verdict"] != "PILOT_SAMPLE_ONLY"
+
+
+def test_3d3_budget_bounded_at_20(tmp_path):
+    b = S.RequestBudget(S.PILOT_3D3_MAX_TOTAL_REQUESTS)
+    summary = _run_3d3(discover_fn=_ma_disc(_ma_markets(6)), fetch_book_fn=_ma_book(),
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 305, budget=b)
+    assert summary["max_total_requests"] == 20
+    assert summary["request_count"] <= 20
+    assert b.count <= 20
+
+
+def test_3d3_outputs_under_data_output_by_default():
+    sample = os.path.join(S.OUT_DIR, "phase3d3_pilot_summary_1.json").replace(os.sep, "/")
+    assert "data/output" in sample
+
+
+def test_3d3_verdict_in_closed_set(tmp_path):
+    summary = _run_3d3(discover_fn=_ma_disc(_ma_markets(1)), fetch_book_fn=_ma_book(),
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 306)
+    assert summary["verdict"] in ALLOWED_3D3
+    assert summary["official_f1b"] is False
+    assert summary["profitability"] is False
+
+
 # ---- output directory hygiene: artifacts default under data/output, not tools/ ----
 
 def test_default_output_dir_is_data_output_not_tools():
