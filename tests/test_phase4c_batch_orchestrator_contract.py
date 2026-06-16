@@ -7,6 +7,7 @@ slippage/profitability/readiness claims. tmp_path only; injected run_fn fakes (n
 
 İlk RED: tools/phase4c_batch_orchestrator henüz yok → ImportError.
 """
+import asyncio
 import json
 import os
 import subprocess
@@ -19,6 +20,9 @@ TOOLS_DIR = os.path.join(REPO, "tools")
 sys.path.insert(0, TOOLS_DIR)
 
 import phase4c_batch_orchestrator as C  # noqa: E402
+import phase4a_gross_edge_engine as E4A  # noqa: E402  (real tool, for output-naming alignment)
+import phase4b_gross_edge_aggregate as E4B  # noqa: E402
+import phase3_exec_sampler as S4  # noqa: E402
 
 ENGINE_PATH = os.path.join(TOOLS_DIR, "phase4c_batch_orchestrator.py")
 
@@ -621,6 +625,69 @@ def test_cli_diagnostic_all_three_flags_runs_fake(tmp_path):
     # logs captured under run_01/logs
     logs_dir = os.path.join(tmp_path, batch_dirs[0], "run_01", "logs")
     assert os.path.isdir(logs_dir) and len(os.listdir(logs_dir)) >= 6
+
+
+# ---- real tool --output-dir artifact-naming alignment (orchestrator detection matches REAL outputs) ----
+
+def test_real_4a_output_detected_by_orchestrator(tmp_path):
+    inp = tmp_path / "in.jsonl"
+    with open(inp, "w", encoding="utf-8") as f:
+        f.write(json.dumps({"asset": "BTC", "interval": "5m", "market_slug": "m", "token_id": "A",
+                            "utc_timestamp_ms": 1000, "bids": [[0.49, 1]], "asks": [[0.51, 1]]}) + "\n")
+        f.write(json.dumps({"asset": "BTC", "interval": "5m", "market_slug": "m", "token_id": "B",
+                            "utc_timestamp_ms": 1100, "bids": [[0.49, 1]], "asks": [[0.51, 1]]}) + "\n")
+    rd = tmp_path / "run"
+    rd.mkdir()
+    E4A.run(input_path=str(inp), output_dir=str(rd))
+    art, rc, missing = C._verify_stage_artifacts("phase4a_analyzer", str(rd))
+    assert missing is None
+    assert "records" in art and "summary" in art
+    # exactly one of each matching file in the run dir (deterministic discovery for one run)
+    import glob as _g
+    assert len(_g.glob(os.path.join(str(rd), "phase4a_gross_edge_*.jsonl"))) == 1
+    assert len(_g.glob(os.path.join(str(rd), "phase4a_gross_edge_summary_*.json"))) == 1
+
+
+def test_real_4b_output_detected_by_orchestrator(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    with open(src / "phase4a_gross_edge_1.jsonl", "w", encoding="utf-8") as f:
+        f.write(json.dumps({"phase": "4A_gross_edge", "buy_both_gross_edge": -0.01,
+                            "sell_both_gross_edge": 0.0}) + "\n")
+    with open(src / "phase4a_gross_edge_summary_1.json", "w", encoding="utf-8") as f:
+        json.dump({"phase": "4A_gross_edge", "candidate_pairs": 1, "eligible_pairs": 1,
+                   "ineligible_reasons": {}}, f)
+    rd = tmp_path / "run"
+    rd.mkdir()
+    E4B.run(input_dir=str(src), output_dir=str(rd))
+    art, rc, missing = C._verify_stage_artifacts("phase4b_aggregator", str(rd))
+    assert missing is None
+    assert "aggregate" in art
+    import glob as _g
+    assert len(_g.glob(os.path.join(str(rd), "phase4b_gross_edge_aggregate_*.json"))) == 1
+
+
+def test_real_3d5_output_detected_by_orchestrator(tmp_path):
+    async def disc(asset, budget):
+        budget.spend("gamma")
+        return [{"asset": asset, "market_slug": f"{asset.lower()}-5m-1",
+                 "token_ids": [f"0x{asset}A", f"0x{asset}B"], "outcomes": ["Up", "Down"]}]
+
+    async def book(tok, budget):
+        budget.spend("book")
+        return {"bids": [{"price": "0.49", "size": "1"}], "asks": [{"price": "0.51", "size": "1"}]}
+
+    async def nosleep(_s):
+        return None
+
+    rd = tmp_path / "run"
+    rd.mkdir()
+    asyncio.run(S4.pilot_3d5_complement_pairs(discover_asset_fn=disc, fetch_book_fn=book,
+                                              sleep_fn=nosleep, output_dir=str(rd), timestamp_fn=lambda: 777))
+    art, rc, missing = C._verify_stage_artifacts("phase3d5_sampler", str(rd))
+    assert missing is None
+    assert "snapshots" in art and "summary" in art
+    assert isinstance(rc, int) and rc <= 20   # request_count read from the real 3D5 summary
 
 
 # ---- safety / isolation ----
