@@ -26,7 +26,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import phase3_exec_logic as P  # pure offline logic (no network)
 
-OUT_DIR = os.path.dirname(os.path.abspath(__file__))
+# tools/ holds source; generated artifacts default under <repo_root>/data/output (overridable per call).
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT_DIR = os.path.join(_REPO_ROOT, "data", "output")
 
 # ---- Phase 3C dry-run hard bounds ----
 MAX_TOTAL_REQUESTS = 4         # 1 Gamma discovery + up to 3 public CLOB /book

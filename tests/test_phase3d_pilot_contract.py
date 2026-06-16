@@ -201,6 +201,21 @@ def test_summary_schema_and_flags(tmp_path):
     assert summary["target_snapshots"] == 10
 
 
+# ---- output directory hygiene: artifacts default under data/output, not tools/ ----
+
+def test_default_output_dir_is_data_output_not_tools():
+    norm = S.OUT_DIR.replace(os.sep, "/").rstrip("/")
+    assert norm.endswith("data/output"), f"default OUT_DIR should be data/output, got {norm}"
+    assert not norm.endswith("/tools"), "default OUT_DIR must not be tools/"
+
+
+def test_pilot_default_filenames_built_under_data_output():
+    sample = os.path.join(S.OUT_DIR, "phase3d_pilot_snapshots_123.jsonl").replace(os.sep, "/")
+    assert "data/output" in sample
+    summary = os.path.join(S.OUT_DIR, "phase3d_pilot_summary_123.json").replace(os.sep, "/")
+    assert "data/output" in summary
+
+
 # ---- static scan: forbidden readiness literals absent ----
 
 def test_no_readiness_literals_in_sampler():
