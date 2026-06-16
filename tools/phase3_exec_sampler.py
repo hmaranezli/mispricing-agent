@@ -80,6 +80,14 @@ PILOT_3D4_MAX_DISCOVERY_REQUESTS = 4     # one discovery call per asset
 PILOT_3D4_MAX_BOOK_REQUESTS = 16
 PILOT_3D4_MAX_TOTAL_REQUESTS = 20        # hard ceiling (<=4 discovery + <=16 books)
 
+# ---- Phase 3D5 complement-pair bridge bounds (both YES/NO token books per market) ----
+PILOT_3D5_ASSETS = ("BTC", "ETH", "SOL", "XRP")
+PILOT_3D5_INTERVAL = "5m"
+PILOT_3D5_TARGET_PAIRS = 4               # at least one complement pair per asset
+PILOT_3D5_MAX_DISCOVERY_REQUESTS = 4     # one discovery call per asset
+PILOT_3D5_MAX_BOOK_REQUESTS = 16         # one complement pair costs 2 book requests
+PILOT_3D5_MAX_TOTAL_REQUESTS = 20        # hard ceiling (<=4 discovery + <=16 books = <=8 pairs)
+
 
 class RequestBudget:
     """Single shared request-budget state. One instance is threaded through ALL public HTTP helper
@@ -833,6 +841,246 @@ async def _real_discover_3d4_asset(asset, budget):  # pragma: no cover - live pa
     return out
 
 
+# ---- Phase 3D5 complement-pair sampler bridge (injectable; live path guarded by CLI, not run in tests) ----
+
+def _pilot_3d5_plan(markets):
+    """Pair-fair round-robin over pair-candidate markets (>=2 token_ids): one pair per asset per round.
+
+    Returns [market_dict] in fetch order; each market is fetched as a complement PAIR (both tokens).
+    """
+    by_asset = collections.OrderedDict()
+    seen = set()
+    for m in markets:
+        slug = m.get("market_slug")
+        if slug in seen:
+            continue
+        if len(m.get("token_ids") or []) < 2:
+            continue                       # not a pair candidate (handled as INCOMPLETE_PAIR upstream)
+        seen.add(slug)
+        by_asset.setdefault(m.get("asset"), []).append(m)
+    plan = []
+    idxs = {a: 0 for a in by_asset}
+    progress = True
+    while progress:
+        progress = False
+        for a, ms in by_asset.items():
+            if idxs[a] < len(ms):
+                plan.append(ms[idxs[a]])
+                idxs[a] += 1
+                progress = True
+    return plan
+
+
+async def pilot_3d5_complement_pairs(*, discover_asset_fn, fetch_book_fn, sleep_fn=None,
+                                     output_dir=OUT_DIR, timestamp_fn=None, budget=None):
+    """Bounded complement-pair pilot: per market_slug fetch BOTH complement token books so Phase 4A can
+    compute internal YES/NO complement gross edge. Per-asset discovery (<=4), pair-fair round-robin (one
+    pair per asset before repeats), each pair = 2 book requests, <=16 books, <=20 total. One row per token
+    book is written (no YES/NO guessing — token_index/outcome/pair_id preserved). Verdict gate strict:
+    >=1 complete pair AND distinct complete-pair slugs >= MIN_PILOT_UNIQUE_SLUGS -> PILOT_SAMPLE_ONLY;
+    else PILOT_INSUFFICIENT_MARKET_DIVERSITY; PILOT_FAILED only on fatal. All collaborators injectable.
+    """
+    if sleep_fn is None:
+        import asyncio
+        sleep_fn = asyncio.sleep
+    if timestamp_fn is None:
+        timestamp_fn = lambda: int(time.time())  # noqa: E731
+    budget = budget if budget is not None else RequestBudget(PILOT_3D5_MAX_TOTAL_REQUESTS)
+    now_unix = timestamp_fn()
+
+    jsonl_path = os.path.join(output_dir, f"phase3d5_pilot_snapshots_{now_unix}.jsonl")
+    summary_path = os.path.join(output_dir, f"phase3d5_pilot_summary_{now_unix}.json")
+
+    failure_modes = []
+    discovery_by_asset = collections.OrderedDict()
+    candidates_by_asset = collections.OrderedDict()
+    pair_candidates_by_asset = collections.Counter()
+    token_books_by_asset = collections.Counter()
+    complement_pairs_attempted = 0
+    complement_pairs_written = 0
+    pair_books_ok = 0
+    pair_books_failed = 0
+    complete_slugs = set()
+    rate_limited = False
+    fatal = None
+
+    def _emit(verdict, partial):
+        # ensure every probed asset appears in pair_candidates_by_asset (incl. zeros)
+        pcb = {a: pair_candidates_by_asset.get(a, 0) for a in discovery_by_asset}
+        summary = {
+            "verdict": verdict,
+            "phase": "3D5_complement_pairs",
+            "assets": list(PILOT_3D5_ASSETS),
+            "interval": PILOT_3D5_INTERVAL,
+            "target_pairs": PILOT_3D5_TARGET_PAIRS,
+            "discovery_by_asset": dict(discovery_by_asset),
+            "candidates_by_asset": dict(candidates_by_asset),
+            "pair_candidates_by_asset": dict(sorted(pcb.items())),
+            "token_books_by_asset": dict(sorted(token_books_by_asset.items())),
+            "complement_pairs_attempted": complement_pairs_attempted,
+            "complement_pairs_written": complement_pairs_written,
+            "pair_books_ok": pair_books_ok,
+            "pair_books_failed": pair_books_failed,
+            "unique_slugs": len(complete_slugs),
+            "unique_assets": len({s.split("-")[0].upper() for s in complete_slugs}),
+            "request_count": budget.count,
+            "max_total_requests": budget.max_total,
+            "discovery_requests": sum(discovery_by_asset.values()),
+            "book_requests": pair_books_ok + pair_books_failed,
+            "failure_modes": sorted(set(failure_modes)),
+            "partial": bool(partial),
+            "output_jsonl": jsonl_path,
+            "output_summary": summary_path,
+            "timestamp_utc": now_unix,
+            "official_f1b": False,
+            "profitability": False,
+        }
+        with open(summary_path, "w", encoding="utf-8") as sf:
+            json.dump(summary, sf, indent=2)
+        return summary
+
+    if os.path.exists(jsonl_path) or os.path.exists(summary_path):
+        failure_modes.append("OUTPUT_EXISTS_NO_OVERWRITE")
+        if os.path.exists(summary_path):
+            return {"verdict": "PILOT_FAILED", "failure_modes": ["OUTPUT_EXISTS_NO_OVERWRITE"],
+                    "output_jsonl": jsonl_path, "output_summary": summary_path, "partial": True,
+                    "phase": "3D5_complement_pairs", "official_f1b": False, "profitability": False}
+        return _emit("PILOT_FAILED", partial=True)
+
+    # discovery: one call per asset
+    markets = []
+    for asset in PILOT_3D5_ASSETS:
+        if sum(discovery_by_asset.values()) >= PILOT_3D5_MAX_DISCOVERY_REQUESTS:
+            break
+        if budget.count + 1 > budget.max_total:
+            failure_modes.append("BUDGET_STOP")
+            break
+        try:
+            cands = await discover_asset_fn(asset, budget)
+            discovery_by_asset[asset] = 1
+        except BudgetExceeded:
+            failure_modes.append("BUDGET_STOP")
+            break
+        except Exception as e:
+            discovery_by_asset[asset] = 1
+            failure_modes.append(f"DISCOVERY_ERROR:{asset}:{type(e).__name__}")
+            cands = []
+        cands = list(cands or [])
+        candidates_by_asset[asset] = len(cands)
+        n_pairs = 0
+        for m in cands:
+            if len(m.get("token_ids") or []) >= 2:
+                n_pairs += 1
+            else:
+                failure_modes.append("INCOMPLETE_PAIR")   # recorded, NOT fetched, NOT guessed
+        pair_candidates_by_asset[asset] = n_pairs
+        markets.extend(cands)
+
+    plan = _pilot_3d5_plan(markets)
+    if not plan:
+        if "INCOMPLETE_PAIR" not in failure_modes:
+            failure_modes.append("NO_OPEN_MARKETS")
+        return _emit("PILOT_INSUFFICIENT_MARKET_DIVERSITY", partial=True)
+
+    try:
+        with open(jsonl_path, "w", encoding="utf-8") as f:
+            from data import clob_price  # pure parsers; lazy import
+            attempts = 0
+            stop = False
+            for m in plan:
+                # a pair is atomic w.r.t. budget: need 2 book slots + 2 total-budget slots
+                if pair_books_ok + pair_books_failed + 2 > PILOT_3D5_MAX_BOOK_REQUESTS:
+                    failure_modes.append("BOOK_CAP_STOP")
+                    break
+                if budget.count + 2 > budget.max_total:
+                    failure_modes.append("BUDGET_STOP")
+                    break
+                asset = m.get("asset")
+                slug = m.get("market_slug")
+                toks = m.get("token_ids")[:2]
+                outcomes = m.get("outcomes") or [None, None]
+                complement_pairs_attempted += 1
+                wrote = 0
+                both_two_sided = True
+                for idx, tok in enumerate(toks):
+                    if attempts > 0:
+                        await sleep_fn(PILOT_PACING_S)
+                    attempts += 1
+                    try:
+                        book = await fetch_book_fn(tok, budget)
+                    except RateLimited:
+                        rate_limited = True
+                        failure_modes.append("RATE_LIMITED")
+                        stop = True
+                        break
+                    except BudgetExceeded:
+                        failure_modes.append("BUDGET_STOP")
+                        stop = True
+                        break
+                    pair_books_ok += 1
+                    token_books_by_asset[asset] += 1
+                    bids = clob_price.sorted_bids(book)
+                    asks = clob_price.sorted_asks(book)
+                    row = build_snapshot(asset, PILOT_3D5_INTERVAL, slug, tok, bids, asks)
+                    row["token_index"] = idx
+                    row["outcome"] = outcomes[idx] if idx < len(outcomes) else None
+                    row["pair_id"] = slug
+                    f.write(json.dumps(row) + "\n")
+                    f.flush()
+                    wrote += 1
+                    if P.classify_book(row) != "TWO_SIDED":
+                        both_two_sided = False
+                if stop:
+                    break
+                if wrote == 2 and both_two_sided:
+                    complement_pairs_written += 1
+                    complete_slugs.add(slug)
+    except Exception as e:
+        fatal = type(e).__name__
+        failure_modes.append(f"FATAL:{fatal}")
+
+    if fatal:
+        verdict, partial = "PILOT_FAILED", True
+    elif rate_limited:
+        verdict, partial = "PILOT_RATE_LIMITED_PARTIAL", True
+    elif complement_pairs_written >= 1 and len(complete_slugs) >= MIN_PILOT_UNIQUE_SLUGS:
+        verdict = "PILOT_SAMPLE_ONLY"
+        partial = complement_pairs_written < PILOT_3D5_TARGET_PAIRS
+    else:
+        verdict, partial = "PILOT_INSUFFICIENT_MARKET_DIVERSITY", True
+    return _emit(verdict, partial=partial)
+
+
+async def _real_discover_3d5_asset(asset, budget):  # pragma: no cover - live path, not run in this task
+    """One Gamma request for a single asset's recent open 5m market(s); returns BOTH complement token ids."""
+    import aiohttp
+    from data import shortterm
+    budget.spend("gamma")
+    timeout = aiohttp.ClientTimeout(total=12)
+    out = []
+    async with aiohttp.ClientSession(timeout=timeout,
+                                     headers={"User-Agent": "phase3d5-pilot/1.0"}) as s:
+        slug = shortterm.slugs_for_now(assets=(asset.lower(),), interval=5, lookback=1)[0]
+        async with s.get(shortterm.GAMMA, params={"slug": slug}) as r:
+            if r.status != 200:
+                return out
+            data = await r.json()
+    arr = data if isinstance(data, list) else data.get("data", [])
+    for m in arr:
+        if m.get("closed") is True:
+            continue
+        tokens = shortterm._parse_token_ids(m.get("clobTokenIds"))
+        outcomes = None
+        try:
+            import json as _json
+            outcomes = _json.loads(m.get("outcomes")) if isinstance(m.get("outcomes"), str) else m.get("outcomes")
+        except Exception:
+            outcomes = None
+        out.append({"asset": asset, "market_slug": m.get("slug"), "token_ids": tokens,
+                    "outcomes": outcomes})
+    return out
+
+
 # ---- full-scale (later, approved) sampling: intentionally NOT implemented/run here ----
 
 async def _sample_cell(*args, **kwargs):  # pragma: no cover - scaffold, not implemented/run here
@@ -908,8 +1156,14 @@ if __name__ == "__main__":  # pragma: no cover
                                                                fetch_book_fn=_real_fetch_book,
                                                                sleep_fn=asyncio.sleep))
         print(json.dumps(_summary, indent=2))
+    elif _args == ["--pilot-3d5-complement-pairs"]:
+        import asyncio
+        _summary = asyncio.run(pilot_3d5_complement_pairs(discover_asset_fn=_real_discover_3d5_asset,
+                                                          fetch_book_fn=_real_fetch_book,
+                                                          sleep_fn=asyncio.sleep))
+        print(json.dumps(_summary, indent=2))
     else:
         raise SystemExit("usage: phase3_exec_sampler.py "
                          "[--dry-run-eth5m | --pilot-eth5m | --pilot-3d3-multi-asset | "
-                         "--pilot-3d4-multi-asset-discovery] "
+                         "--pilot-3d4-multi-asset-discovery | --pilot-3d5-complement-pairs] "
                          "(refused: no other invocation is permitted)")

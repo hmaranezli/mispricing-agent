@@ -19,6 +19,7 @@ TOOLS_DIR = os.path.join(REPO, "tools")
 sys.path.insert(0, TOOLS_DIR)
 
 import phase3_exec_sampler as S  # noqa: E402
+import phase4a_gross_edge_engine as E  # noqa: E402  (Phase 4A compatibility proof)
 
 SAMPLER_PATH = os.path.join(TOOLS_DIR, "phase3_exec_sampler.py")
 
@@ -389,6 +390,143 @@ def test_3d4_verdict_in_closed_set_and_flags(tmp_path):
 
 def test_3d4_outputs_under_data_output_by_default():
     sample = os.path.join(S.OUT_DIR, "phase3d4_pilot_summary_1.json").replace(os.sep, "/")
+    assert "data/output" in sample
+
+
+# ---- Phase 3D5 complement-pair sampler bridge ----
+
+def _d5_markets(per_asset=1, tokens=2):
+    out = {}
+    for a in _3D3_ASSETS:
+        ms = []
+        for j in range(1, per_asset + 1):
+            toks = [f"0x{a}{j}A", f"0x{a}{j}B"][:tokens]
+            ms.append({"asset": a, "market_slug": f"{a.lower()}-updown-5m-{j}",
+                       "token_ids": toks, "outcomes": ["Up", "Down"][:tokens]})
+        out[a] = ms
+    return out
+
+
+def _d5_disc(markets_by_asset):
+    async def d(asset, budget):
+        budget.spend("gamma")
+        return list(markets_by_asset.get(asset, []))
+    return d
+
+
+def _d5_book():
+    """tight-spread two-sided book (0.49/0.51 -> 400bps, Phase-4A eligible) for any token."""
+    log = []
+
+    async def fb(token, budget):
+        budget.spend("book")
+        log.append(token)
+        return {"bids": [{"price": "0.49", "size": "100"}], "asks": [{"price": "0.51", "size": "100"}]}
+    fb.log = log
+    return fb
+
+
+def _run_3d5(**kw):
+    kw.setdefault("sleep_fn", _Sleeps())
+    return asyncio.run(S.pilot_3d5_complement_pairs(**kw))
+
+
+def _read_jsonl(path):
+    return [json.loads(l) for l in open(path) if l.strip()]
+
+
+def test_3d5_writes_both_tokens_per_market(tmp_path):
+    summary = _run_3d5(discover_asset_fn=_d5_disc(_d5_markets(1)), fetch_book_fn=_d5_book(),
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 500)
+    rows = _read_jsonl(summary["output_jsonl"])
+    by_slug = {}
+    for r in rows:
+        by_slug.setdefault(r["market_slug"], set()).add(r["token_id"])
+    assert len(by_slug) == 4
+    for slug, toks in by_slug.items():
+        assert len(toks) == 2, f"{slug} should have both complement tokens, got {toks}"
+    # raw index/label preserved, no YES/NO guessing
+    assert all("token_index" in r and "pair_id" in r for r in rows)
+
+
+def test_3d5_phase4a_can_form_eligible_pairs(tmp_path):
+    s5 = _run_3d5(discover_asset_fn=_d5_disc(_d5_markets(1)), fetch_book_fn=_d5_book(),
+                  output_dir=str(tmp_path), timestamp_fn=lambda: 501)
+    s4a = E.run(input_path=s5["output_jsonl"], output_dir=str(tmp_path), timestamp_fn=lambda: 5010)
+    assert s4a["verdict"] == "GROSS_EDGE_SAMPLE_ONLY"
+    assert s4a["eligible_pairs"] >= 1
+
+
+def test_3d5_first_round_one_pair_per_asset(tmp_path):
+    summary = _run_3d5(discover_asset_fn=_d5_disc(_d5_markets(2)), fetch_book_fn=_d5_book(),
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 502)
+    rows = _read_jsonl(summary["output_jsonl"])
+    # first 8 rows = first 4 pairs (2 tokens each) -> one pair per asset
+    first_slugs = []
+    for r in rows[:8]:
+        if r["market_slug"] not in first_slugs:
+            first_slugs.append(r["market_slug"])
+    assert len(first_slugs) == 4
+    assert {s.split("-")[0].upper() for s in first_slugs} == set(_3D3_ASSETS)
+
+
+def test_3d5_budget_never_exceeds_20(tmp_path):
+    b = S.RequestBudget(S.PILOT_3D5_MAX_TOTAL_REQUESTS)
+    summary = _run_3d5(discover_asset_fn=_d5_disc(_d5_markets(6)), fetch_book_fn=_d5_book(),
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 503, budget=b)
+    assert summary["max_total_requests"] == 20
+    assert summary["request_count"] <= 20
+    assert summary["book_requests"] <= 16
+    assert summary["discovery_requests"] <= 4
+    assert b.count <= 20
+
+
+def test_3d5_one_token_market_incomplete_not_guessed(tmp_path):
+    only_btc_single = {"BTC": [{"asset": "BTC", "market_slug": "btc-updown-5m-1",
+                               "token_ids": ["0xBTConly"], "outcomes": ["Up"]}]}
+    summary = _run_3d5(discover_asset_fn=_d5_disc(only_btc_single), fetch_book_fn=_d5_book(),
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 504)
+    assert "INCOMPLETE_PAIR" in summary["failure_modes"]
+    assert summary["pair_candidates_by_asset"].get("BTC", 0) == 0
+    assert summary["complement_pairs_written"] == 0
+    assert summary["verdict"] == "PILOT_INSUFFICIENT_MARKET_DIVERSITY"
+
+
+def test_3d5_single_asset_insufficient_diversity(tmp_path):
+    one_asset = {"BTC": _d5_markets(1)["BTC"]}
+    summary = _run_3d5(discover_asset_fn=_d5_disc(one_asset), fetch_book_fn=_d5_book(),
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 505)
+    assert summary["complement_pairs_written"] == 1
+    assert summary["unique_slugs"] < S.MIN_PILOT_UNIQUE_SLUGS
+    assert summary["verdict"] == "PILOT_INSUFFICIENT_MARKET_DIVERSITY"
+
+
+def test_3d5_sample_only_four_assets(tmp_path):
+    summary = _run_3d5(discover_asset_fn=_d5_disc(_d5_markets(1)), fetch_book_fn=_d5_book(),
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 506)
+    assert summary["verdict"] == "PILOT_SAMPLE_ONLY"
+    assert summary["complement_pairs_written"] == 4
+    assert summary["unique_slugs"] == 4
+    assert summary["unique_assets"] == 4
+
+
+def test_3d5_summary_fields(tmp_path):
+    summary = _run_3d5(discover_asset_fn=_d5_disc(_d5_markets(1)), fetch_book_fn=_d5_book(),
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 507)
+    for field in ("phase", "assets", "discovery_by_asset", "candidates_by_asset",
+                  "pair_candidates_by_asset", "token_books_by_asset", "complement_pairs_attempted",
+                  "complement_pairs_written", "pair_books_ok", "pair_books_failed", "unique_slugs",
+                  "unique_assets", "request_count", "max_total_requests", "discovery_requests",
+                  "book_requests", "failure_modes", "partial", "official_f1b", "profitability"):
+        assert field in summary, f"missing {field!r}"
+    assert summary["phase"] == "3D5_complement_pairs"
+    assert summary["verdict"] in ALLOWED_3D3
+    assert summary["official_f1b"] is False
+    assert summary["profitability"] is False
+
+
+def test_3d5_outputs_under_data_output_by_default():
+    sample = os.path.join(S.OUT_DIR, "phase3d5_pilot_summary_1.json").replace(os.sep, "/")
     assert "data/output" in sample
 
 
