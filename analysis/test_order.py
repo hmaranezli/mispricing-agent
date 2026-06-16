@@ -31,11 +31,29 @@ from py_clob_client_v2.clob_types import BalanceAllowanceParams, AssetType, Orde
 MIN_TEST_USD   = 1.10  # Polymarket min order $1 — $1.10 ile en az 2 share alınır
 TEST_ASSET     = "btc" # BTC marketlerinde test
 
+# ── DEFAULT-SAFE MANUAL ORDER GUARD ──
+# Bu script gerçek CLOB order'ı gönderebilir (create_and_post_order). VARSAYILAN: KAPALI.
+# Yalnızca operatör açıkça izin verirse (env MANUAL_ORDER_SCRIPT_ENABLED ∈ {1,true,yes,on})
+# çalışır; aksi halde order göndermeden ÖNCE bloklar. Hiçbir otomatik/konsey yolu bu script'i
+# tetiklemez; tek tetikleyici elle çalıştırma + açık opt-in env.
+MANUAL_ORDER_SCRIPT_ENV = "MANUAL_ORDER_SCRIPT_ENABLED"
+
+
+def _manual_order_enabled() -> bool:
+    """Default-safe: returns True only when MANUAL_ORDER_SCRIPT_ENABLED is explicitly opted in."""
+    return os.getenv(MANUAL_ORDER_SCRIPT_ENV, "").strip().lower() in ("1", "true", "yes", "on")
+
 
 async def run_test() -> bool:
     print("=" * 60)
     print("$1 TEST ORDER — CLOB entegrasyon doğrulaması")
     print("=" * 60)
+
+    # ── GUARD: default-safe block (no client, no order) ──
+    if not _manual_order_enabled():
+        print(f"[manual_order_guard] BLOCKED — {MANUAL_ORDER_SCRIPT_ENV} disabled (default). "
+              f"Hiçbir order gönderilmedi. Opt-in için {MANUAL_ORDER_SCRIPT_ENV}=1 ayarla.")
+        return False
 
     # 1. Client
     print("\n[1] Client başlatılıyor...")
