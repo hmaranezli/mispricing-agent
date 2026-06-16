@@ -134,6 +134,13 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
 - **No readiness / economic / alpha / PnL / profitability / edge claim** is made by this state.
 - **Next likely contract:** the **no-eligible handling schema** (offline/TDD only, docs+tests, no
   public-data fetch, no trading). Not yet authorized — it begins behind its own scoped task.
+- `docs/protocols/phase5_no_eligible_handling_schema_contract.md` — no-eligible handling schema
+  contract (no-eligible as observed **state, not a calculation**; required fields; valid state
+  categories; provenance anchored to obs #3 `phase4c_batch_1781637248` /
+  `GROSS_EDGE_NO_ELIGIBLE_SNAPSHOTS` / `PHASE4B_NO_ELIGIBLE_RECORDS` / `eligible_pairs=0`;
+  fail-closed to `BLOCKED_NEEDS_EVIDENCE`; no zero-filling; no calculator; no execution connection;
+  `VALID_EVIDENCE`/observed-state, not a stage failure by default). Contract/planning only; no
+  trading authority; deferred items remain blocked until separate authorization.
 - **Design rationale:** this memory/handoff is the **decision audit trail**. Recording each Phase 5
   contract here keeps its assumptions, deferrals, and boundaries from being orphaned, so a later
   reader can trace why each contract slot is observed, derived, or blocked.

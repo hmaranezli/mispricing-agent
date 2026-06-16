@@ -61,6 +61,9 @@ only, with no values authorized here:
 - **Its economic treatment remains unclaimed**: no-eligible handling does **not** imply
   cost imputation, baseline overhead, or any fixed economic treatment. The representation is
   structural only.
+- This handling is refined at field/state level by the
+  [No-Eligible Handling Schema Contract](phase5_no_eligible_handling_schema_contract.md)
+  (observed-state only; no calculation; fail-closed to `BLOCKED_NEEDS_EVIDENCE`).
 
 ## 4. Observation/discovery cost schema
 
