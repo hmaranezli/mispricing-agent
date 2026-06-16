@@ -142,6 +142,119 @@ def test_output_default_under_data_output():
     assert C.OUT_DIR.replace(os.sep, "/").rstrip("/").endswith("data/output")
 
 
+# ---- Phase 4C live-mode adapter (injected stage executor; no real subprocess) ----
+
+LIVE_STAGES = ("phase3d5_sampler", "phase4a_analyzer", "phase4b_aggregator")
+
+
+def _ok_executor():
+    def ex(*, stage, run_dir, run_index, max_total_requests):
+        p = os.path.join(run_dir, f"{stage}_out_{run_index}.json")
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump({"stage": stage}, f)
+        rc = 12 if stage == "phase3d5_sampler" else None
+        return {"status": "ok", "verdict": "OK", "exit_code": 0, "artifacts": {stage: p},
+                "request_count": rc, "timestamp": run_index}
+    return ex
+
+
+def _fail_executor(fail_stage):
+    def ex(*, stage, run_dir, run_index, max_total_requests):
+        rc = 12 if stage == "phase3d5_sampler" else None
+        if stage == fail_stage:
+            return {"status": "error", "verdict": "FAILED", "exit_code": 1, "artifacts": {},
+                    "request_count": rc, "timestamp": run_index}
+        return {"status": "ok", "verdict": "OK", "exit_code": 0, "artifacts": {},
+                "request_count": rc, "timestamp": run_index}
+    return ex
+
+
+def _cap_executor():
+    def ex(*, stage, run_dir, run_index, max_total_requests):
+        rc = 21 if stage == "phase3d5_sampler" else None
+        return {"status": "ok", "verdict": "OK", "exit_code": 0, "artifacts": {},
+                "request_count": rc, "timestamp": run_index}
+    return ex
+
+
+def test_no_flag_mode_remains_no_op_planner(tmp_path):
+    m = C.orchestrate(runs=2, output_root=str(tmp_path), timestamp_fn=lambda: 9001)
+    assert m["completed_runs"] == 2
+    for e in m["per_run"]:
+        assert e["verdict"] == "PLANNED"
+        assert e["request_count"] == 0
+
+
+def test_live_injected_success_records_all_stages(tmp_path):
+    rf = C.make_live_run_fn(_ok_executor())
+    m = C.orchestrate(runs=2, output_root=str(tmp_path), run_fn=rf, timestamp_fn=lambda: 9002)
+    assert m["completed_runs"] == 2
+    assert m["failed_runs"] == 0
+    assert m["aborted"] is False
+    for e in m["per_run"]:
+        assert e["verdict"] == "RUN_COMPLETED"
+        names = [s["stage_name"] for s in e["stages"]]
+        assert names == list(LIVE_STAGES)
+        assert all(s["status"] == "ok" for s in e["stages"])
+
+
+def test_live_3d5_failure_skips_4a_4b(tmp_path):
+    rf = C.make_live_run_fn(_fail_executor("phase3d5_sampler"))
+    m = C.orchestrate(runs=3, output_root=str(tmp_path), run_fn=rf, timestamp_fn=lambda: 9003)
+    assert m["aborted"] is True
+    assert m["failed_runs"] == 1
+    assert m["completed_runs"] == 0
+    assert len(m["per_run"]) == 1
+    stages = m["per_run"][0]["stages"]
+    names = [s["stage_name"] for s in stages]
+    assert names == ["phase3d5_sampler"]          # 4A/4B skipped
+    assert "phase4a_analyzer" not in names
+    assert "phase4b_aggregator" not in names
+
+
+def test_live_4a_failure_skips_4b(tmp_path):
+    rf = C.make_live_run_fn(_fail_executor("phase4a_analyzer"))
+    m = C.orchestrate(runs=3, output_root=str(tmp_path), run_fn=rf, timestamp_fn=lambda: 9004)
+    assert m["aborted"] is True
+    assert m["failed_runs"] == 1
+    stages = m["per_run"][0]["stages"]
+    names = [s["stage_name"] for s in stages]
+    assert names == ["phase3d5_sampler", "phase4a_analyzer"]   # 4B skipped
+    assert "phase4b_aggregator" not in names
+
+
+def test_live_request_cap_violation_fail_closed(tmp_path):
+    rf = C.make_live_run_fn(_cap_executor())
+    m = C.orchestrate(runs=2, output_root=str(tmp_path), run_fn=rf, timestamp_fn=lambda: 9005)
+    assert m["aborted"] is True
+    assert m["failed_runs"] == 1
+    assert m["per_run"][0]["verdict"] == "RUN_REQUEST_CAP_EXCEEDED"
+    # cap detected at sampler stage -> 4A/4B skipped
+    assert [s["stage_name"] for s in m["per_run"][0]["stages"]] == ["phase3d5_sampler"]
+
+
+def test_live_manifest_stage_fields(tmp_path):
+    rf = C.make_live_run_fn(_ok_executor())
+    m = C.orchestrate(runs=1, output_root=str(tmp_path), run_fn=rf, timestamp_fn=lambda: 9006)
+    for s in m["per_run"][0]["stages"]:
+        for k in ("stage_name", "status", "verdict", "exit_code", "artifacts", "request_count",
+                  "timestamp"):
+            assert k in s, f"stage entry missing {k}"
+    # manifest invariants preserved
+    assert m["per_run_max_total_requests"] == 20
+    assert m["official_f1b"] is False
+    assert m["profitability"] is False
+    assert "buy_both_gross_edge_sem" in m["segment_metrics"]
+
+
+def test_cli_live_flag_fail_closed_creates_nothing(tmp_path):
+    r = subprocess.run([sys.executable, ENGINE_PATH, "--runs", "1",
+                        "--output-root", str(tmp_path), "--live-public-data"],
+                       capture_output=True, text=True)
+    assert r.returncode != 0                                   # fail-closed
+    assert not any(n.startswith("phase4c_batch_") for n in os.listdir(tmp_path))
+
+
 # ---- safety / isolation ----
 
 def test_engine_no_forbidden_literals():

@@ -65,6 +65,64 @@ def _segment_metrics(buy_samples, sell_samples, eligible_total, rejection_rates,
     }
 
 
+LIVE_STAGES = ("phase3d5_sampler", "phase4a_analyzer", "phase4b_aggregator")
+
+
+def make_live_run_fn(stage_executor_fn):
+    """Build a live run_fn that executes the 3-stage pipeline via an INJECTED stage_executor_fn.
+
+    Stage order: phase3d5_sampler -> phase4a_analyzer -> phase4b_aggregator. FAIL-CLOSED: a stage that
+    is not ok (status != "ok" or exit_code not in {0, None}) marks the run failed and SKIPS remaining
+    stages. The sampler's request_count is checked against the per-run cap; exceeding it fails closed and
+    skips downstream stages. No real subprocess here — the executor is injected (mocked in tests). A
+    real executor (sampler/analyzer/aggregator) would be wired later behind an explicit flag.
+    """
+    def run_fn(*, run_dir, run_index, max_total_requests):
+        stages = []
+        artifacts = {}
+        run_failed = False
+        request_count = None
+        verdict = "RUN_COMPLETED"
+        abort_reason = None
+        seg = {}
+        for stage in LIVE_STAGES:
+            r = stage_executor_fn(stage=stage, run_dir=run_dir, run_index=run_index,
+                                  max_total_requests=max_total_requests)
+            stages.append({
+                "stage_name": stage,
+                "status": r.get("status"),
+                "verdict": r.get("verdict"),
+                "exit_code": r.get("exit_code"),
+                "artifacts": r.get("artifacts", {}),
+                "request_count": r.get("request_count"),
+                "timestamp": r.get("timestamp"),
+            })
+            artifacts.update(r.get("artifacts") or {})
+            if stage == "phase3d5_sampler":
+                request_count = r.get("request_count")
+            ok = (r.get("status") == "ok") and (r.get("exit_code") in (0, None))
+            if not ok:
+                run_failed = True
+                verdict = "RUN_STAGE_FAILED"
+                abort_reason = f"STAGE_FAILED:{stage}"
+                break
+            if (stage == "phase3d5_sampler" and isinstance(request_count, int)
+                    and not isinstance(request_count, bool) and request_count > max_total_requests):
+                run_failed = True
+                verdict = "RUN_REQUEST_CAP_EXCEEDED"
+                abort_reason = "REQUEST_CAP_EXCEEDED"
+                break
+            if stage == "phase4b_aggregator":
+                for k in ("buy_samples", "sell_samples", "eligible_pairs", "rejection_rate"):
+                    if k in r:
+                        seg[k] = r[k]
+        out = {"verdict": verdict, "request_count": request_count, "run_failed": run_failed,
+               "abort_reason": abort_reason, "stages": stages, "artifacts": artifacts, "timestamp": None}
+        out.update(seg)
+        return out
+    return run_fn
+
+
 def orchestrate(*, runs, output_root=OUT_DIR, run_fn=None, timestamp_fn=None):
     if timestamp_fn is None:
         timestamp_fn = lambda: int(time.time())  # noqa: E731
@@ -109,6 +167,17 @@ def orchestrate(*, runs, output_root=OUT_DIR, run_fn=None, timestamp_fn=None):
             "verdict": res.get("verdict"),
             "timestamp": res.get("timestamp", now),
         }
+        if "stages" in res:
+            entry["stages"] = res["stages"]
+
+        # fail-closed: a run that reports stage failure (incl. live pipeline) aborts the batch
+        if res.get("run_failed"):
+            entry["verdict"] = res.get("verdict") or "RUN_STAGE_FAILED"
+            per_run.append(entry)
+            failed += 1
+            aborted = True
+            abort_reason = res.get("abort_reason") or "RUN_STAGE_FAILED"
+            break
 
         # fail-closed cap check
         if not isinstance(rc, int) or isinstance(rc, bool) or rc > PER_RUN_MAX_TOTAL_REQUESTS:
@@ -170,6 +239,10 @@ if __name__ == "__main__":  # pragma: no cover
             pass
     if not isinstance(runs, int) or runs <= 0:
         raise SystemExit("usage: phase4c_batch_orchestrator.py --runs <N> [--output-root <dir>] "
-                         "(scaffold planner only; live execution not enabled)")
-    m = orchestrate(runs=runs, output_root=output_root)
+                         "[--live-public-data] (scaffold planner only unless a live runner is wired)")
+    if "--live-public-data" in args:
+        # FAIL-CLOSED: no concrete live runner is wired in this build; refuse before creating anything.
+        raise SystemExit("--live-public-data requires an explicitly wired live stage executor "
+                         "(make_live_run_fn); not enabled in this build (fail-closed, no live execution).")
+    m = orchestrate(runs=runs, output_root=output_root)   # planner only, no network
     print(json.dumps(m, indent=2))
