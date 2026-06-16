@@ -145,6 +145,29 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   contract here keeps its assumptions, deferrals, and boundaries from being orphaned, so a later
   reader can trace why each contract slot is observed, derived, or blocked.
 
+## Phase 5 contract state update (no-eligible handling schema)
+
+- **`f032bf2` — Add phase 5 no eligible handling contract.** Docs/tests only; a planning/contract
+  artifact, **not implementation**.
+- No-eligible is an **observed state / evidence-contract input**, **not a calculation**, not an
+  idle-cost, not an opportunity-cost, and not a profitability/readiness/edge inference.
+- The contract (`docs/protocols/phase5_no_eligible_handling_schema_contract.md`, pinned by
+  `tests/test_phase5_no_eligible_handling_schema_contract.py`) is **anchored to Phase 4C
+  Observation #3**: `phase4c_batch_1781637248`, `GROSS_EDGE_NO_ELIGIBLE_SNAPSHOTS`,
+  `PHASE4B_NO_ELIGIBLE_RECORDS`, `eligible_pairs=0`, ineligible reasons `ONE_SIDED_BOOK` and
+  `SPREAD_TOO_WIDE`.
+- It **records observation and discovery accounting and provenance only**. Missing
+  provenance/accounting **must** yield `BLOCKED_NEEDS_EVIDENCE`. **No zero-filling**: a no-eligible
+  run **must not become cost=0, edge=0, or profitability=0**.
+- **Phase 5 remains planning / interface only** — no implementation, no trading authority. Any
+  implementation is separately authorized and TDD/offline first.
+- **No readiness / economic / alpha / PnL / profitability / edge / idle-cost / opportunity-cost
+  claim** is made by this state.
+- **Next likely contract:** the **artifact provenance contract** (offline/TDD only, docs+tests, no
+  public-data fetch, no trading), because both the friction and no-eligible contracts depend on
+  `source_artifact` / `source_field` / `batch_id` / `run_id` evidence. Not yet authorized — it begins
+  behind its own scoped task.
+
 <!-- NO-CLAIMS-START -->
 ## No-claims statement
 
