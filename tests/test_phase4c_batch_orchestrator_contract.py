@@ -301,6 +301,102 @@ def test_cli_live_flag_fail_closed_creates_nothing(tmp_path):
     assert not any(n.startswith("phase4c_batch_") for n in os.listdir(tmp_path))
 
 
+# ---- command-plan audit mode ----
+
+def _cmd_plan(tmp_path, runs=1):
+    return C.orchestrate(runs=runs, output_root=str(tmp_path),
+                         run_fn=C.command_plan_run_fn, timestamp_fn=lambda: 9200)
+
+
+def test_command_plan_creates_partition_and_manifest(tmp_path):
+    m = _cmd_plan(tmp_path, runs=1)
+    assert os.path.isdir(m["batch_dir"])
+    assert os.path.isdir(os.path.join(m["batch_dir"], "run_01"))
+    assert os.path.exists(m["manifest_path"])
+    assert m["completed_runs"] == 1
+
+
+def test_command_plan_records_three_stages_in_order(tmp_path):
+    m = _cmd_plan(tmp_path, runs=1)
+    stages = m["per_run"][0]["stages"]
+    assert [s["stage_name"] for s in stages] == list(LIVE_STAGES)
+    for s in stages:
+        assert s["status"] == "PLANNED"
+        assert s["verdict"] == "COMMAND_PLAN_ONLY"
+        assert s["exit_code"] is None
+        assert s["request_count"] == 0
+        assert s["artifacts"] == []
+        assert s["timestamp"] is None
+        assert "run_dir" in s and "command_plan" in s
+
+
+def test_command_plan_uses_argv_arrays_not_shell_strings(tmp_path):
+    m = _cmd_plan(tmp_path, runs=1)
+    for s in m["per_run"][0]["stages"]:
+        cp = s["command_plan"]
+        assert isinstance(cp, list), "command_plan must be an argv array, not a shell string"
+        assert cp[0] == "python3"
+        assert all(isinstance(tok, str) for tok in cp)
+
+
+def test_request_cap_in_phase3d5_command_plan(tmp_path):
+    m = _cmd_plan(tmp_path, runs=1)
+    byname = {s["stage_name"]: s for s in m["per_run"][0]["stages"]}
+    cp = byname["phase3d5_sampler"]["command_plan"]
+    assert "--max-total-requests" in cp
+    assert "20" in cp
+
+
+def test_command_plan_warnings_record_unsupported_flags(tmp_path):
+    m = _cmd_plan(tmp_path, runs=1)
+    warnings = m["plan_warnings"]
+    assert warnings, "expected plan_warnings for currently-unsupported flags"
+    blob = " ".join(warnings)
+    assert "--output-dir" in blob          # not supported by current tools
+    assert "--max-total-requests" in blob  # not supported by current sampler
+    # per-stage notes present
+    for s in m["per_run"][0]["stages"]:
+        assert "command_plan_notes" in s
+
+
+def test_command_plan_supported_flags_not_flagged(tmp_path):
+    m = _cmd_plan(tmp_path, runs=1)
+    blob = " ".join(m["plan_warnings"])
+    # supported flags must NOT be reported as unsupported
+    assert "accept --input " not in blob and "accept --input-dir" not in blob
+    assert "--pilot-3d5-complement-pairs" not in blob
+
+
+def test_command_plan_engine_has_no_subprocess(tmp_path):
+    with open(ENGINE_PATH, encoding="utf-8") as f:
+        src = f.read()
+    assert "import subprocess" not in src
+    assert "subprocess." not in src
+    # command-plan stays PLANNED, never executed
+    m = _cmd_plan(tmp_path, runs=1)
+    assert all(s["status"] == "PLANNED" for s in m["per_run"][0]["stages"])
+
+
+def test_cli_command_plan_only_creates_batch_no_live_flags(tmp_path):
+    r = subprocess.run([sys.executable, ENGINE_PATH, "--runs", "1",
+                        "--output-root", str(tmp_path), "--command-plan-only"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0                                   # no live flags required
+    batch_dirs = [n for n in os.listdir(tmp_path) if n.startswith("phase4c_batch_")]
+    assert len(batch_dirs) == 1
+    manifests = []
+    for root, _dirs, files in os.walk(os.path.join(tmp_path, batch_dirs[0])):
+        for fn in files:
+            if fn.startswith("phase4c_batch_manifest_"):
+                manifests.append(os.path.join(root, fn))
+    assert len(manifests) == 1
+    with open(manifests[0]) as f:
+        man = json.load(f)
+    stages = man["per_run"][0]["stages"]
+    assert [s["stage_name"] for s in stages] == list(LIVE_STAGES)
+    assert all(s["verdict"] == "COMMAND_PLAN_ONLY" for s in stages)
+
+
 # ---- safety / isolation ----
 
 def test_engine_no_forbidden_literals():

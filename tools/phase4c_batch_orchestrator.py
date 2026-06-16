@@ -132,6 +132,68 @@ def make_live_run_fn(stage_executor_fn):
     return run_fn
 
 
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _check_argv_flags(argv):
+    """Offline static check: for the target tool (argv[1]) flag a '--flag' token that does NOT appear
+    in the tool's source. Returns a list of human-readable notes (empty if all flags are supported)."""
+    notes = []
+    if len(argv) < 2:
+        return ["malformed command plan (no tool path)"]
+    tool_rel = argv[1]
+    tool_path = os.path.join(_REPO_ROOT, tool_rel)
+    try:
+        with open(tool_path, encoding="utf-8") as f:
+            src = f.read()
+    except Exception:
+        return [f"tool source not found: {tool_rel} (future wiring needed)"]
+    base = os.path.basename(tool_rel)
+    for tok in argv[2:]:
+        if isinstance(tok, str) and tok.startswith("--") and tok not in src:
+            notes.append(f"{base} does not currently accept {tok} (future wiring needed)")
+    return notes
+
+
+def command_plan_run_fn(*, run_dir, run_index, max_total_requests):
+    """Command-plan AUDIT run: records the intended 3D5->4A->4B argv plan WITHOUT executing anything.
+
+    Every stage is status="PLANNED", verdict="COMMAND_PLAN_ONLY"; command_plan is an argv ARRAY (not a
+    shell string). Unsupported flags (per current tool sources) are recorded in command_plan_notes and
+    aggregated into plan_warnings — the plan is NOT mutated and nothing is executed.
+    """
+    planned_3d5_jsonl = os.path.join(run_dir, "phase3d5_pilot_snapshots_<ts>.jsonl")
+    plans = {
+        "phase3d5_sampler": ["python3", "tools/phase3_exec_sampler.py", "--pilot-3d5-complement-pairs",
+                             "--output-dir", run_dir, "--max-total-requests", str(max_total_requests)],
+        "phase4a_analyzer": ["python3", "tools/phase4a_gross_edge_engine.py",
+                             "--input", planned_3d5_jsonl, "--output-dir", run_dir],
+        "phase4b_aggregator": ["python3", "tools/phase4b_gross_edge_aggregate.py",
+                               "--input-dir", run_dir, "--output-dir", run_dir],
+    }
+    stages = []
+    plan_warnings = []
+    for stage in LIVE_STAGES:
+        argv = plans[stage]
+        notes = _check_argv_flags(argv)
+        plan_warnings += [f"{stage}: {n}" for n in notes]
+        stages.append({
+            "stage_name": stage,
+            "status": "PLANNED",
+            "verdict": "COMMAND_PLAN_ONLY",
+            "exit_code": None,
+            "request_count": 0,
+            "artifacts": [],
+            "timestamp": None,
+            "run_dir": run_dir,
+            "command_plan": argv,
+            "command_plan_notes": notes,
+        })
+    return {"verdict": "COMMAND_PLAN_ONLY", "request_count": 0, "run_failed": False,
+            "abort_reason": None, "stages": stages, "artifacts": {}, "timestamp": None,
+            "plan_warnings": plan_warnings}
+
+
 class LiveExecutionRefused(Exception):
     """Raised (fail-closed) when live execution is requested but the double-lock / wiring is not satisfied."""
 
@@ -178,6 +240,7 @@ def orchestrate(*, runs, output_root=OUT_DIR, run_fn=None, timestamp_fn=None):
     buy_samples, sell_samples, rejection_rates = [], [], []
     eligible_total = 0
     have_segment_data = False
+    plan_warnings = []
 
     for i in range(1, runs + 1):
         run_dir = os.path.join(batch_dir, f"run_{i:02d}")
@@ -205,6 +268,7 @@ def orchestrate(*, runs, output_root=OUT_DIR, run_fn=None, timestamp_fn=None):
         }
         if "stages" in res:
             entry["stages"] = res["stages"]
+        plan_warnings += list(res.get("plan_warnings") or [])
 
         # fail-closed: a run that reports stage failure (incl. live pipeline) aborts the batch
         if res.get("run_failed"):
@@ -250,6 +314,7 @@ def orchestrate(*, runs, output_root=OUT_DIR, run_fn=None, timestamp_fn=None):
         "per_run": per_run,
         "segment_metrics": _segment_metrics(buy_samples, sell_samples, eligible_total,
                                             rejection_rates, have_segment_data),
+        "plan_warnings": plan_warnings,
         "official_f1b": False,
         "profitability": False,
         "generated_at_unix": now,
@@ -277,6 +342,11 @@ if __name__ == "__main__":  # pragma: no cover
         raise SystemExit("usage: phase4c_batch_orchestrator.py --runs <N> [--output-root <dir>] "
                          "[--live-public-data --enable-real-subprocess] "
                          "(scaffold planner only unless a concrete live runner is wired)")
+    # Command-plan audit mode: records the intended argv plan; executes nothing; needs no live flags.
+    if "--command-plan-only" in args:
+        m = orchestrate(runs=runs, output_root=output_root, run_fn=command_plan_run_fn)
+        print(json.dumps(m, indent=2))
+        raise SystemExit(0)
     # Double-lock gate. concrete_executor is None in this build -> any live request fails closed
     # BEFORE creating any batch dir; default (no flags) stays the no-op planner.
     try:
