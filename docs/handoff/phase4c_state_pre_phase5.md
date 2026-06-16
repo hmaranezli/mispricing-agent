@@ -167,6 +167,13 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   public-data fetch, no trading), because both the friction and no-eligible contracts depend on
   `source_artifact` / `source_field` / `batch_id` / `run_id` evidence. Not yet authorized — it begins
   behind its own scoped task.
+- `docs/protocols/phase5_artifact_provenance_contract.md` — artifact provenance contract
+  (chain-of-custody / evidence-contract only; required provenance fields; valid `artifact_type` /
+  `artifact_phase` vocabularies; provenance required before any observed/derived status; fail-closed
+  to `BLOCKED_NEEDS_EVIDENCE` on missing provenance / unknown source / source-field mismatch; no
+  hand-entered values without a source chain; classifies only observed | derived | blocked; not-yet-
+  implemented fields stay explicit blocked fields; zero-trust stance with no security / data-quality /
+  data-integrity guarantee; no calculator; no execution connection). Contract/planning only.
 
 <!-- NO-CLAIMS-START -->
 ## No-claims statement

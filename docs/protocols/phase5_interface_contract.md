@@ -81,6 +81,9 @@ only, with no values authorized here:
 - Generated `data/output` artifacts are **read-only evidence**, never committed source. They remain
   **untracked** and are never staged.
 - A future component must refuse inputs lacking provenance (see fail-closed contract).
+- This provenance is refined at field level by the
+  [Artifact Provenance Contract](phase5_artifact_provenance_contract.md)
+  (chain-of-custody only; no quality/integrity guarantee; fail-closed to `BLOCKED_NEEDS_EVIDENCE`).
 
 ## 6. Reporting / no-claims schema
 
