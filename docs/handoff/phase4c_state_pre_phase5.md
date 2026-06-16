@@ -202,6 +202,14 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
 - **Next likely contract:** the **fail-closed blocked-state contract**, because provenance now
   defines when evidence is missing / unknown / mismatched (offline/TDD only, docs+tests, no
   public-data fetch, no trading). Not yet authorized — it begins behind its own scoped task.
+- `docs/protocols/phase5_fail_closed_blocked_state_contract.md` — fail-closed blocked-state contract
+  (`BLOCKED_NEEDS_EVIDENCE` canonical for missing/unknown/mismatched evidence; blocked is a
+  deterministic, terminal state, not an exception escape hatch; must not be downgraded to
+  zero/false/pass/observed/derived/eligible/executable/tradable/ready/profitable/net-edge; required
+  blocked-record fields + blocked reason categories; preserves context without inventing fields;
+  retry only on new evidence/authorization, TDD/offline first; human review must not substitute for
+  source evidence). Contract/planning only; depends on the friction, no-eligible, and provenance
+  contracts.
 
 <!-- NO-CLAIMS-START -->
 ## No-claims statement

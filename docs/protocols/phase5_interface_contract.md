@@ -114,6 +114,10 @@ A future implementation must fail closed (stop, mark failed, produce no downstre
 
 Fail-closed behavior is the required default; silent continuation is forbidden.
 
+- This fail-closed behavior is refined at state/record level by the
+  [Fail-Closed Blocked-State Contract](phase5_fail_closed_blocked_state_contract.md)
+  (`BLOCKED_NEEDS_EVIDENCE` as a deterministic, terminal, non-downgradable blocked state).
+
 ## 8. Offline fixture requirements
 
 - All contract tests and any future implementation tests must run **offline** against **synthetic
