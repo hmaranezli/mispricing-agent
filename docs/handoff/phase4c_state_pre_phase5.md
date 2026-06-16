@@ -1,0 +1,99 @@
+# Phase 4C — Repo State Memory (pre-Phase-5)
+
+<!-- FRAMING-START -->
+## Framing (read first)
+
+This is a **repo-durable state/memory record** of the completed Phase 4C minimum repeatability
+observation. It summarizes three public-data **sample-only** observations and points to their
+committed audit docs. It carries **no economic inference**, **no stationarity proof**, **no
+statistical significance**, and **no readiness claim** of any kind. Nothing here authorizes
+Phase 5 implementation, trading, or paper deployment.
+<!-- FRAMING-END -->
+
+## Current state
+
+- **Phase 4C minimum repeatability observation: complete and audited** (3 of the protocol-permitted
+  3–5 sample-only runs).
+- **Latest commit:** `1504bcb` (Add phase 4C repeatability observation 03 audit).
+- HEAD == origin/master == `1504bcb` at the time this memory was written.
+
+### Committed reference docs
+
+- Protocol: `docs/protocols/phase4c_repeatability_observation_protocol.md`
+- Observation #1 audit: `docs/handoff/phase4c_first_public_batch_audit.md`
+- Observation #2 audit: `docs/handoff/phase4c_repeatability_observation_02_audit.md`
+- Observation #3 audit: `docs/handoff/phase4c_repeatability_observation_03_audit.md`
+
+## Observation #1
+
+- batch `phase4c_batch_1781631021`
+- request_count 12/20 · discovery_requests 4 · book_requests 8
+- assets BTC/ETH/SOL/XRP
+- stages OK (3 stages, all status ok / exit_code 0)
+- audit commit `4a85ff4`
+
+## Observation #2
+
+- batch `phase4c_batch_1781636200`
+- request_count 12/20 · discovery_requests 4 · book_requests 8
+- assets BTC/ETH/SOL/XRP
+- complement_pairs_written 4 · eligible_pairs 4
+- audit commit `71f1308`
+
+## Observation #3
+
+- batch `phase4c_batch_1781637248`
+- request_count 12/20 · discovery_requests 4 · book_requests 8
+- assets BTC/ETH/SOL/XRP
+- complement_pairs attempted/written 4/2 · pair_books_ok/failed 8/0
+- 4A verdict `GROSS_EDGE_NO_ELIGIBLE_SNAPSHOTS` · eligible_pairs 0
+- ineligible reasons `ONE_SIDED_BOOK: 2` and `SPREAD_TOO_WIDE: 2`
+- 4B verdict `PHASE4B_NO_ELIGIBLE_RECORDS` · rejection 1.0
+- audit commit `1504bcb`
+
+## Cross-run summary (non-statistical)
+
+| Metric | obs #1 | obs #2 | obs #3 |
+|---|---|---|---|
+| request_count | 12 | 12 | 12 |
+| discovery_requests | 4 | 4 | 4 |
+| book_requests | 8 | 8 | 8 |
+| artifact count | 5 | 5 | 5 |
+| log count | 6 | 6 | 6 |
+| stage order | identical | identical | identical |
+| complement_pairs_written | 4 | 4 | 2 |
+| eligible_pairs | 4 | 4 | 0 |
+
+## Interpretation
+
+- This is a **three-point small-sample observation only**.
+- The obs #3 difference (`complement_pairs_written` 2 vs 4, `eligible_pairs` 0 vs 4) is an
+  **operator-attention signal**, not proof of instability and not proof of market-dependent behavior.
+- **No stationarity proof.**
+- **No statistical significance.**
+- **No economic inference.**
+- **No readiness claim.**
+- **Zero deltas do not prove determinism or stability.** Three runs cannot establish stability,
+  instability, drift, or its absence.
+
+## Next position
+
+- Before Phase 5, repo memory is **synced** to commit `1504bcb`.
+- The next allowed step is a **Phase 5 planning-only protocol/design gate** (docs/design only).
+- **Do not implement Phase 5 yet.** Do not trade, do not paper deploy, do not make readiness claims.
+- Any Phase 5 work begins behind its own separately-approved gate.
+
+<!-- NO-CLAIMS-START -->
+## No-claims statement
+
+This memory record makes **no edge, no PnL, no paper readiness, no economics readiness, no
+execution readiness, no profitability, no alpha, no live readiness, no system-ready, no
+ready-to-fly, and no ready claim** of any kind. It does not prove stationarity and asserts no
+statistical significance. All verdict labels referenced above are sample-only diagnostic labels,
+not assertions of any tradeable property.
+<!-- NO-CLAIMS-END -->
+
+## Safety note
+
+This file is docs/memory only. The `data/output/phase4c_batch_*` directories remain **untracked**
+and **not staged**; generated artifacts are never committed.
