@@ -530,6 +530,37 @@ def test_3d5_outputs_under_data_output_by_default():
     assert "data/output" in sample
 
 
+# ---- sampler offline-fixture mode (no network; for Phase 4C real-subprocess fixture diagnostic) ----
+
+def test_sampler_offline_fixture_writes_labeled_artifacts(tmp_path):
+    s = S.pilot_3d5_offline_fixture(output_dir=str(tmp_path), max_total_requests=20,
+                                    timestamp_fn=lambda: 111)
+    snaps = list(tmp_path.glob("phase3d5_pilot_snapshots_*.jsonl"))
+    summ = list(tmp_path.glob("phase3d5_pilot_summary_*.json"))
+    assert len(snaps) == 1 and len(summ) == 1
+    assert s["diagnostic_fixture"] is True
+    assert s["request_count"] <= 20
+    rows = [json.loads(l) for l in open(snaps[0]) if l.strip()]
+    assert rows and all(r.get("diagnostic_fixture") is True for r in rows)
+    for r in rows:
+        for k in ("asset", "interval", "market_slug", "token_id", "utc_timestamp_ms"):
+            assert r.get(k) not in (None, "")
+    # >= 2 distinct two-sided tokens per market_slug so Phase 4A can pair them
+    from collections import defaultdict
+    by_slug = defaultdict(set)
+    for r in rows:
+        by_slug[r["market_slug"]].add(r["token_id"])
+    assert all(len(toks) >= 2 for toks in by_slug.values())
+
+
+def test_sampler_cli_accepts_offline_fixture_mode():
+    cfg = S.parse_sampler_cli(["--pilot-3d5-offline-fixture", "--output-dir", "/x",
+                               "--max-total-requests", "20"])
+    assert cfg["mode"] == "--pilot-3d5-offline-fixture"
+    assert cfg["output_dir"] == "/x"
+    assert cfg["max_total_requests"] == 20
+
+
 # ---- sampler CLI interface alignment (--output-dir / --max-total-requests) ----
 
 def test_sampler_cli_accepts_output_dir_and_max_total():

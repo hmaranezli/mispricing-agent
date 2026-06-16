@@ -1131,7 +1131,58 @@ async def _real_fetch_book(token_id, budget):  # pragma: no cover - live path, n
 
 
 SAMPLER_MODES = ("--dry-run-eth5m", "--pilot-eth5m", "--pilot-3d3-multi-asset",
-                 "--pilot-3d4-multi-asset-discovery", "--pilot-3d5-complement-pairs")
+                 "--pilot-3d4-multi-asset-discovery", "--pilot-3d5-complement-pairs",
+                 "--pilot-3d5-offline-fixture")
+
+
+def pilot_3d5_offline_fixture(*, output_dir, max_total_requests=None, timestamp_fn=None, num_markets=4):
+    """OFFLINE FIXTURE 3D5 mode: writes synthetic complement-pair snapshots + summary with NO network,
+    NO discovery, NO book fetch. For the Phase 4C real-subprocess fixture diagnostic only. Outputs use
+    the same discoverable filenames as the real pilot and are clearly labeled diagnostic_fixture:true so
+    they cannot be confused with live observations. request_count is a fixture value (<= cap, <= 20).
+    """
+    if timestamp_fn is None:
+        timestamp_fn = lambda: int(time.time())  # noqa: E731
+    now = timestamp_fn()
+    cap = max_total_requests if isinstance(max_total_requests, int) and max_total_requests > 0 \
+        else PILOT_3D5_MAX_TOTAL_REQUESTS
+    request_count = min(12, cap)
+    jsonl_path = os.path.join(output_dir, f"phase3d5_pilot_snapshots_{now}.jsonl")
+    summary_path = os.path.join(output_dir, f"phase3d5_pilot_summary_{now}.json")
+    assets = list(PILOT_3D5_ASSETS)[:max(2, num_markets)]
+    written = 0
+    per_slug = {}
+    with open(jsonl_path, "w", encoding="utf-8") as f:
+        for a in assets:
+            slug = f"{a.lower()}-updown-5m-fixture"
+            for idx, (tok, outcome) in enumerate([(f"0x{a}A", "Up"), (f"0x{a}B", "Down")]):
+                row = {"asset": a, "interval": "5m", "market_slug": slug, "token_id": tok,
+                       "utc_timestamp_ms": now * 1000 + idx, "bids": [[0.49, 100]], "asks": [[0.51, 100]],
+                       "token_index": idx, "outcome": outcome, "pair_id": slug,
+                       "diagnostic_fixture": True}
+                f.write(json.dumps(row) + "\n")
+                written += 1
+                per_slug[slug] = per_slug.get(slug, 0) + 1
+    summary = {
+        "verdict": "PILOT_OFFLINE_FIXTURE",
+        "phase": "3D5_offline_fixture",
+        "interval": "5m",
+        "assets": assets,
+        "snapshots_written": written,
+        "unique_slugs": len(per_slug),
+        "request_count": request_count,
+        "max_total_requests": cap,
+        "diagnostic_fixture": True,
+        "note": "OFFLINE_FIXTURE synthetic data; NOT a real public-data observation",
+        "official_f1b": False,
+        "profitability": False,
+        "output_jsonl": jsonl_path,
+        "output_summary": summary_path,
+        "timestamp_utc": now,
+    }
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2)
+    return summary
 
 
 def parse_sampler_cli(args):
@@ -1177,7 +1228,10 @@ if __name__ == "__main__":  # pragma: no cover
     _mode = _cfg["mode"]
     _outdir = _cfg["output_dir"]
     _budget = RequestBudget(_cfg["max_total_requests"]) if _cfg["max_total_requests"] else None
-    if _mode == "--dry-run-eth5m":
+    if _mode == "--pilot-3d5-offline-fixture":
+        _summary = pilot_3d5_offline_fixture(output_dir=_outdir or OUT_DIR,
+                                             max_total_requests=_cfg["max_total_requests"])
+    elif _mode == "--dry-run-eth5m":
         _summary = asyncio.run(dry_run_eth5m(discover_fn=_real_discover, fetch_book_fn=_real_fetch_book,
                                              sleep_fn=asyncio.sleep,
                                              out_dir=_outdir or OUT_DIR, budget=_budget))

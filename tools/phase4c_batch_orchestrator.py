@@ -141,14 +141,16 @@ def make_live_run_fn(stage_executor_fn):
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _stage_argv(stage, run_dir, max_total_requests, *, phase3d5_input=None):
+def _stage_argv(stage, run_dir, max_total_requests, *, phase3d5_input=None, fixture_mode=False):
     """Single source of truth for each stage's intended argv ARRAY (shell=False usage; never a string).
 
     For phase4a_analyzer, phase3d5_input (the resolved 3D5 JSONL) is used when provided, else a
-    <ts> template placeholder (command-plan-only path, where nothing has run yet).
+    <ts> template placeholder (command-plan-only path, where nothing has run yet). When fixture_mode is
+    True, 3D5 uses the OFFLINE FIXTURE mode flag (synthetic data, no network).
     """
     if stage == "phase3d5_sampler":
-        return ["python3", "tools/phase3_exec_sampler.py", "--pilot-3d5-complement-pairs",
+        mode_flag = "--pilot-3d5-offline-fixture" if fixture_mode else "--pilot-3d5-complement-pairs"
+        return ["python3", "tools/phase3_exec_sampler.py", mode_flag,
                 "--output-dir", run_dir, "--max-total-requests", str(max_total_requests)]
     if stage == "phase4a_analyzer":
         inp = phase3d5_input if phase3d5_input is not None \
@@ -210,10 +212,20 @@ def command_plan_run_fn(*, run_dir, run_index, max_total_requests):
             "plan_warnings": plan_warnings}
 
 
-def _default_subprocess_runner(argv, *, timeout_seconds):  # pragma: no cover - real subprocess path
-    """Safe wrapper around subprocess.run: argv array, shell=False, captured output, timeout."""
+def _default_subprocess_runner(argv, *, timeout_seconds):
+    """Safe wrapper around subprocess.run: argv array, shell=False, captured output, timeout.
+
+    Robust exec mapping (recorded command_plan stays the original argv): 'python3' -> sys.executable,
+    and a relative 'tools/...' path -> absolute under the repo root, so it runs from any cwd.
+    """
+    exec_argv = list(argv)
+    if exec_argv and exec_argv[0] == "python3":
+        exec_argv[0] = sys.executable
+    if len(exec_argv) >= 2 and isinstance(exec_argv[1], str) and not os.path.isabs(exec_argv[1]):
+        exec_argv[1] = os.path.join(_REPO_ROOT, exec_argv[1])
     try:
-        cp = subprocess.run(argv, shell=False, capture_output=True, text=True, timeout=timeout_seconds)
+        cp = subprocess.run(exec_argv, shell=False, capture_output=True, text=True,
+                            timeout=timeout_seconds)
         return {"exit_code": cp.returncode, "stdout": cp.stdout, "stderr": cp.stderr, "timed_out": False}
     except subprocess.TimeoutExpired as e:
         return {"exit_code": None, "stdout": e.stdout or "", "stderr": e.stderr or "", "timed_out": True}
@@ -254,11 +266,12 @@ def _verify_stage_artifacts(stage, run_dir):
     return {}, None, f"unknown_stage:{stage}"
 
 
-def make_concrete_subprocess_stage_executor(command_runner=None, timeout_seconds=120):
+def make_concrete_subprocess_stage_executor(command_runner=None, timeout_seconds=120, fixture_mode=False):
     """Concrete stage executor (injectable). Builds the stage's argv ARRAY, runs it via command_runner
     (default: safe subprocess.run shell=False wrapper), captures stdout/stderr to run_dir/logs/, verifies
-    expected artifacts, and returns a stage-result dict. Tests inject a fake command_runner — no real
-    subprocess. Reached ONLY behind the double-lock (both flags).
+    expected artifacts, and returns a stage-result dict. Tests inject a fake command_runner. fixture_mode
+    routes 3D5 to its OFFLINE FIXTURE mode (synthetic data, no network) and labels success verdicts
+    OFFLINE_FIXTURE_OK. Real public-data execution is reached only behind the live double-lock.
     """
     if command_runner is None:
         command_runner = _default_subprocess_runner
@@ -271,9 +284,9 @@ def make_concrete_subprocess_stage_executor(command_runner=None, timeout_seconds
         if stage == "phase4a_analyzer":
             found = sorted(glob.glob(os.path.join(run_dir, "phase3d5_pilot_snapshots_*.jsonl")))
             argv = _stage_argv(stage, run_dir, max_total_requests,
-                               phase3d5_input=(found[0] if found else None))
+                               phase3d5_input=(found[0] if found else None), fixture_mode=fixture_mode)
         else:
-            argv = _stage_argv(stage, run_dir, max_total_requests)
+            argv = _stage_argv(stage, run_dir, max_total_requests, fixture_mode=fixture_mode)
 
         res = command_runner(argv, timeout_seconds=timeout_seconds)
         with open(stdout_path, "w", encoding="utf-8") as f:
@@ -294,7 +307,8 @@ def make_concrete_subprocess_stage_executor(command_runner=None, timeout_seconds
         if missing:
             return {**base, "status": "error", "verdict": f"MISSING_ARTIFACT:{missing}",
                     "exit_code": exit_code, "artifacts": artifacts, "request_count": request_count}
-        return {**base, "status": "ok", "verdict": res.get("verdict_label", "OK"),
+        success_verdict = "OFFLINE_FIXTURE_OK" if fixture_mode else res.get("verdict_label", "OK")
+        return {**base, "status": "ok", "verdict": success_verdict,
                 "exit_code": exit_code, "artifacts": artifacts, "request_count": request_count}
     return executor
 
@@ -354,7 +368,7 @@ def resolve_live_run_fn(*, live_public_data, enable_real_subprocess, concrete_ex
     return make_live_run_fn(concrete_executor)
 
 
-def orchestrate(*, runs, output_root=OUT_DIR, run_fn=None, timestamp_fn=None):
+def orchestrate(*, runs, output_root=OUT_DIR, run_fn=None, timestamp_fn=None, manifest_tag=None):
     if timestamp_fn is None:
         timestamp_fn = lambda: int(time.time())  # noqa: E731
     if run_fn is None:
@@ -452,6 +466,9 @@ def orchestrate(*, runs, output_root=OUT_DIR, run_fn=None, timestamp_fn=None):
         "profitability": False,
         "generated_at_unix": now,
     }
+    if isinstance(manifest_tag, dict):
+        for k, v in manifest_tag.items():
+            manifest.setdefault(k, v)
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
     return manifest
@@ -481,6 +498,16 @@ if __name__ == "__main__":  # pragma: no cover
     # Command-plan audit mode: records the intended argv plan; executes nothing; needs no live flags.
     if "--command-plan-only" in args:
         m = orchestrate(runs=runs, output_root=output_root, run_fn=command_plan_run_fn)
+        print(json.dumps(m, indent=2))
+        raise SystemExit(0)
+    # Offline-fixture real-subprocess diagnostic: explicit flag; spawns REAL subprocesses of the tools
+    # in OFFLINE FIXTURE mode (synthetic data, no network, no live double-lock). Fail-closed unless
+    # the flag is present (default no-flag stays the no-op planner).
+    if "--offline-fixture-subprocess" in args:
+        _ex = make_concrete_subprocess_stage_executor(fixture_mode=True)   # default real runner
+        _rf = make_live_run_fn(_ex)
+        m = orchestrate(runs=runs, output_root=output_root, run_fn=_rf,
+                        manifest_tag={"mode": "OFFLINE_FIXTURE_SUBPROCESS", "diagnostic_fixture": True})
         print(json.dumps(m, indent=2))
         raise SystemExit(0)
     # Diagnostic fake-runner mode: requires BOTH locks; uses the internal fake runner (no real

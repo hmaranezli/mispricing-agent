@@ -627,6 +627,75 @@ def test_cli_diagnostic_all_three_flags_runs_fake(tmp_path):
     assert os.path.isdir(logs_dir) and len(os.listdir(logs_dir)) >= 6
 
 
+# ---- offline real-subprocess fixture diagnostic (REAL subprocess, NO network) ----
+
+def test_stage_argv_fixture_mode_uses_offline_fixture_flag():
+    argv = C._stage_argv("phase3d5_sampler", "RD", 20, fixture_mode=True)
+    assert "--pilot-3d5-offline-fixture" in argv
+    argv_live = C._stage_argv("phase3d5_sampler", "RD", 20, fixture_mode=False)
+    assert "--pilot-3d5-complement-pairs" in argv_live
+
+
+def test_offline_fixture_subprocess_path_runs_real_subprocesses(tmp_path):
+    # DEFAULT runner (real subprocess) + fixture_mode -> spawns real python3 of the offline-fixture
+    # 3D5 + real 4A + real 4B. No network. tmp_path only.
+    ex = C.make_concrete_subprocess_stage_executor(fixture_mode=True)
+    rf = C.make_live_run_fn(ex)
+    m = C.orchestrate(runs=1, output_root=str(tmp_path), run_fn=rf, timestamp_fn=lambda: 9500,
+                      manifest_tag={"mode": "OFFLINE_FIXTURE_SUBPROCESS", "diagnostic_fixture": True})
+    assert m["completed_runs"] == 1 and m["aborted"] is False
+    assert m.get("mode") == "OFFLINE_FIXTURE_SUBPROCESS" and m.get("diagnostic_fixture") is True
+    stages = m["per_run"][0]["stages"]
+    assert [s["stage_name"] for s in stages] == list(LIVE_STAGES)
+    for s in stages:
+        assert s["status"] == "ok" and s["exit_code"] == 0
+        assert "OFFLINE_FIXTURE" in (s["verdict"] or "")
+        assert isinstance(s["command_plan"], list) and s["command_plan"][0] == "python3"
+        assert os.path.exists(s["stdout_path"]) and os.path.exists(s["stderr_path"])
+        assert s["artifacts"]
+    byname = {s["stage_name"]: s for s in stages}
+    assert isinstance(byname["phase3d5_sampler"]["request_count"], int)
+    assert byname["phase3d5_sampler"]["request_count"] <= 20
+    logs = os.path.join(stages[0]["run_dir"], "logs")
+    assert os.path.isdir(logs) and len(os.listdir(logs)) >= 6
+    assert "records" in byname["phase4a_analyzer"]["artifacts"]
+    assert "aggregate" in byname["phase4b_aggregator"]["artifacts"]
+
+
+def test_cli_offline_fixture_subprocess_flag(tmp_path):
+    r = subprocess.run([sys.executable, ENGINE_PATH, "--runs", "1", "--output-root", str(tmp_path),
+                        "--offline-fixture-subprocess"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    bd = [n for n in os.listdir(tmp_path) if n.startswith("phase4c_batch_")]
+    assert len(bd) == 1
+    man = None
+    for root, _d, files in os.walk(os.path.join(tmp_path, bd[0])):
+        for fn in files:
+            if fn.startswith("phase4c_batch_manifest_"):
+                man = os.path.join(root, fn)
+    assert man
+    d = json.load(open(man))
+    assert d.get("mode") == "OFFLINE_FIXTURE_SUBPROCESS" and d.get("diagnostic_fixture") is True
+    assert all("OFFLINE_FIXTURE" in (s["verdict"] or "") for s in d["per_run"][0]["stages"])
+
+
+def test_offline_fixture_requires_explicit_flag(tmp_path):
+    # without --offline-fixture-subprocess, the no-flag CLI is the no-op planner (NOT fixture, no subprocess)
+    r = subprocess.run([sys.executable, ENGINE_PATH, "--runs", "1", "--output-root", str(tmp_path)],
+                       capture_output=True, text=True)
+    assert r.returncode == 0
+    bd = [n for n in os.listdir(tmp_path) if n.startswith("phase4c_batch_")][0]
+    man = None
+    for root, _d, files in os.walk(os.path.join(tmp_path, bd)):
+        for fn in files:
+            if fn.startswith("phase4c_batch_manifest_"):
+                man = os.path.join(root, fn)
+    d = json.load(open(man))
+    assert d.get("mode") is None                          # not the fixture path
+    assert d["per_run"][0]["verdict"] == "PLANNED"        # no-op planner, no stages, no subprocess
+    assert "stages" not in d["per_run"][0]
+
+
 # ---- real tool --output-dir artifact-naming alignment (orchestrator detection matches REAL outputs) ----
 
 def test_real_4a_output_detected_by_orchestrator(tmp_path):
