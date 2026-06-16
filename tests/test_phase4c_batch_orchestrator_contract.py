@@ -247,9 +247,11 @@ def test_resolve_gate_single_flag_refused():
         C.resolve_live_run_fn(live_public_data=False, enable_real_subprocess=True)
 
 
-def test_resolve_gate_both_flags_no_executor_refused():
-    with pytest.raises(C.LiveExecutionRefused):
-        C.resolve_live_run_fn(live_public_data=True, enable_real_subprocess=True, concrete_executor=None)
+def test_resolve_gate_both_flags_wires_concrete_executor():
+    # both flags now WIRE the concrete subprocess executor (no refusal). Returns a callable run_fn.
+    # NOTE: not invoked here -- calling it with the default runner would spawn real subprocesses.
+    rf = C.resolve_live_run_fn(live_public_data=True, enable_real_subprocess=True, concrete_executor=None)
+    assert callable(rf)
 
 
 def test_both_flags_injected_executor_success(tmp_path):
@@ -271,12 +273,9 @@ def test_cli_only_enable_real_subprocess_fail_closed(tmp_path):
     assert not any(n.startswith("phase4c_batch_") for n in os.listdir(tmp_path))
 
 
-def test_cli_both_flags_no_executor_fail_closed(tmp_path):
-    r = subprocess.run([sys.executable, ENGINE_PATH, "--runs", "1", "--output-root", str(tmp_path),
-                        "--live-public-data", "--enable-real-subprocess"],
-                       capture_output=True, text=True)
-    assert r.returncode != 0
-    assert not any(n.startswith("phase4c_batch_") for n in os.listdir(tmp_path))
+# NOTE: there is intentionally NO CLI test for "--live-public-data --enable-real-subprocess":
+# that path now wires the real subprocess executor and would spawn live stages. The concrete
+# executor is exercised ONLY via an injected fake command_runner (no real subprocess) below.
 
 
 def test_live_manifest_stage_fields(tmp_path):
@@ -364,14 +363,161 @@ def test_command_plan_supported_flags_not_flagged(tmp_path):
     assert "--pilot-3d5-complement-pairs" not in blob
 
 
-def test_command_plan_engine_has_no_subprocess(tmp_path):
-    with open(ENGINE_PATH, encoding="utf-8") as f:
-        src = f.read()
-    assert "import subprocess" not in src
-    assert "subprocess." not in src
-    # command-plan stays PLANNED, never executed
+def test_command_plan_does_not_invoke_subprocess(monkeypatch, tmp_path):
+    # subprocess is now legitimately used in the concrete executor path (double-locked), but the
+    # command-plan-only path must NEVER call it. Monkeypatch subprocess.run to raise and prove it.
+    import subprocess as _sp
+
+    def _boom(*a, **k):
+        raise AssertionError("command-plan mode must not invoke subprocess.run")
+
+    monkeypatch.setattr(_sp, "run", _boom)
     m = _cmd_plan(tmp_path, runs=1)
     assert all(s["status"] == "PLANNED" for s in m["per_run"][0]["stages"])
+
+
+# ---- concrete subprocess stage executor (injected fake command_runner; NO real subprocess) ----
+
+def _fake_runner(behavior=None):
+    """Fake command_runner. behavior maps stage-tool substring -> dict overrides; default success +
+    creates the stage's expected artifacts under --output-dir so downstream gating passes."""
+    behavior = behavior or {}
+    calls = []
+
+    def _outdir(argv):
+        return argv[argv.index("--output-dir") + 1]
+
+    def runner(argv, *, timeout_seconds):
+        calls.append({"argv": argv, "timeout_seconds": timeout_seconds})
+        tool = argv[1]
+        rd = _outdir(argv)
+        ov = {}
+        for key, b in behavior.items():
+            if key in tool:
+                ov = b
+                break
+        if ov.get("timed_out"):
+            return {"exit_code": None, "stdout": ov.get("stdout", ""), "stderr": "timeout", "timed_out": True}
+        exit_code = ov.get("exit_code", 0)
+        make_artifacts = ov.get("make_artifacts", exit_code == 0)
+        if make_artifacts:
+            if "phase3_exec_sampler" in tool:
+                with open(os.path.join(rd, "phase3d5_pilot_snapshots_1.jsonl"), "w") as f:
+                    f.write(json.dumps({"asset": "BTC", "market_slug": "x", "token_id": "t",
+                                        "utc_timestamp_ms": 1, "bids": [[0.49, 1]], "asks": [[0.51, 1]]}) + "\n")
+                with open(os.path.join(rd, "phase3d5_pilot_summary_1.json"), "w") as f:
+                    json.dump({"request_count": ov.get("request_count", 8)}, f)
+            elif "phase4a" in tool:
+                with open(os.path.join(rd, "phase4a_gross_edge_1.jsonl"), "w") as f:
+                    f.write(json.dumps({"phase": "4A_gross_edge"}) + "\n")
+                with open(os.path.join(rd, "phase4a_gross_edge_summary_1.json"), "w") as f:
+                    json.dump({"phase": "4A_gross_edge"}, f)
+            elif "phase4b" in tool:
+                with open(os.path.join(rd, "phase4b_gross_edge_aggregate_1.json"), "w") as f:
+                    json.dump({"phase": "4B_gross_edge_aggregate"}, f)
+        return {"exit_code": exit_code, "stdout": ov.get("stdout", "ok-" + os.path.basename(tool)),
+                "stderr": ov.get("stderr", ""), "timed_out": False}
+    runner.calls = calls
+    return runner
+
+
+def _concrete(behavior=None, timeout_seconds=120):
+    runner = _fake_runner(behavior)
+    ex = C.make_concrete_subprocess_stage_executor(command_runner=runner, timeout_seconds=timeout_seconds)
+    return ex, runner
+
+
+def _run_concrete(tmp_path, behavior=None, timeout_seconds=120, ts=9300):
+    ex, runner = _concrete(behavior, timeout_seconds)
+    rf = C.resolve_live_run_fn(live_public_data=True, enable_real_subprocess=True, concrete_executor=ex)
+    m = C.orchestrate(runs=1, output_root=str(tmp_path), run_fn=rf, timestamp_fn=lambda: ts)
+    return m, runner
+
+
+def test_concrete_uses_argv_arrays_shell_false(tmp_path):
+    m, runner = _run_concrete(tmp_path)
+    for c in runner.calls:
+        assert isinstance(c["argv"], list)
+        assert c["argv"][0] == "python3"
+    with open(ENGINE_PATH, encoding="utf-8") as f:
+        src = f.read()
+    assert "shell=False" in src
+    assert "shell=True" not in src
+
+
+def test_concrete_passes_timeout_to_runner(tmp_path):
+    m, runner = _run_concrete(tmp_path, timeout_seconds=99)
+    assert all(c["timeout_seconds"] == 99 for c in runner.calls)
+    for s in m["per_run"][0]["stages"]:
+        assert s["timeout_seconds"] == 99
+
+
+def test_concrete_success_three_stages_in_order(tmp_path):
+    m, runner = _run_concrete(tmp_path)
+    assert m["completed_runs"] == 1
+    assert [s["stage_name"] for s in m["per_run"][0]["stages"]] == list(LIVE_STAGES)
+    assert all(s["status"] == "ok" for s in m["per_run"][0]["stages"])
+
+
+def test_concrete_records_artifacts(tmp_path):
+    m, runner = _run_concrete(tmp_path)
+    byname = {s["stage_name"]: s for s in m["per_run"][0]["stages"]}
+    assert "snapshots" in byname["phase3d5_sampler"]["artifacts"]
+    assert "records" in byname["phase4a_analyzer"]["artifacts"]
+    assert "aggregate" in byname["phase4b_aggregator"]["artifacts"]
+
+
+def test_concrete_captures_stdout_stderr(tmp_path):
+    m, runner = _run_concrete(tmp_path)
+    for s in m["per_run"][0]["stages"]:
+        assert s["stdout_path"].endswith(".stdout.txt")
+        assert s["stderr_path"].endswith(".stderr.txt")
+        assert os.path.exists(s["stdout_path"])
+        assert os.path.exists(s["stderr_path"])
+        assert os.path.join("run_01", "logs") in s["stdout_path"].replace(os.sep, "/").replace("/", os.sep) \
+            or "/logs/" in s["stdout_path"].replace(os.sep, "/")
+
+
+def test_concrete_3d5_nonzero_skips_4a_4b(tmp_path):
+    m, runner = _run_concrete(tmp_path, behavior={"phase3_exec_sampler": {"exit_code": 1}})
+    assert m["aborted"] is True and m["failed_runs"] == 1
+    byname = {s["stage_name"]: s for s in m["per_run"][0]["stages"]}
+    assert byname["phase4a_analyzer"]["status"] == "SKIPPED"
+    assert byname["phase4b_aggregator"]["status"] == "SKIPPED"
+
+
+def test_concrete_4a_nonzero_skips_4b(tmp_path):
+    m, runner = _run_concrete(tmp_path, behavior={"phase4a": {"exit_code": 1}})
+    assert m["aborted"] is True
+    byname = {s["stage_name"]: s for s in m["per_run"][0]["stages"]}
+    assert byname["phase3d5_sampler"]["status"] == "ok"
+    assert byname["phase4b_aggregator"]["status"] == "SKIPPED"
+
+
+def test_concrete_timeout_skips_downstream(tmp_path):
+    m, runner = _run_concrete(tmp_path, behavior={"phase3_exec_sampler": {"timed_out": True}})
+    assert m["aborted"] is True and m["failed_runs"] == 1
+    byname = {s["stage_name"]: s for s in m["per_run"][0]["stages"]}
+    assert byname["phase3d5_sampler"]["status"] == "timeout"
+    assert byname["phase4a_analyzer"]["status"] == "SKIPPED"
+    assert byname["phase4b_aggregator"]["status"] == "SKIPPED"
+
+
+def test_concrete_missing_3d5_artifact_fails_closed(tmp_path):
+    # exit 0 but no artifacts produced -> missing-artifact failure, downstream skipped
+    m, runner = _run_concrete(tmp_path, behavior={"phase3_exec_sampler": {"exit_code": 0, "make_artifacts": False}})
+    assert m["aborted"] is True and m["failed_runs"] == 1
+    byname = {s["stage_name"]: s for s in m["per_run"][0]["stages"]}
+    assert byname["phase3d5_sampler"]["status"] != "ok"
+    assert byname["phase4a_analyzer"]["status"] == "SKIPPED"
+
+
+def test_concrete_request_cap_exceeded_fails_closed(tmp_path):
+    m, runner = _run_concrete(tmp_path, behavior={"phase3_exec_sampler": {"exit_code": 0, "request_count": 21}})
+    assert m["aborted"] is True
+    assert m["per_run"][0]["verdict"] == "RUN_REQUEST_CAP_EXCEEDED"
+    byname = {s["stage_name"]: s for s in m["per_run"][0]["stages"]}
+    assert byname["phase4a_analyzer"]["status"] == "SKIPPED"
 
 
 def test_cli_command_plan_only_creates_batch_no_live_flags(tmp_path):

@@ -14,9 +14,11 @@ net-edge / slippage / market-impact; NO execution/paper/economics/readiness/prof
 
 CLI (scaffold; planner only, no live execution): python3 tools/phase4c_batch_orchestrator.py --runs 3 --output-root data/output
 """
+import glob
 import json
 import os
 import statistics
+import subprocess  # used ONLY by the concrete executor's default runner (double-locked path)
 import sys
 import time
 
@@ -80,7 +82,8 @@ def make_live_run_fn(stage_executor_fn):
     def _skipped(stage, run_dir):
         return {"stage_name": stage, "status": "SKIPPED", "verdict": None, "exit_code": None,
                 "artifacts": {}, "request_count": None, "timestamp": None,
-                "command_plan": None, "run_dir": run_dir}
+                "command_plan": None, "run_dir": run_dir,
+                "stdout_path": None, "stderr_path": None, "timeout_seconds": None}
 
     def run_fn(*, run_dir, run_index, max_total_requests):
         stages = []
@@ -103,6 +106,9 @@ def make_live_run_fn(stage_executor_fn):
                 "timestamp": r.get("timestamp"),
                 "command_plan": r.get("command_plan"),
                 "run_dir": run_dir,
+                "stdout_path": r.get("stdout_path"),
+                "stderr_path": r.get("stderr_path"),
+                "timeout_seconds": r.get("timeout_seconds"),
             })
             artifacts.update(r.get("artifacts") or {})
             if stage == "phase3d5_sampler":
@@ -135,6 +141,25 @@ def make_live_run_fn(stage_executor_fn):
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _stage_argv(stage, run_dir, max_total_requests, *, phase3d5_input=None):
+    """Single source of truth for each stage's intended argv ARRAY (shell=False usage; never a string).
+
+    For phase4a_analyzer, phase3d5_input (the resolved 3D5 JSONL) is used when provided, else a
+    <ts> template placeholder (command-plan-only path, where nothing has run yet).
+    """
+    if stage == "phase3d5_sampler":
+        return ["python3", "tools/phase3_exec_sampler.py", "--pilot-3d5-complement-pairs",
+                "--output-dir", run_dir, "--max-total-requests", str(max_total_requests)]
+    if stage == "phase4a_analyzer":
+        inp = phase3d5_input if phase3d5_input is not None \
+            else os.path.join(run_dir, "phase3d5_pilot_snapshots_<ts>.jsonl")
+        return ["python3", "tools/phase4a_gross_edge_engine.py", "--input", inp, "--output-dir", run_dir]
+    if stage == "phase4b_aggregator":
+        return ["python3", "tools/phase4b_gross_edge_aggregate.py",
+                "--input-dir", run_dir, "--output-dir", run_dir]
+    raise ValueError(f"unknown stage {stage!r}")
+
+
 def _check_argv_flags(argv):
     """Offline static check: for the target tool (argv[1]) flag a '--flag' token that does NOT appear
     in the tool's source. Returns a list of human-readable notes (empty if all flags are supported)."""
@@ -162,19 +187,10 @@ def command_plan_run_fn(*, run_dir, run_index, max_total_requests):
     shell string). Unsupported flags (per current tool sources) are recorded in command_plan_notes and
     aggregated into plan_warnings — the plan is NOT mutated and nothing is executed.
     """
-    planned_3d5_jsonl = os.path.join(run_dir, "phase3d5_pilot_snapshots_<ts>.jsonl")
-    plans = {
-        "phase3d5_sampler": ["python3", "tools/phase3_exec_sampler.py", "--pilot-3d5-complement-pairs",
-                             "--output-dir", run_dir, "--max-total-requests", str(max_total_requests)],
-        "phase4a_analyzer": ["python3", "tools/phase4a_gross_edge_engine.py",
-                             "--input", planned_3d5_jsonl, "--output-dir", run_dir],
-        "phase4b_aggregator": ["python3", "tools/phase4b_gross_edge_aggregate.py",
-                               "--input-dir", run_dir, "--output-dir", run_dir],
-    }
     stages = []
     plan_warnings = []
     for stage in LIVE_STAGES:
-        argv = plans[stage]
+        argv = _stage_argv(stage, run_dir, max_total_requests)
         notes = _check_argv_flags(argv)
         plan_warnings += [f"{stage}: {n}" for n in notes]
         stages.append({
@@ -194,8 +210,97 @@ def command_plan_run_fn(*, run_dir, run_index, max_total_requests):
             "plan_warnings": plan_warnings}
 
 
+def _default_subprocess_runner(argv, *, timeout_seconds):  # pragma: no cover - real subprocess path
+    """Safe wrapper around subprocess.run: argv array, shell=False, captured output, timeout."""
+    try:
+        cp = subprocess.run(argv, shell=False, capture_output=True, text=True, timeout=timeout_seconds)
+        return {"exit_code": cp.returncode, "stdout": cp.stdout, "stderr": cp.stderr, "timed_out": False}
+    except subprocess.TimeoutExpired as e:
+        return {"exit_code": None, "stdout": e.stdout or "", "stderr": e.stderr or "", "timed_out": True}
+
+
+def _verify_stage_artifacts(stage, run_dir):
+    """Return (artifacts_dict, request_count_or_None, missing_or_None) for a stage's expected outputs."""
+    def g(pat):
+        return sorted(glob.glob(os.path.join(run_dir, pat)))
+    if stage == "phase3d5_sampler":
+        snaps = g("phase3d5_pilot_snapshots_*.jsonl")
+        summ = g("phase3d5_pilot_summary_*.json")
+        if not snaps:
+            return {}, None, "phase3d5_snapshots"
+        if not summ:
+            return {"snapshots": snaps[0]}, None, "phase3d5_summary"
+        rc = None
+        try:
+            with open(summ[0], encoding="utf-8") as f:
+                v = json.load(f).get("request_count")
+            rc = v if isinstance(v, int) and not isinstance(v, bool) else None
+        except Exception:
+            rc = None
+        return {"snapshots": snaps[0], "summary": summ[0]}, rc, None
+    if stage == "phase4a_analyzer":
+        recs = g("phase4a_gross_edge_*.jsonl")
+        summ = g("phase4a_gross_edge_summary_*.json")
+        if not recs:
+            return {}, None, "phase4a_records"
+        if not summ:
+            return {"records": recs[0]}, None, "phase4a_summary"
+        return {"records": recs[0], "summary": summ[0]}, None, None
+    if stage == "phase4b_aggregator":
+        agg = g("phase4b_gross_edge_aggregate_*.json")
+        if not agg:
+            return {}, None, "phase4b_aggregate"
+        return {"aggregate": agg[0]}, None, None
+    return {}, None, f"unknown_stage:{stage}"
+
+
+def make_concrete_subprocess_stage_executor(command_runner=None, timeout_seconds=120):
+    """Concrete stage executor (injectable). Builds the stage's argv ARRAY, runs it via command_runner
+    (default: safe subprocess.run shell=False wrapper), captures stdout/stderr to run_dir/logs/, verifies
+    expected artifacts, and returns a stage-result dict. Tests inject a fake command_runner — no real
+    subprocess. Reached ONLY behind the double-lock (both flags).
+    """
+    if command_runner is None:
+        command_runner = _default_subprocess_runner
+
+    def executor(*, stage, run_dir, run_index, max_total_requests):
+        logs_dir = os.path.join(run_dir, "logs")
+        os.makedirs(logs_dir, exist_ok=True)
+        stdout_path = os.path.join(logs_dir, f"{stage}.stdout.txt")
+        stderr_path = os.path.join(logs_dir, f"{stage}.stderr.txt")
+        if stage == "phase4a_analyzer":
+            found = sorted(glob.glob(os.path.join(run_dir, "phase3d5_pilot_snapshots_*.jsonl")))
+            argv = _stage_argv(stage, run_dir, max_total_requests,
+                               phase3d5_input=(found[0] if found else None))
+        else:
+            argv = _stage_argv(stage, run_dir, max_total_requests)
+
+        res = command_runner(argv, timeout_seconds=timeout_seconds)
+        with open(stdout_path, "w", encoding="utf-8") as f:
+            f.write(res.get("stdout", "") or "")
+        with open(stderr_path, "w", encoding="utf-8") as f:
+            f.write(res.get("stderr", "") or "")
+        base = {"stage_name": stage, "command_plan": argv, "run_dir": run_dir,
+                "stdout_path": stdout_path, "stderr_path": stderr_path,
+                "timeout_seconds": timeout_seconds, "timestamp": res.get("timestamp")}
+        if res.get("timed_out"):
+            return {**base, "status": "timeout", "verdict": "STAGE_TIMEOUT",
+                    "exit_code": res.get("exit_code"), "artifacts": {}, "request_count": None}
+        exit_code = res.get("exit_code")
+        if not isinstance(exit_code, int) or isinstance(exit_code, bool) or exit_code != 0:
+            return {**base, "status": "error", "verdict": "STAGE_NONZERO_EXIT",
+                    "exit_code": exit_code, "artifacts": {}, "request_count": None}
+        artifacts, request_count, missing = _verify_stage_artifacts(stage, run_dir)
+        if missing:
+            return {**base, "status": "error", "verdict": f"MISSING_ARTIFACT:{missing}",
+                    "exit_code": exit_code, "artifacts": artifacts, "request_count": request_count}
+        return {**base, "status": "ok", "verdict": "OK", "exit_code": exit_code,
+                "artifacts": artifacts, "request_count": request_count}
+    return executor
+
+
 class LiveExecutionRefused(Exception):
-    """Raised (fail-closed) when live execution is requested but the double-lock / wiring is not satisfied."""
+    """Raised (fail-closed) when live execution is requested but the double-lock is not satisfied."""
 
 
 def resolve_live_run_fn(*, live_public_data, enable_real_subprocess, concrete_executor=None):
@@ -203,8 +308,8 @@ def resolve_live_run_fn(*, live_public_data, enable_real_subprocess, concrete_ex
 
     - no flags                          -> None (no-op planner mode)
     - exactly one of the two flags      -> refuse (both flags required)
-    - both flags but no concrete_executor -> refuse (no real executor wired; no real subprocess)
-    - both flags AND a concrete_executor -> live run_fn = make_live_run_fn(concrete_executor)
+    - both flags (executor injected)    -> live run_fn = make_live_run_fn(concrete_executor)
+    - both flags (no executor injected) -> live run_fn wired to the default concrete subprocess executor
 
     The concrete_executor is the stage-executor interface:
       executor(*, stage, run_dir, run_index, max_total_requests) -> dict with keys:
@@ -215,9 +320,9 @@ def resolve_live_run_fn(*, live_public_data, enable_real_subprocess, concrete_ex
     if not (live_public_data and enable_real_subprocess):
         raise LiveExecutionRefused(
             "double-lock: BOTH --live-public-data and --enable-real-subprocess are required; fail-closed.")
+    # both flags -> wire the concrete subprocess executor (default real runner unless injected).
     if concrete_executor is None:
-        raise LiveExecutionRefused(
-            "no concrete live stage executor wired; fail-closed (no real subprocess in this build).")
+        concrete_executor = make_concrete_subprocess_stage_executor()
     return make_live_run_fn(concrete_executor)
 
 
