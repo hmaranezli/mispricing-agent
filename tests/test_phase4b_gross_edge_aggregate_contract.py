@@ -163,6 +163,17 @@ def test_engine_no_forbidden_literals():
         assert bad not in src, f"engine must not contain {bad!r}"
 
 
+def test_cli_accepts_output_dir(tmp_path):
+    _write_records(tmp_path, "phase4a_gross_edge_1.jsonl", [_record(-0.01, -0.01)])
+    _write_summary(tmp_path, "phase4a_gross_edge_summary_1.json", 4, 1, {})
+    outdir = tmp_path / "out"
+    outdir.mkdir()
+    r = subprocess.run([sys.executable, ENGINE_PATH, "--input-dir", str(tmp_path),
+                        "--output-dir", str(outdir)], capture_output=True, text=True)
+    assert r.returncode == 0
+    assert any(f.startswith("phase4b_gross_edge_aggregate_") for f in os.listdir(outdir))
+
+
 def test_engine_not_imported_by_production():
     res = subprocess.run(["grep", "-rIl", "--include=*.py", "phase4b_gross_edge", REPO],
                          capture_output=True, text=True)

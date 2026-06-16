@@ -530,6 +530,39 @@ def test_3d5_outputs_under_data_output_by_default():
     assert "data/output" in sample
 
 
+# ---- sampler CLI interface alignment (--output-dir / --max-total-requests) ----
+
+def test_sampler_cli_accepts_output_dir_and_max_total():
+    cfg = S.parse_sampler_cli(["--pilot-3d5-complement-pairs", "--output-dir", "/tmp/x",
+                               "--max-total-requests", "7"])
+    assert cfg["mode"] == "--pilot-3d5-complement-pairs"
+    assert cfg["output_dir"] == "/tmp/x"
+    assert cfg["max_total_requests"] == 7
+
+
+def test_sampler_cli_defaults_when_flags_omitted():
+    cfg = S.parse_sampler_cli(["--pilot-3d5-complement-pairs"])
+    assert cfg["mode"] == "--pilot-3d5-complement-pairs"
+    assert cfg["output_dir"] is None
+    assert cfg["max_total_requests"] is None
+
+
+def test_sampler_cli_rejects_unknown_or_missing_mode():
+    with pytest.raises(SystemExit):
+        S.parse_sampler_cli(["--nope"])
+    with pytest.raises(SystemExit):
+        S.parse_sampler_cli(["--output-dir", "/tmp"])   # no mode flag
+
+
+def test_sampler_cli_max_total_enforced_via_budget(tmp_path):
+    # a tiny CLI-supplied budget is honored fail-closed inside the pilot (offline fakes)
+    b = S.RequestBudget(5)
+    summary = _run_3d5(discover_asset_fn=_d5_disc(_d5_markets(1)), fetch_book_fn=_d5_book(),
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 600, budget=b)
+    assert summary["request_count"] <= 5
+    assert b.count <= 5
+
+
 # ---- output directory hygiene: artifacts default under data/output, not tools/ ----
 
 def test_default_output_dir_is_data_output_not_tools():

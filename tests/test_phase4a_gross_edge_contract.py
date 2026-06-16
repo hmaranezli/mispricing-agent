@@ -198,6 +198,16 @@ def test_engine_no_forbidden_or_readiness_literals():
         assert bad not in src, f"engine must not contain {bad!r}"
 
 
+def test_cli_accepts_output_dir(tmp_path):
+    inp = _write(tmp_path, _pair_rows())
+    outdir = tmp_path / "out"
+    outdir.mkdir()
+    r = subprocess.run([sys.executable, ENGINE_PATH, "--input", str(inp), "--output-dir", str(outdir)],
+                       capture_output=True, text=True)
+    assert r.returncode == 0
+    assert any(f.startswith("phase4a_gross_edge_") for f in os.listdir(outdir))
+
+
 def test_engine_not_imported_by_production():
     res = subprocess.run(["grep", "-rIl", "--include=*.py", "phase4a_gross_edge", REPO],
                          capture_output=True, text=True)

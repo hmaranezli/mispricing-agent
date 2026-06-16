@@ -1130,40 +1130,73 @@ async def _real_fetch_book(token_id, budget):  # pragma: no cover - live path, n
     return await clob_price.get_book(token_id)
 
 
+SAMPLER_MODES = ("--dry-run-eth5m", "--pilot-eth5m", "--pilot-3d3-multi-asset",
+                 "--pilot-3d4-multi-asset-discovery", "--pilot-3d5-complement-pairs")
+
+
+def parse_sampler_cli(args):
+    """Parse one mode flag + optional --output-dir <path> + --max-total-requests <int>.
+
+    Returns {"mode", "output_dir"|None, "max_total_requests"|None}. Raises SystemExit on missing/
+    duplicate mode, unknown flag, or missing/invalid flag value. Behavior is unchanged when the
+    optional flags are omitted (output_dir/max_total_requests stay None -> callers use defaults).
+    """
+    mode = None
+    output_dir = None
+    max_total_requests = None
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in SAMPLER_MODES:
+            if mode is not None:
+                raise SystemExit("usage: exactly one mode flag is permitted")
+            mode = a; i += 1
+        elif a == "--output-dir":
+            if i + 1 >= len(args):
+                raise SystemExit("usage: --output-dir requires a path")
+            output_dir = args[i + 1]; i += 2
+        elif a == "--max-total-requests":
+            if i + 1 >= len(args):
+                raise SystemExit("usage: --max-total-requests requires an integer")
+            try:
+                max_total_requests = int(args[i + 1])
+            except ValueError:
+                raise SystemExit("usage: --max-total-requests must be an integer")
+            i += 2
+        else:
+            raise SystemExit(f"unknown argument: {a}")
+    if mode is None:
+        raise SystemExit("usage: phase3_exec_sampler.py <mode> [--output-dir <path>] "
+                         "[--max-total-requests <int>]  (mode is one of: " + " ".join(SAMPLER_MODES) + ")")
+    return {"mode": mode, "output_dir": output_dir, "max_total_requests": max_total_requests}
+
+
 if __name__ == "__main__":  # pragma: no cover
-    _args = sys.argv[1:]
-    if _args == ["--dry-run-eth5m"]:
-        import asyncio
-        _summary = asyncio.run(dry_run_eth5m(discover_fn=_real_discover,
-                                             fetch_book_fn=_real_fetch_book,
-                                             sleep_fn=asyncio.sleep))
-        print(json.dumps(_summary, indent=2))
-    elif _args == ["--pilot-eth5m"]:
-        import asyncio
-        _summary = asyncio.run(pilot_eth5m(discover_fn=_real_discover,
-                                           fetch_book_fn=_real_fetch_book,
-                                           sleep_fn=asyncio.sleep))
-        print(json.dumps(_summary, indent=2))
-    elif _args == ["--pilot-3d3-multi-asset"]:
-        import asyncio
+    import asyncio
+    _cfg = parse_sampler_cli(sys.argv[1:])
+    _mode = _cfg["mode"]
+    _outdir = _cfg["output_dir"]
+    _budget = RequestBudget(_cfg["max_total_requests"]) if _cfg["max_total_requests"] else None
+    if _mode == "--dry-run-eth5m":
+        _summary = asyncio.run(dry_run_eth5m(discover_fn=_real_discover, fetch_book_fn=_real_fetch_book,
+                                             sleep_fn=asyncio.sleep,
+                                             out_dir=_outdir or OUT_DIR, budget=_budget))
+    elif _mode == "--pilot-eth5m":
+        _summary = asyncio.run(pilot_eth5m(discover_fn=_real_discover, fetch_book_fn=_real_fetch_book,
+                                           sleep_fn=asyncio.sleep,
+                                           output_dir=_outdir or OUT_DIR, budget=_budget))
+    elif _mode == "--pilot-3d3-multi-asset":
         _summary = asyncio.run(pilot_3d3_multi_asset(discover_fn=_real_discover_3d3,
-                                                     fetch_book_fn=_real_fetch_book,
-                                                     sleep_fn=asyncio.sleep))
-        print(json.dumps(_summary, indent=2))
-    elif _args == ["--pilot-3d4-multi-asset-discovery"]:
-        import asyncio
+                                                     fetch_book_fn=_real_fetch_book, sleep_fn=asyncio.sleep,
+                                                     output_dir=_outdir or OUT_DIR, budget=_budget))
+    elif _mode == "--pilot-3d4-multi-asset-discovery":
         _summary = asyncio.run(pilot_3d4_multi_asset_discovery(discover_asset_fn=_real_discover_3d4_asset,
                                                                fetch_book_fn=_real_fetch_book,
-                                                               sleep_fn=asyncio.sleep))
-        print(json.dumps(_summary, indent=2))
-    elif _args == ["--pilot-3d5-complement-pairs"]:
-        import asyncio
+                                                               sleep_fn=asyncio.sleep,
+                                                               output_dir=_outdir or OUT_DIR, budget=_budget))
+    else:  # --pilot-3d5-complement-pairs
         _summary = asyncio.run(pilot_3d5_complement_pairs(discover_asset_fn=_real_discover_3d5_asset,
                                                           fetch_book_fn=_real_fetch_book,
-                                                          sleep_fn=asyncio.sleep))
-        print(json.dumps(_summary, indent=2))
-    else:
-        raise SystemExit("usage: phase3_exec_sampler.py "
-                         "[--dry-run-eth5m | --pilot-eth5m | --pilot-3d3-multi-asset | "
-                         "--pilot-3d4-multi-asset-discovery | --pilot-3d5-complement-pairs] "
-                         "(refused: no other invocation is permitted)")
+                                                          sleep_fn=asyncio.sleep,
+                                                          output_dir=_outdir or OUT_DIR, budget=_budget))
+    print(json.dumps(_summary, indent=2))

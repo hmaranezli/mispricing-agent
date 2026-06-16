@@ -347,16 +347,13 @@ def test_request_cap_in_phase3d5_command_plan(tmp_path):
     assert "20" in cp
 
 
-def test_command_plan_warnings_record_unsupported_flags(tmp_path):
+def test_command_plan_no_warnings_after_cli_alignment(tmp_path):
+    # after aligning the tool CLIs, every planned flag is supported -> no plan_warnings
     m = _cmd_plan(tmp_path, runs=1)
-    warnings = m["plan_warnings"]
-    assert warnings, "expected plan_warnings for currently-unsupported flags"
-    blob = " ".join(warnings)
-    assert "--output-dir" in blob          # not supported by current tools
-    assert "--max-total-requests" in blob  # not supported by current sampler
-    # per-stage notes present
+    assert m["plan_warnings"] == []
     for s in m["per_run"][0]["stages"]:
         assert "command_plan_notes" in s
+        assert s["command_plan_notes"] == []
 
 
 def test_command_plan_supported_flags_not_flagged(tmp_path):

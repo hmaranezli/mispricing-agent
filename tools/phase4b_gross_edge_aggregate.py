@@ -165,10 +165,29 @@ def run(*, input_dir, output_dir=OUT_DIR, timestamp_fn=None):
     return out
 
 
+def _parse_cli(args):
+    """--input-dir <dir> [--output-dir <dir>]. Returns (input_dir, output_dir) or raises SystemExit."""
+    input_dir = None
+    output_dir = None
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--input-dir":
+            if i + 1 >= len(args):
+                raise SystemExit("usage: --input-dir requires a dir")
+            input_dir = args[i + 1]; i += 2
+        elif a == "--output-dir":
+            if i + 1 >= len(args):
+                raise SystemExit("usage: --output-dir requires a dir")
+            output_dir = args[i + 1]; i += 2
+        else:
+            raise SystemExit(f"unknown argument: {a}")
+    if input_dir is None:
+        raise SystemExit("usage: phase4b_gross_edge_aggregate.py --input-dir <dir> [--output-dir <dir>]")
+    return input_dir, output_dir
+
+
 if __name__ == "__main__":  # pragma: no cover
-    args = sys.argv[1:]
-    if len(args) == 2 and args[0] == "--input-dir":
-        s = run(input_dir=args[1])
-        print(json.dumps(s, indent=2))
-    else:
-        raise SystemExit("usage: phase4b_gross_edge_aggregate.py --input-dir <dir>")
+    _indir, _outdir = _parse_cli(sys.argv[1:])
+    s = run(input_dir=_indir, output_dir=_outdir or OUT_DIR)
+    print(json.dumps(s, indent=2))

@@ -244,10 +244,29 @@ def run(*, input_path, output_dir=OUT_DIR, timestamp_fn=None):
     return summary
 
 
+def _parse_cli(args):
+    """--input <path> [--output-dir <dir>]. Returns (input_path, output_dir) or raises SystemExit."""
+    input_path = None
+    output_dir = None
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--input":
+            if i + 1 >= len(args):
+                raise SystemExit("usage: --input requires a path")
+            input_path = args[i + 1]; i += 2
+        elif a == "--output-dir":
+            if i + 1 >= len(args):
+                raise SystemExit("usage: --output-dir requires a path")
+            output_dir = args[i + 1]; i += 2
+        else:
+            raise SystemExit(f"unknown argument: {a}")
+    if input_path is None:
+        raise SystemExit("usage: phase4a_gross_edge_engine.py --input <phase3_jsonl_file> [--output-dir <dir>]")
+    return input_path, output_dir
+
+
 if __name__ == "__main__":  # pragma: no cover
-    args = sys.argv[1:]
-    if len(args) == 2 and args[0] == "--input":
-        s = run(input_path=args[1])
-        print(json.dumps(s, indent=2))
-    else:
-        raise SystemExit("usage: phase4a_gross_edge_engine.py --input <phase3_jsonl_file>")
+    _input, _outdir = _parse_cli(sys.argv[1:])
+    s = run(input_path=_input, output_dir=_outdir or OUT_DIR)
+    print(json.dumps(s, indent=2))
