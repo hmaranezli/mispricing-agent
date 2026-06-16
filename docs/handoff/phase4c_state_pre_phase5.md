@@ -83,6 +83,32 @@ Phase 5 implementation, trading, or paper deployment.
 - **Do not implement Phase 5 yet.** Do not trade, do not paper deploy, do not make readiness claims.
 - Any Phase 5 work begins behind its own separately-approved gate.
 
+## Safety state update (post-guards)
+
+Two default-safe guards were added after the Phase 4C observations (each TDD/offline, docs in
+`docs/protocols/`):
+
+- **`e84ad94` — council decision authority bypassed by default.** `config.COUNCIL_DECISION_AUTHORITY_ENABLED = False`
+  disconnects the (deterministic) council from execution authority: a council PASS cannot reach
+  `execute()` / `_dry_execute` / `_clob_execute` or create an order intent. The council still runs
+  as **diagnostic/read-only** by default. See `docs/protocols/council_decision_authority_bypass.md`
+  and `docs/protocols/council_inventory_derisk_gate.md`. (`DRY_RUN` and all guardrails unchanged.)
+- **`f7eb12e` — manual order script guarded.** `analysis/test_order.py` posts **nothing by default**;
+  it blocks before `create_and_post_order` unless `MANUAL_ORDER_SCRIPT_ENABLED` is explicitly opted
+  in. See `docs/protocols/manual_order_script_guard.md`.
+
+Current known state:
+
+- Council is **diagnostic/read-only by default** (no execution authority).
+- Manual order script **posts nothing by default**.
+- Phase 5 is **planning / interface only** — no implementation.
+- The `tools/phase45_evidence_verifier.py` evidence verifier previously returned **PASS** (scoped to
+  checked invariants).
+- **No readiness / economic / alpha claim** is made by this state.
+
+Next step pointer: Phase 5 may proceed **only as an offline deterministic contract / planning step**
+with **no trading authority**; any implementation is separately authorized and TDD/offline first.
+
 <!-- NO-CLAIMS-START -->
 ## No-claims statement
 
