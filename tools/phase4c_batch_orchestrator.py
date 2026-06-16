@@ -77,6 +77,11 @@ def make_live_run_fn(stage_executor_fn):
     skips downstream stages. No real subprocess here — the executor is injected (mocked in tests). A
     real executor (sampler/analyzer/aggregator) would be wired later behind an explicit flag.
     """
+    def _skipped(stage, run_dir):
+        return {"stage_name": stage, "status": "SKIPPED", "verdict": None, "exit_code": None,
+                "artifacts": {}, "request_count": None, "timestamp": None,
+                "command_plan": None, "run_dir": run_dir}
+
     def run_fn(*, run_dir, run_index, max_total_requests):
         stages = []
         artifacts = {}
@@ -85,7 +90,7 @@ def make_live_run_fn(stage_executor_fn):
         verdict = "RUN_COMPLETED"
         abort_reason = None
         seg = {}
-        for stage in LIVE_STAGES:
+        for idx, stage in enumerate(LIVE_STAGES):
             r = stage_executor_fn(stage=stage, run_dir=run_dir, run_index=run_index,
                                   max_total_requests=max_total_requests)
             stages.append({
@@ -96,6 +101,8 @@ def make_live_run_fn(stage_executor_fn):
                 "artifacts": r.get("artifacts", {}),
                 "request_count": r.get("request_count"),
                 "timestamp": r.get("timestamp"),
+                "command_plan": r.get("command_plan"),
+                "run_dir": run_dir,
             })
             artifacts.update(r.get("artifacts") or {})
             if stage == "phase3d5_sampler":
@@ -105,12 +112,14 @@ def make_live_run_fn(stage_executor_fn):
                 run_failed = True
                 verdict = "RUN_STAGE_FAILED"
                 abort_reason = f"STAGE_FAILED:{stage}"
+                stages.extend(_skipped(s, run_dir) for s in LIVE_STAGES[idx + 1:])
                 break
             if (stage == "phase3d5_sampler" and isinstance(request_count, int)
                     and not isinstance(request_count, bool) and request_count > max_total_requests):
                 run_failed = True
                 verdict = "RUN_REQUEST_CAP_EXCEEDED"
                 abort_reason = "REQUEST_CAP_EXCEEDED"
+                stages.extend(_skipped(s, run_dir) for s in LIVE_STAGES[idx + 1:])
                 break
             if stage == "phase4b_aggregator":
                 for k in ("buy_samples", "sell_samples", "eligible_pairs", "rejection_rate"):
@@ -121,6 +130,33 @@ def make_live_run_fn(stage_executor_fn):
         out.update(seg)
         return out
     return run_fn
+
+
+class LiveExecutionRefused(Exception):
+    """Raised (fail-closed) when live execution is requested but the double-lock / wiring is not satisfied."""
+
+
+def resolve_live_run_fn(*, live_public_data, enable_real_subprocess, concrete_executor=None):
+    """Double-lock gate. Returns a run_fn or None (planner), or raises LiveExecutionRefused (fail-closed).
+
+    - no flags                          -> None (no-op planner mode)
+    - exactly one of the two flags      -> refuse (both flags required)
+    - both flags but no concrete_executor -> refuse (no real executor wired; no real subprocess)
+    - both flags AND a concrete_executor -> live run_fn = make_live_run_fn(concrete_executor)
+
+    The concrete_executor is the stage-executor interface:
+      executor(*, stage, run_dir, run_index, max_total_requests) -> dict with keys:
+        status, verdict, exit_code, artifacts, request_count, timestamp, command_plan (optional).
+    """
+    if not live_public_data and not enable_real_subprocess:
+        return None
+    if not (live_public_data and enable_real_subprocess):
+        raise LiveExecutionRefused(
+            "double-lock: BOTH --live-public-data and --enable-real-subprocess are required; fail-closed.")
+    if concrete_executor is None:
+        raise LiveExecutionRefused(
+            "no concrete live stage executor wired; fail-closed (no real subprocess in this build).")
+    return make_live_run_fn(concrete_executor)
 
 
 def orchestrate(*, runs, output_root=OUT_DIR, run_fn=None, timestamp_fn=None):
@@ -239,10 +275,15 @@ if __name__ == "__main__":  # pragma: no cover
             pass
     if not isinstance(runs, int) or runs <= 0:
         raise SystemExit("usage: phase4c_batch_orchestrator.py --runs <N> [--output-root <dir>] "
-                         "[--live-public-data] (scaffold planner only unless a live runner is wired)")
-    if "--live-public-data" in args:
-        # FAIL-CLOSED: no concrete live runner is wired in this build; refuse before creating anything.
-        raise SystemExit("--live-public-data requires an explicitly wired live stage executor "
-                         "(make_live_run_fn); not enabled in this build (fail-closed, no live execution).")
-    m = orchestrate(runs=runs, output_root=output_root)   # planner only, no network
+                         "[--live-public-data --enable-real-subprocess] "
+                         "(scaffold planner only unless a concrete live runner is wired)")
+    # Double-lock gate. concrete_executor is None in this build -> any live request fails closed
+    # BEFORE creating any batch dir; default (no flags) stays the no-op planner.
+    try:
+        run_fn = resolve_live_run_fn(live_public_data="--live-public-data" in args,
+                                     enable_real_subprocess="--enable-real-subprocess" in args,
+                                     concrete_executor=None)
+    except LiveExecutionRefused as e:
+        raise SystemExit(str(e))
+    m = orchestrate(runs=runs, output_root=output_root, run_fn=run_fn)   # run_fn None -> planner
     print(json.dumps(m, indent=2))

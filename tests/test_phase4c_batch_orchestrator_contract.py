@@ -206,10 +206,10 @@ def test_live_3d5_failure_skips_4a_4b(tmp_path):
     assert m["completed_runs"] == 0
     assert len(m["per_run"]) == 1
     stages = m["per_run"][0]["stages"]
-    names = [s["stage_name"] for s in stages]
-    assert names == ["phase3d5_sampler"]          # 4A/4B skipped
-    assert "phase4a_analyzer" not in names
-    assert "phase4b_aggregator" not in names
+    assert [s["stage_name"] for s in stages] == list(LIVE_STAGES)   # all recorded
+    byname = {s["stage_name"]: s for s in stages}
+    assert byname["phase4a_analyzer"]["status"] == "SKIPPED"
+    assert byname["phase4b_aggregator"]["status"] == "SKIPPED"
 
 
 def test_live_4a_failure_skips_4b(tmp_path):
@@ -218,9 +218,9 @@ def test_live_4a_failure_skips_4b(tmp_path):
     assert m["aborted"] is True
     assert m["failed_runs"] == 1
     stages = m["per_run"][0]["stages"]
-    names = [s["stage_name"] for s in stages]
-    assert names == ["phase3d5_sampler", "phase4a_analyzer"]   # 4B skipped
-    assert "phase4b_aggregator" not in names
+    byname = {s["stage_name"]: s for s in stages}
+    assert [s["stage_name"] for s in stages] == list(LIVE_STAGES)
+    assert byname["phase4b_aggregator"]["status"] == "SKIPPED"
 
 
 def test_live_request_cap_violation_fail_closed(tmp_path):
@@ -229,8 +229,54 @@ def test_live_request_cap_violation_fail_closed(tmp_path):
     assert m["aborted"] is True
     assert m["failed_runs"] == 1
     assert m["per_run"][0]["verdict"] == "RUN_REQUEST_CAP_EXCEEDED"
-    # cap detected at sampler stage -> 4A/4B skipped
-    assert [s["stage_name"] for s in m["per_run"][0]["stages"]] == ["phase3d5_sampler"]
+    byname = {s["stage_name"]: s for s in m["per_run"][0]["stages"]}
+    assert byname["phase4a_analyzer"]["status"] == "SKIPPED"
+    assert byname["phase4b_aggregator"]["status"] == "SKIPPED"
+
+
+# ---- double-lock gate + concrete executor wiring ----
+
+def test_resolve_gate_no_flags_is_planner():
+    assert C.resolve_live_run_fn(live_public_data=False, enable_real_subprocess=False) is None
+
+
+def test_resolve_gate_single_flag_refused():
+    with pytest.raises(C.LiveExecutionRefused):
+        C.resolve_live_run_fn(live_public_data=True, enable_real_subprocess=False)
+    with pytest.raises(C.LiveExecutionRefused):
+        C.resolve_live_run_fn(live_public_data=False, enable_real_subprocess=True)
+
+
+def test_resolve_gate_both_flags_no_executor_refused():
+    with pytest.raises(C.LiveExecutionRefused):
+        C.resolve_live_run_fn(live_public_data=True, enable_real_subprocess=True, concrete_executor=None)
+
+
+def test_both_flags_injected_executor_success(tmp_path):
+    rf = C.resolve_live_run_fn(live_public_data=True, enable_real_subprocess=True,
+                               concrete_executor=_ok_executor())
+    m = C.orchestrate(runs=2, output_root=str(tmp_path), run_fn=rf, timestamp_fn=lambda: 9100)
+    assert m["completed_runs"] == 2
+    assert m["failed_runs"] == 0
+    for e in m["per_run"]:
+        assert [s["stage_name"] for s in e["stages"]] == list(LIVE_STAGES)
+        assert all(s["status"] == "ok" for s in e["stages"])
+
+
+def test_cli_only_enable_real_subprocess_fail_closed(tmp_path):
+    r = subprocess.run([sys.executable, ENGINE_PATH, "--runs", "1",
+                        "--output-root", str(tmp_path), "--enable-real-subprocess"],
+                       capture_output=True, text=True)
+    assert r.returncode != 0
+    assert not any(n.startswith("phase4c_batch_") for n in os.listdir(tmp_path))
+
+
+def test_cli_both_flags_no_executor_fail_closed(tmp_path):
+    r = subprocess.run([sys.executable, ENGINE_PATH, "--runs", "1", "--output-root", str(tmp_path),
+                        "--live-public-data", "--enable-real-subprocess"],
+                       capture_output=True, text=True)
+    assert r.returncode != 0
+    assert not any(n.startswith("phase4c_batch_") for n in os.listdir(tmp_path))
 
 
 def test_live_manifest_stage_fields(tmp_path):
