@@ -48,6 +48,9 @@ only, with no values authorized here:
   observation-derived or assumption-derived.
 - **No fixed cost, floor cost, baseline overhead, or economic treatment is authorized here.** The
   schema only reserves slots; populating them requires a separate authorized step.
+- This taxonomy is refined at field level by the
+  [Friction-Component Schema Contract](phase5_friction_component_schema_contract.md)
+  (contract-only; no values authorized; fail-closed to `BLOCKED_NEEDS_EVIDENCE`).
 
 ## 3. No-eligible handling schema
 

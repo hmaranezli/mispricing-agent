@@ -109,6 +109,16 @@ Current known state:
 Next step pointer: Phase 5 may proceed **only as an offline deterministic contract / planning step**
 with **no trading authority**; any implementation is separately authorized and TDD/offline first.
 
+Phase 5 contract backlog (planning artifacts only, no implementation):
+
+- `docs/protocols/phase5_friction_component_schema_contract.md` — field-level friction-component
+  schema contract (components, per-component fields, Decimal/integer-scaled numeric rule,
+  non-negative deduction sign convention, provenance, fail-closed to `BLOCKED_NEEDS_EVIDENCE`,
+  contract-only aggregation rule). Contract/planning only; no values, no net-edge calculator, no
+  trading authority. Deferred items (exact `uncertainty_buffer` formula, final units/scaling,
+  fee/slippage/depth evidence sources, aggregation implementation) remain blocked until separate
+  authorization.
+
 <!-- NO-CLAIMS-START -->
 ## No-claims statement
 
