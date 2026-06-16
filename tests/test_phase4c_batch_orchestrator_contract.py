@@ -540,6 +540,89 @@ def test_cli_command_plan_only_creates_batch_no_live_flags(tmp_path):
     assert all(s["verdict"] == "COMMAND_PLAN_ONLY" for s in stages)
 
 
+# ---- diagnostic fake-runner mode (exercises the concrete path; NO real subprocess) ----
+
+def _diag_run(tmp_path, ts=9400):
+    ex = C.make_concrete_subprocess_stage_executor(command_runner=C._diagnostic_fake_command_runner)
+    rf = C.resolve_live_run_fn(live_public_data=True, enable_real_subprocess=True, concrete_executor=ex)
+    return C.orchestrate(runs=1, output_root=str(tmp_path), run_fn=rf, timestamp_fn=lambda: ts)
+
+
+def test_diagnostic_runner_never_calls_real_subprocess(monkeypatch, tmp_path):
+    import subprocess as _sp
+    monkeypatch.setattr(_sp, "run", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("diagnostic fake runner must not call subprocess.run")))
+    m = _diag_run(tmp_path)
+    assert m["completed_runs"] == 1
+    assert [s["stage_name"] for s in m["per_run"][0]["stages"]] == list(LIVE_STAGES)
+    assert all(s["status"] == "ok" for s in m["per_run"][0]["stages"])
+
+
+def test_diagnostic_verdicts_clearly_labeled(tmp_path):
+    m = _diag_run(tmp_path)
+    for s in m["per_run"][0]["stages"]:
+        assert "DIAGNOSTIC" in (s["verdict"] or "")   # cannot be confused with real observations
+
+
+def test_diagnostic_request_count_le_20(tmp_path):
+    m = _diag_run(tmp_path)
+    byname = {s["stage_name"]: s for s in m["per_run"][0]["stages"]}
+    rc = byname["phase3d5_sampler"]["request_count"]
+    assert isinstance(rc, int) and rc <= 20
+
+
+def test_diagnostic_command_plan_argv_arrays(tmp_path):
+    m = _diag_run(tmp_path)
+    for s in m["per_run"][0]["stages"]:
+        assert isinstance(s["command_plan"], list)
+        assert s["command_plan"][0] == "python3"
+
+
+def test_diagnostic_artifacts_and_logs_under_run_dir(tmp_path):
+    m = _diag_run(tmp_path)
+    byname = {s["stage_name"]: s for s in m["per_run"][0]["stages"]}
+    assert "snapshots" in byname["phase3d5_sampler"]["artifacts"]
+    assert "records" in byname["phase4a_analyzer"]["artifacts"]
+    assert "aggregate" in byname["phase4b_aggregator"]["artifacts"]
+    for s in m["per_run"][0]["stages"]:
+        # artifacts + logs live under the run dir, never at output_root
+        for p in list(s["artifacts"].values()) + [s["stdout_path"], s["stderr_path"]]:
+            assert "/run_01/" in p.replace(os.sep, "/")
+            assert os.path.exists(p)
+
+
+def test_cli_diagnostic_requires_both_locks_fail_closed(tmp_path):
+    # diagnostic flag without both locks -> fail-closed, nothing created
+    for extra in ([], ["--live-public-data"], ["--enable-real-subprocess"]):
+        r = subprocess.run([sys.executable, ENGINE_PATH, "--runs", "1", "--output-root", str(tmp_path),
+                            "--diagnostic-fake-runner", *extra], capture_output=True, text=True)
+        assert r.returncode != 0
+    assert not any(n.startswith("phase4c_batch_") for n in os.listdir(tmp_path))
+
+
+def test_cli_diagnostic_all_three_flags_runs_fake(tmp_path):
+    r = subprocess.run([sys.executable, ENGINE_PATH, "--runs", "1", "--output-root", str(tmp_path),
+                        "--live-public-data", "--enable-real-subprocess", "--diagnostic-fake-runner"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0
+    batch_dirs = [n for n in os.listdir(tmp_path) if n.startswith("phase4c_batch_")]
+    assert len(batch_dirs) == 1
+    manifests = []
+    for root, _dirs, files in os.walk(os.path.join(tmp_path, batch_dirs[0])):
+        for fn in files:
+            if fn.startswith("phase4c_batch_manifest_"):
+                manifests.append(os.path.join(root, fn))
+    assert len(manifests) == 1
+    with open(manifests[0]) as f:
+        man = json.load(f)
+    stages = man["per_run"][0]["stages"]
+    assert [s["stage_name"] for s in stages] == list(LIVE_STAGES)
+    assert all(s["status"] == "ok" and "DIAGNOSTIC" in (s["verdict"] or "") for s in stages)
+    # logs captured under run_01/logs
+    logs_dir = os.path.join(tmp_path, batch_dirs[0], "run_01", "logs")
+    assert os.path.isdir(logs_dir) and len(os.listdir(logs_dir)) >= 6
+
+
 # ---- safety / isolation ----
 
 def test_engine_no_forbidden_literals():

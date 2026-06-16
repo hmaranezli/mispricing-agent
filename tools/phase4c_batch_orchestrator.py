@@ -294,9 +294,37 @@ def make_concrete_subprocess_stage_executor(command_runner=None, timeout_seconds
         if missing:
             return {**base, "status": "error", "verdict": f"MISSING_ARTIFACT:{missing}",
                     "exit_code": exit_code, "artifacts": artifacts, "request_count": request_count}
-        return {**base, "status": "ok", "verdict": "OK", "exit_code": exit_code,
-                "artifacts": artifacts, "request_count": request_count}
+        return {**base, "status": "ok", "verdict": res.get("verdict_label", "OK"),
+                "exit_code": exit_code, "artifacts": artifacts, "request_count": request_count}
     return executor
+
+
+def _diagnostic_fake_command_runner(argv, *, timeout_seconds):
+    """CLI safety-diagnostic fake runner: NO subprocess, NO network. Writes clearly-labeled fake
+    artifacts under --output-dir for each stage so the concrete executor's artifact gating passes, and
+    returns exit_code=0 with fake stdout/stderr. verdict_label marks stages DIAGNOSTIC_FAKE_OK so they
+    cannot be confused with real public-data observations. 3D5 fake summary request_count=12 (<=20)."""
+    tool = argv[1]
+    rd = argv[argv.index("--output-dir") + 1] if "--output-dir" in argv else "."
+    ts = int(time.time() * 1000)
+    if "phase3_exec_sampler" in tool:
+        with open(os.path.join(rd, f"phase3d5_pilot_snapshots_{ts}.jsonl"), "w", encoding="utf-8") as f:
+            f.write(json.dumps({"asset": "BTC", "interval": "5m", "market_slug": "DIAGNOSTIC_FAKE",
+                                "token_id": "DIAG", "utc_timestamp_ms": ts,
+                                "bids": [[0.49, 1]], "asks": [[0.51, 1]], "diagnostic_fake": True}) + "\n")
+        with open(os.path.join(rd, f"phase3d5_pilot_summary_{ts}.json"), "w", encoding="utf-8") as f:
+            json.dump({"request_count": 12, "diagnostic_fake": True,
+                       "note": "DIAGNOSTIC_FAKE_RUNNER output; NOT real public-data observation"}, f)
+    elif "phase4a" in tool:
+        with open(os.path.join(rd, f"phase4a_gross_edge_records_{ts}.jsonl"), "w", encoding="utf-8") as f:
+            f.write(json.dumps({"phase": "4A_gross_edge", "diagnostic_fake": True}) + "\n")
+        with open(os.path.join(rd, f"phase4a_gross_edge_summary_{ts}.json"), "w", encoding="utf-8") as f:
+            json.dump({"phase": "4A_gross_edge", "diagnostic_fake": True}, f)
+    elif "phase4b" in tool:
+        with open(os.path.join(rd, f"phase4b_gross_edge_aggregate_{ts}.json"), "w", encoding="utf-8") as f:
+            json.dump({"phase": "4B_gross_edge_aggregate", "diagnostic_fake": True}, f)
+    return {"exit_code": 0, "stdout": f"DIAGNOSTIC_FAKE stdout for {os.path.basename(tool)}",
+            "stderr": "", "timed_out": False, "verdict_label": "DIAGNOSTIC_FAKE_OK"}
 
 
 class LiveExecutionRefused(Exception):
@@ -447,16 +475,30 @@ if __name__ == "__main__":  # pragma: no cover
         raise SystemExit("usage: phase4c_batch_orchestrator.py --runs <N> [--output-root <dir>] "
                          "[--live-public-data --enable-real-subprocess] "
                          "(scaffold planner only unless a concrete live runner is wired)")
+    _live = "--live-public-data" in args
+    _realsub = "--enable-real-subprocess" in args
+    _diag = "--diagnostic-fake-runner" in args
     # Command-plan audit mode: records the intended argv plan; executes nothing; needs no live flags.
     if "--command-plan-only" in args:
         m = orchestrate(runs=runs, output_root=output_root, run_fn=command_plan_run_fn)
         print(json.dumps(m, indent=2))
         raise SystemExit(0)
-    # Double-lock gate. concrete_executor is None in this build -> any live request fails closed
-    # BEFORE creating any batch dir; default (no flags) stays the no-op planner.
+    # Diagnostic fake-runner mode: requires BOTH locks; uses the internal fake runner (no real
+    # subprocess, no network) through the same concrete executor / orchestration path.
+    if _diag:
+        if not (_live and _realsub):
+            raise SystemExit("--diagnostic-fake-runner requires BOTH --live-public-data and "
+                             "--enable-real-subprocess (fail-closed).")
+        _ex = make_concrete_subprocess_stage_executor(command_runner=_diagnostic_fake_command_runner)
+        _rf = resolve_live_run_fn(live_public_data=True, enable_real_subprocess=True,
+                                  concrete_executor=_ex)
+        m = orchestrate(runs=runs, output_root=output_root, run_fn=_rf)
+        print(json.dumps(m, indent=2))
+        raise SystemExit(0)
+    # Double-lock gate. Both flags (no diagnostic) -> real concrete subprocess executor; single flag
+    # fails closed BEFORE creating any batch dir; default (no flags) stays the no-op planner.
     try:
-        run_fn = resolve_live_run_fn(live_public_data="--live-public-data" in args,
-                                     enable_real_subprocess="--enable-real-subprocess" in args,
+        run_fn = resolve_live_run_fn(live_public_data=_live, enable_real_subprocess=_realsub,
                                      concrete_executor=None)
     except LiveExecutionRefused as e:
         raise SystemExit(str(e))
