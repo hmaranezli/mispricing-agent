@@ -71,6 +71,15 @@ PILOT_3D3_MAX_BOOK_REQUESTS = 19      # allow attempts beyond target to tolerate
 PILOT_3D3_MAX_TOTAL_REQUESTS = 20     # hard ceiling (1 discovery + <=19 books)
 # pacing + diversity floor reuse PILOT_PACING_S / TS_INTERVAL_S / MIN_PILOT_UNIQUE_SLUGS unchanged.
 
+# ---- Phase 3D4 per-asset discovery expansion (separate discovery call per asset) ----
+PILOT_3D4_ASSETS = ("BTC", "ETH", "SOL", "XRP")
+PILOT_3D4_INTERVAL = "5m"
+PILOT_3D4_TARGET_SNAPSHOTS = 10
+PILOT_3D4_MIN_SNAPSHOTS = 5
+PILOT_3D4_MAX_DISCOVERY_REQUESTS = 4     # one discovery call per asset
+PILOT_3D4_MAX_BOOK_REQUESTS = 16
+PILOT_3D4_MAX_TOTAL_REQUESTS = 20        # hard ceiling (<=4 discovery + <=16 books)
+
 
 class RequestBudget:
     """Single shared request-budget state. One instance is threaded through ALL public HTTP helper
@@ -626,6 +635,204 @@ async def _real_discover_3d3(budget):  # pragma: no cover - live path, not run i
     return out
 
 
+# ---- Phase 3D4 per-asset discovery runner (injectable; live path guarded by CLI, not run in tests) ----
+
+async def pilot_3d4_multi_asset_discovery(*, discover_asset_fn, fetch_book_fn, sleep_fn=None,
+                                          output_dir=OUT_DIR, timestamp_fn=None, budget=None):
+    """Bounded multi-asset pilot with a SEPARATE discovery call per asset (BTC/ETH/SOL/XRP, 5m).
+    <=20 requests (<=4 discovery + <=16 books). discover_asset_fn(asset, budget) is called once per
+    asset; candidates are merged and scheduled fair round-robin (one book/asset before time-series
+    repeats). Verdict gate IDENTICAL to the other pilots (unique_slugs < MIN_PILOT_UNIQUE_SLUGS ->
+    PILOT_INSUFFICIENT_MARKET_DIVERSITY; never relabeled SAMPLE_ONLY). All collaborators injectable.
+    """
+    if sleep_fn is None:
+        import asyncio
+        sleep_fn = asyncio.sleep
+    if timestamp_fn is None:
+        timestamp_fn = lambda: int(time.time())  # noqa: E731
+    budget = budget if budget is not None else RequestBudget(PILOT_3D4_MAX_TOTAL_REQUESTS)
+    now_unix = timestamp_fn()
+
+    jsonl_path = os.path.join(output_dir, f"phase3d4_pilot_snapshots_{now_unix}.jsonl")
+    summary_path = os.path.join(output_dir, f"phase3d4_pilot_summary_{now_unix}.json")
+
+    failure_modes = []
+    discovery_by_asset = collections.OrderedDict()
+    candidates_by_asset = collections.OrderedDict()
+    book_requests = 0
+    books_ok = 0
+    books_failed = 0
+    snapshots = []
+    per_slug = {}
+    books_by_asset = collections.Counter()
+    snapshots_by_asset = collections.Counter()
+    rate_limited = False
+    fatal = None
+
+    def _emit(verdict, partial):
+        type_split = {"new_market_cross_section": sum(1 for _, lab, _ in snapshots if lab == "new"),
+                      "same_slug_time_series": sum(1 for _, lab, _ in snapshots if lab == "ts")}
+        assets_seen = sorted(a for a, n in candidates_by_asset.items() if n > 0)
+        summary = {
+            "verdict": verdict,
+            "phase": "3D4_pilot",
+            "assets": list(PILOT_3D4_ASSETS),
+            "interval": PILOT_3D4_INTERVAL,
+            "target_snapshots": PILOT_3D4_TARGET_SNAPSHOTS,
+            "snapshots_written": len(snapshots),
+            "unique_slugs": len({s for s, _, _ in snapshots}),
+            "snapshots_per_slug": dict(sorted(per_slug.items())),
+            "snapshot_type_split": type_split,
+            "assets_seen": assets_seen,
+            "unique_assets": len(assets_seen),
+            "discovery_by_asset": dict(discovery_by_asset),
+            "candidates_by_asset": dict(candidates_by_asset),
+            "books_by_asset": dict(sorted(books_by_asset.items())),
+            "snapshots_by_asset": dict(sorted(snapshots_by_asset.items())),
+            "request_count": budget.count,
+            "max_total_requests": budget.max_total,
+            "discovery_requests": sum(discovery_by_asset.values()),
+            "book_requests": book_requests,
+            "books_ok": books_ok,
+            "books_failed": books_failed,
+            "failure_modes": sorted(set(failure_modes)),
+            "partial": bool(partial),
+            "output_jsonl": jsonl_path,
+            "output_summary": summary_path,
+            "timestamp_utc": now_unix,
+            "official_f1b": False,
+            "profitability": False,
+        }
+        with open(summary_path, "w", encoding="utf-8") as sf:
+            json.dump(summary, sf, indent=2)
+        return summary
+
+    if os.path.exists(jsonl_path) or os.path.exists(summary_path):
+        failure_modes.append("OUTPUT_EXISTS_NO_OVERWRITE")
+        if os.path.exists(summary_path):
+            return {"verdict": "PILOT_FAILED", "failure_modes": ["OUTPUT_EXISTS_NO_OVERWRITE"],
+                    "output_jsonl": jsonl_path, "output_summary": summary_path, "partial": True,
+                    "phase": "3D4_pilot", "official_f1b": False, "profitability": False}
+        return _emit("PILOT_FAILED", partial=True)
+
+    # discovery: one call per asset (sub-cap PILOT_3D4_MAX_DISCOVERY_REQUESTS)
+    markets = []
+    for asset in PILOT_3D4_ASSETS:
+        if sum(discovery_by_asset.values()) >= PILOT_3D4_MAX_DISCOVERY_REQUESTS:
+            break
+        if budget.count + 1 > budget.max_total:
+            failure_modes.append("BUDGET_STOP")
+            break
+        try:
+            cands = await discover_asset_fn(asset, budget)
+            discovery_by_asset[asset] = 1
+        except BudgetExceeded:
+            failure_modes.append("BUDGET_STOP")
+            break
+        except Exception as e:
+            discovery_by_asset[asset] = 1
+            failure_modes.append(f"DISCOVERY_ERROR:{asset}:{type(e).__name__}")
+            cands = []
+        cands = list(cands or [])
+        candidates_by_asset[asset] = len(cands)
+        markets.extend(cands)
+
+    plan = _pilot_3d3_plan(markets)
+    if not plan:
+        failure_modes.append("NO_OPEN_MARKETS")
+        return _emit("PILOT_FAILED", partial=True)
+
+    try:
+        with open(jsonl_path, "w", encoding="utf-8") as f:
+            from data import clob_price  # pure parsers; lazy import
+            attempts = 0
+            for m, label in plan:
+                if books_ok >= PILOT_3D4_TARGET_SNAPSHOTS:
+                    break
+                if book_requests >= PILOT_3D4_MAX_BOOK_REQUESTS:
+                    failure_modes.append("BOOK_CAP_STOP")
+                    break
+                if budget.count + 1 > budget.max_total:
+                    failure_modes.append("BUDGET_STOP")
+                    break
+                if attempts > 0:
+                    await sleep_fn(TS_INTERVAL_S if label == "ts" else PILOT_PACING_S)
+                attempts += 1
+                slug = m.get("market_slug")
+                token = m.get("token_id")
+                asset = m.get("asset")
+                try:
+                    book = await fetch_book_fn(token, budget)
+                except RateLimited:
+                    rate_limited = True
+                    failure_modes.append("RATE_LIMITED")
+                    break
+                except BudgetExceeded:
+                    failure_modes.append("BUDGET_STOP")
+                    break
+                book_requests += 1
+                books_by_asset[asset] += 1
+                bids = clob_price.sorted_bids(book)
+                asks = clob_price.sorted_asks(book)
+                snap = build_snapshot(asset, PILOT_3D4_INTERVAL, slug, token, bids, asks)
+                tag = P.classify_book(snap)
+                if tag == "TWO_SIDED":
+                    f.write(json.dumps(snap) + "\n")
+                    f.flush()
+                    books_ok += 1
+                    snapshots.append((slug, label, asset))
+                    per_slug[slug] = per_slug.get(slug, 0) + 1
+                    snapshots_by_asset[asset] += 1
+                else:
+                    books_failed += 1
+                    failure_modes.append(tag)
+    except Exception as e:
+        fatal = type(e).__name__
+        failure_modes.append(f"FATAL:{fatal}")
+
+    unique_written = len({s for s, _, _ in snapshots})
+    if fatal:
+        verdict, partial = "PILOT_FAILED", True
+    elif rate_limited:
+        verdict, partial = "PILOT_RATE_LIMITED_PARTIAL", True
+    elif books_ok == 0:
+        failure_modes.append("INSUFFICIENT_BOOK_DATA")
+        verdict, partial = "PILOT_FAILED", True
+    elif unique_written < MIN_PILOT_UNIQUE_SLUGS:
+        verdict = "PILOT_INSUFFICIENT_MARKET_DIVERSITY"
+        partial = books_ok < PILOT_3D4_TARGET_SNAPSHOTS
+    elif books_ok >= PILOT_3D4_MIN_SNAPSHOTS:
+        verdict = "PILOT_SAMPLE_ONLY"
+        partial = books_ok < PILOT_3D4_TARGET_SNAPSHOTS
+    else:
+        verdict, partial = "PILOT_FAILED", True
+    return _emit(verdict, partial=partial)
+
+
+async def _real_discover_3d4_asset(asset, budget):  # pragma: no cover - live path, not run in this task
+    """One Gamma request for a single asset's recent open 5m market(s), tagged by asset, with token ids."""
+    import aiohttp
+    from data import shortterm
+    budget.spend("gamma")
+    timeout = aiohttp.ClientTimeout(total=12)
+    out = []
+    async with aiohttp.ClientSession(timeout=timeout,
+                                     headers={"User-Agent": "phase3d4-pilot/1.0"}) as s:
+        slug = shortterm.slugs_for_now(assets=(asset.lower(),), interval=5, lookback=1)[0]
+        async with s.get(shortterm.GAMMA, params={"slug": slug}) as r:
+            if r.status != 200:
+                return out
+            data = await r.json()
+    arr = data if isinstance(data, list) else data.get("data", [])
+    for m in arr:
+        if m.get("closed") is True:
+            continue
+        tokens = shortterm._parse_token_ids(m.get("clobTokenIds"))
+        if tokens:
+            out.append({"asset": asset, "market_slug": m.get("slug"), "token_id": tokens[0]})
+    return out
+
+
 # ---- full-scale (later, approved) sampling: intentionally NOT implemented/run here ----
 
 async def _sample_cell(*args, **kwargs):  # pragma: no cover - scaffold, not implemented/run here
@@ -695,7 +902,14 @@ if __name__ == "__main__":  # pragma: no cover
                                                      fetch_book_fn=_real_fetch_book,
                                                      sleep_fn=asyncio.sleep))
         print(json.dumps(_summary, indent=2))
+    elif _args == ["--pilot-3d4-multi-asset-discovery"]:
+        import asyncio
+        _summary = asyncio.run(pilot_3d4_multi_asset_discovery(discover_asset_fn=_real_discover_3d4_asset,
+                                                               fetch_book_fn=_real_fetch_book,
+                                                               sleep_fn=asyncio.sleep))
+        print(json.dumps(_summary, indent=2))
     else:
         raise SystemExit("usage: phase3_exec_sampler.py "
-                         "[--dry-run-eth5m | --pilot-eth5m | --pilot-3d3-multi-asset] "
+                         "[--dry-run-eth5m | --pilot-eth5m | --pilot-3d3-multi-asset | "
+                         "--pilot-3d4-multi-asset-discovery] "
                          "(refused: no other invocation is permitted)")

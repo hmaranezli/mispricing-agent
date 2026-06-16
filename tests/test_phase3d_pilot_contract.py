@@ -316,6 +316,82 @@ def test_3d3_verdict_in_closed_set(tmp_path):
     assert summary["profitability"] is False
 
 
+# ---- Phase 3D4 per-asset discovery expansion ----
+
+def _d4_disc(candidates_by_asset):
+    """Injectable per-asset discovery: one call per asset, spends 1 each."""
+    async def d(asset, budget):
+        budget.spend("gamma")
+        n = candidates_by_asset.get(asset, 0)
+        return [{"asset": asset, "market_slug": f"{asset.lower()}-updown-5m-{j}",
+                 "token_id": f"0x{asset}{j}"} for j in range(1, n + 1)]
+    return d
+
+
+def _run_3d4(**kw):
+    kw.setdefault("sleep_fn", _Sleeps())
+    return asyncio.run(S.pilot_3d4_multi_asset_discovery(**kw))
+
+
+def test_3d4_all_assets_discovered_and_round_robin(tmp_path):
+    book = _ma_book()
+    summary = _run_3d4(discover_asset_fn=_d4_disc({"BTC": 1, "ETH": 1, "SOL": 1, "XRP": 1}),
+                       fetch_book_fn=book, output_dir=str(tmp_path), timestamp_fn=lambda: 400)
+    assert set(summary["assets_seen"]) == set(_3D3_ASSETS)
+    assert summary["unique_assets"] == 4
+    # first 4 book fetches cover all four assets (round-robin fairness)
+    assert {_asset_of(t) for t in book.log[:4]} == set(_3D3_ASSETS)
+    assert summary["request_count"] <= 20
+    assert summary["discovery_requests"] == 4
+    assert summary["verdict"] == "PILOT_SAMPLE_ONLY"
+
+
+def test_3d4_single_asset_insufficient_diversity(tmp_path):
+    summary = _run_3d4(discover_asset_fn=_d4_disc({"BTC": 1}), fetch_book_fn=_ma_book(),
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 401)
+    assert summary["verdict"] == "PILOT_INSUFFICIENT_MARKET_DIVERSITY"
+    assert summary["verdict"] != "PILOT_SAMPLE_ONLY"
+    assert summary["unique_slugs"] < S.MIN_PILOT_UNIQUE_SLUGS
+
+
+def test_3d4_summary_per_asset_fields(tmp_path):
+    summary = _run_3d4(discover_asset_fn=_d4_disc({"BTC": 1, "ETH": 1, "SOL": 0, "XRP": 0}),
+                       fetch_book_fn=_ma_book(), output_dir=str(tmp_path), timestamp_fn=lambda: 402)
+    for field in ("discovery_by_asset", "candidates_by_asset", "books_by_asset", "snapshots_by_asset"):
+        assert field in summary, f"missing {field!r}"
+    # all four assets were probed for discovery (one call each)
+    assert set(summary["discovery_by_asset"].keys()) == set(_3D3_ASSETS)
+    # candidates recorded per asset incl. zeros
+    assert summary["candidates_by_asset"]["SOL"] == 0
+    assert summary["candidates_by_asset"]["XRP"] == 0
+    assert summary["candidates_by_asset"]["BTC"] == 1
+
+
+def test_3d4_budget_bounded_at_20(tmp_path):
+    b = S.RequestBudget(S.PILOT_3D4_MAX_TOTAL_REQUESTS)
+    # all one-sided -> book attempts continue to the cap; verify ceiling never exceeded
+    summary = _run_3d4(discover_asset_fn=_d4_disc({"BTC": 6, "ETH": 6, "SOL": 6, "XRP": 6}),
+                       fetch_book_fn=_ma_book(two_sided_assets=set()),
+                       output_dir=str(tmp_path), timestamp_fn=lambda: 403, budget=b)
+    assert summary["max_total_requests"] == 20
+    assert summary["request_count"] <= 20
+    assert b.count <= 20
+
+
+def test_3d4_verdict_in_closed_set_and_flags(tmp_path):
+    summary = _run_3d4(discover_asset_fn=_d4_disc({"BTC": 1, "ETH": 1, "SOL": 1, "XRP": 1}),
+                       fetch_book_fn=_ma_book(), output_dir=str(tmp_path), timestamp_fn=lambda: 404)
+    assert summary["verdict"] in ALLOWED_3D3
+    assert summary["official_f1b"] is False
+    assert summary["profitability"] is False
+    assert summary["phase"] == "3D4_pilot"
+
+
+def test_3d4_outputs_under_data_output_by_default():
+    sample = os.path.join(S.OUT_DIR, "phase3d4_pilot_summary_1.json").replace(os.sep, "/")
+    assert "data/output" in sample
+
+
 # ---- output directory hygiene: artifacts default under data/output, not tools/ ----
 
 def test_default_output_dir_is_data_output_not_tools():
