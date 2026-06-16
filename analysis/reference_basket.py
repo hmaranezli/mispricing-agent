@@ -19,6 +19,10 @@ NOT official_f1b. NOT Chainlink basis. Kâr/arbitraj/trading iddiası YOK.
 
 _CORE_READY_INTERVALS = ("5m", "15m")
 
+# Audited 4h source lineage tokens (caller-supplied, in-memory; NOT read from any file here).
+_EXPECTED_CB_4H_LINEAGE = "AGGREGATED_FROM_1H"
+_EXPECTED_KR_4H_LINEAGE = "NATIVE_INTERVAL_240"
+
 
 def _is_number(v) -> bool:
     """Numeric int/float — bool REDDEDİLİR (True/False fiyat değildir)."""
@@ -43,8 +47,35 @@ def _interval_readiness(interval) -> str:
     return "UNKNOWN"
 
 
+def _resolve_4h_readiness(ctx):
+    """4h readiness from caller-supplied IN-MEMORY audit/lineage context (no file reads).
+
+    Returns (readiness_str, audited_block_or_None, flags). Default/partial/missing → LIMITED_TIMING_APPROX.
+    CORE_READY_FOR_4H only when ctx.ready is True AND coinbase lineage == AGGREGATED_FROM_1H AND kraken
+    lineage == NATIVE_INTERVAL_240. Ready-but-mismatched/missing lineage is NEVER silently blessed:
+    stays LIMITED and emits quality_flags.
+    """
+    if not isinstance(ctx, dict):
+        return "LIMITED_TIMING_APPROX", None, []
+    cb = ctx.get("coinbase_lineage")
+    kr = ctx.get("kraken_lineage")
+    ready = ctx.get("ready", False) is True
+    audited = {"ready_input": ready, "coinbase_lineage": cb, "kraken_lineage": kr}
+    if not ready:
+        return "LIMITED_TIMING_APPROX", audited, []
+    flags = []
+    if cb != _EXPECTED_CB_4H_LINEAGE:
+        flags.append(f"4h_coinbase_lineage_invalid:{cb}")
+    if kr != _EXPECTED_KR_4H_LINEAGE:
+        flags.append(f"4h_kraken_lineage_invalid:{kr}")
+    if flags:
+        return "LIMITED_TIMING_APPROX", audited, flags
+    return "CORE_READY_FOR_4H", audited, []
+
+
 def normalize_reference_basket(spot_sources, perp=None, *, spread_bps_threshold,
-                               anchor_ms=None, freshness_tolerance_ms=None, interval=None):
+                               anchor_ms=None, freshness_tolerance_ms=None, interval=None,
+                               audited_4h_context=None):
     """Public reference basket'i SAF/OFFLINE normalize eder (yukarıdaki sözleşme).
 
     spot_sources: {name: {"price", "quote"="USD", "market"="spot", "ts_ms"}} — USD-only core.
@@ -133,6 +164,14 @@ def normalize_reference_basket(spot_sources, perp=None, *, spread_bps_threshold,
             if _is_number(spot_reference) and spot_reference:
                 basis_bps = (perp_reference - spot_reference) / spot_reference * 1e4
 
+    # interval readiness: 5m/15m unchanged; 4h stays LIMITED unless caller supplies audited context
+    audited_4h = None
+    if interval == "4h":
+        interval_readiness, audited_4h, readiness_flags = _resolve_4h_readiness(audited_4h_context)
+        quality_flags.extend(readiness_flags)
+    else:
+        interval_readiness = _interval_readiness(interval)
+
     return {
         "status": status,
         "spot_reference": spot_reference,
@@ -144,6 +183,7 @@ def normalize_reference_basket(spot_sources, perp=None, *, spread_bps_threshold,
         "used_spot_sources": used,
         "excluded_sources": excluded,
         "quality_flags": quality_flags,
-        "interval_readiness": _interval_readiness(interval),
+        "interval_readiness": interval_readiness,
+        "audited_4h": audited_4h,
         "metadata": _metadata(),
     }
