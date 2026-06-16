@@ -175,6 +175,34 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   implemented fields stay explicit blocked fields; zero-trust stance with no security / data-quality /
   data-integrity guarantee; no calculator; no execution connection). Contract/planning only.
 
+## Phase 5 contract state update (artifact provenance)
+
+- **`37159b5` — Add phase 5 artifact provenance contract.** Docs/tests only; a planning/contract
+  artifact, **not implementation**.
+- The contract (`docs/protocols/phase5_artifact_provenance_contract.md`, pinned by
+  `tests/test_phase5_artifact_provenance_contract.py`) requires every Phase 5 input to link back to
+  **evidence, not assumptions** (a concrete `source_artifact` / `source_field` chain).
+- Required provenance fields include `source_artifact`, `source_field`, `artifact_type`,
+  `artifact_phase`, `batch_id`, `run_id`, `observation_id`, `stage_name`, `verdict_or_status`,
+  `utc_timestamp_ms_or_blocked_reason`, `request_count_or_blocked_reason`,
+  `source_sha256_or_blocked_reason`, `parser_version_or_blocked_reason`,
+  `verifier_result_or_blocked_reason`, and `blocked_reason_if_missing`.
+- **Missing provenance, unknown artifact source, or source-field mismatch** **must** yield
+  `BLOCKED_NEEDS_EVIDENCE`. **No hand-entered values** without a `source_artifact`/`source_field`
+  chain.
+- Provenance **does not authorize execution, trading, readiness, profitability, or net-edge
+  calculation**; it classifies evidence status only as observed / derived / blocked.
+- `source_sha256` / `parser_version` / `verifier_result` are **explicit blocked fields until
+  implemented** (recorded as blocked reasons, never omitted).
+- The **friction** and **no-eligible** contracts depend on this provenance contract for their source
+  chain.
+- **Phase 5 remains planning / interface only** — no implementation, no trading authority.
+- **No data-quality / data-integrity / safety guarantee claim**, and **no readiness / economic /
+  alpha / PnL / profitability / edge claim**, is made by this state.
+- **Next likely contract:** the **fail-closed blocked-state contract**, because provenance now
+  defines when evidence is missing / unknown / mismatched (offline/TDD only, docs+tests, no
+  public-data fetch, no trading). Not yet authorized — it begins behind its own scoped task.
+
 <!-- NO-CLAIMS-START -->
 ## No-claims statement
 
