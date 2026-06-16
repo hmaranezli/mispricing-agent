@@ -242,6 +242,16 @@ async def _scan_and_execute(
 
         gate_result, risk_result = result
 
+        # ── COUNCIL DECISION-AUTHORITY BYPASS (default-safe) ──────────────────
+        # Council/multi-agent output is DIAGNOSTIC ONLY and DISCONNECTED from execution authority.
+        # A council PASS MUST NOT reach execute()/order intent unless explicitly re-authorized via
+        # config.COUNCIL_DECISION_AUTHORITY_ENABLED (default False). Telemetry/shadow above already
+        # ran. This does NOT touch DRY_RUN or any monitor/exit/risk-management logic.
+        if not config.COUNCIL_DECISION_AUTHORITY_ENABLED:
+            print(f"[council_bypass] {slug} council GEÇTİ ama COUNCIL_DECISION_AUTHORITY_ENABLED=False "
+                  f"— execute()/order intent ÇAĞRILMAZ (diagnostic only)")
+            continue
+
         # ── ACIL RISK MODU: yeni entry kill-switch ────────────────────────────
         # Council/telemetri yukarıda çalıştı (shadow_candidates yazıldı). Burada
         # sadece gerçek position open atlanır. Monitor/exit/4h shadow ETKILENMEZ.

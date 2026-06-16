@@ -112,6 +112,11 @@ Any such role must remain outside the deterministic risk/verification/order/exec
 
 **FOLLOW_UP_REMOVE_OR_BYPASS.**
 
+> Update: the bypass has since been implemented — see
+> `docs/protocols/council_decision_authority_bypass.md`. Council decision authority is now
+> disconnected from execution authority by default (`config.COUNCIL_DECISION_AUTHORITY_ENABLED`,
+> default disabled).
+
 Rationale: a council/multi-agent decision layer is connected to the trade / edge / risk /
 order-intent / execution path (via `main_loop._run_council` → `execute`). Per this gate's rules,
 trade-path / order / risk / readiness connections require a separate TDD remove-or-bypass task. This

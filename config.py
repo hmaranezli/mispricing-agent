@@ -37,6 +37,15 @@ HUMAN_APPROVAL_USD   = 50     # Bu tutar uzeri pozisyon insan onayi ister
 # GECICI: Epoch 3 kanama — yeni entry durduruldu (2026-06-08, insan komutu)
 NEW_ENTRIES_ENABLED  = False
 
+# ── COUNCIL DECISION-AUTHORITY KILL SWITCH ──
+# Council/multi-agent layer (scout→verifier→redteam→risk→gate) is DETERMINISTIC Python and was
+# trade-path connected (council pass → execute()). De-risk gate (FOLLOW_UP_REMOVE_OR_BYPASS):
+# council decision authority is DISCONNECTED from execution authority by default. False → a council
+# PASS is DIAGNOSTIC ONLY and MUST NOT reach execute()/order intent; council/telemetry/shadow still
+# run. This flag does NOT bypass DRY_RUN and does NOT enable any live/paper path; execution still
+# routes solely by DRY_RUN when (opt-in) enabled. Default-safe = disabled.
+COUNCIL_DECISION_AUTHORITY_ENABLED = False
+
 # Telemetry V3.1 feature flag (salt-gözlem; guardrail DEĞİL, karar mantığına dokunmaz).
 # False → V3.1 alanları NULL, eski V2 davranışı. Tek-bayrak kill switch.
 TELEMETRY_V31_ENABLED = True

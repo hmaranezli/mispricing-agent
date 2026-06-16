@@ -45,3 +45,17 @@ def _isolate_default_db_path(monkeypatch, tmp_path):
     monkeypatch.setattr(oi, "DB_FILE", str(db))
     monkeypatch.setattr(ep, "DB_FILE", str(db))
     yield
+
+
+@pytest.fixture(autouse=True)
+def _legacy_council_authority(request, monkeypatch):
+    """Council decision authority is now DEFAULT-DISABLED in production (bypass — see
+    docs/protocols/council_decision_authority_bypass.md). Legacy main_loop wiring/accounting tests
+    were written when a council PASS routed to execute(); they validate the POST-council entry-gate
+    and accounting wiring, which is now opt-in. Re-enable the flag for those tests so that coverage
+    is preserved. The dedicated bypass suite (test_council_decision_authority_bypass) OPTS OUT so it
+    can verify the default-safe (disabled) production behavior."""
+    if request.module.__name__.endswith("test_council_decision_authority_bypass"):
+        return
+    import config
+    monkeypatch.setattr(config, "COUNCIL_DECISION_AUTHORITY_ENABLED", True)
