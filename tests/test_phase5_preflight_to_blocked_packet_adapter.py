@@ -175,6 +175,23 @@ def test_no_eligible_or_unknown_status_raises_state_error():
             adapt_preflight_result_to_blocked_packet(r)
 
 
+# Hardening: a non-string / hostile status must fail closed without triggering repr/str/eq.
+def test_hostile_non_string_status_raises_state_error_without_side_effects():
+    class _HostileStatus:
+        def __repr__(self):
+            raise AssertionError("repr(status) must not be called")
+        def __str__(self):
+            raise AssertionError("str(status) must not be called")
+        def __eq__(self, other):
+            raise AssertionError("status __eq__ must not be called")
+        def __hash__(self):
+            return 0
+
+    r = dataclasses.replace(_blocked_result(), status=_HostileStatus())
+    with pytest.raises(PreflightToBlockedPacketStateError):
+        adapt_preflight_result_to_blocked_packet(r)
+
+
 # 9. never None / empty / default for allowed inputs
 def test_allowed_inputs_never_return_none():
     for r in (_blocked_result(), _violation_result()):

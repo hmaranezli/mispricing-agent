@@ -58,10 +58,16 @@ def adapt_preflight_result_to_blocked_packet(result):
             + type(result).__name__
         )
 
+    # Prove the status is a plain string before any membership comparison, so a hostile/non-string
+    # status can never trigger __eq__/__repr__/__str__ side effects. Message uses only the type name.
+    if type(result.status) is not str:
+        raise PreflightToBlockedPacketStateError(
+            "adapter status must be a str, not " + type(result.status).__name__
+        )
     if result.status not in _CONVERTIBLE_STATUSES:
         raise PreflightToBlockedPacketStateError(
-            "adapter converts only blocked/contract-violation results; refusing status "
-            + repr(result.status)
+            "adapter converts only blocked/contract-violation results; refusing an unsupported "
+            "status string"
         )
 
     return make_blocked_packet(
