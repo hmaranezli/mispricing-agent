@@ -424,6 +424,14 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
 - **The net-edge engine is still not authorized.**
 - Next step, if pursued, can only be a **separately authorized, component-scoped implementation-
   planning task** that satisfies the entrance-criteria entry packet — **not implementation**.
+- First component-scoped implementation-planning artifact recorded: see
+  `docs/handoff/phase5_input_provenance_preflight_implementation_planning.md` (pinned by
+  `tests/test_phase5_input_provenance_preflight_implementation_planning.py`) — component
+  `phase5_input_provenance_preflight`; declares source contracts / artifacts / fields, planned input
+  checks (incl. `source_sha256`/`parser_version`/`verifier_result` blocked-reason fields and
+  chain-break fail conditions), the `PLANNING_GATE_OBSERVED` / `PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE` /
+  `PLANNING_GATE_CONTRACT_VIOLATION` status mapping, and the required failing-test plan. Authorizes no
+  implementation. (Committed-hash state-update recorded by the follow-up memory task.)
 - Any later implementation **must** proceed **component-by-component with failing tests first and
   declared provenance**.
 
