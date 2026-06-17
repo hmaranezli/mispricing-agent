@@ -332,30 +332,47 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   no edge claim.
 - **Chainlink/F1b is not the active task here.**
 
-## Phase 5 contract backlog pointer (offline fixture)
+## Phase 5 offline fixture closeout
 
-- `docs/protocols/phase5_offline_fixture_contract.md` (pinned by
-  `tests/test_phase5_offline_fixture_contract.py`) — offline fixture contract: offline fixtures are
-  **synthetic diagnostic examples only**; fixture presence is not market truth / evidence quality /
-  source truth / readiness / economic validity / net-edge input; fixtures pin boundary-case
-  invariants only (prove no correctness/stationarity/economic value); **static, read-only constants**
-  discipline (no dynamic construction / generator / factory / loader / parser / mutation /
-  randomization / timestamp-now / env / network dependence); required fixture cases
-  `eligible_minimal_fixture`, `no_eligible_fixture`, `blocked_missing_provenance_fixture`,
-  `blocked_unresolved_friction_placeholder_fixture`, `malformed_or_unknown_field_fixture`,
-  `forbidden_claim_reporting_fixture`, each with fail-closed invariants; preserves input-schema
-  categories, observed/derived/blocked vocabulary, `BLOCKED_NEEDS_EVIDENCE` semantics, and
-  provenance requirements; implementing a fixture engine/generator/factory/parser/loader is **out of
-  scope / contract violation** for that task. Depends on all prior Phase 5 contracts. Contract/planning
-  only. (Committed-hash state-update recorded by the follow-up memory task.)
+- **`eb2b6a9` — Add phase 5 offline fixture contract.** Docs/tests only; a contract/planning artifact
+  only, **not implementation**.
+- Offline fixtures are **synthetic diagnostic examples only**. Fixture presence is **not** market
+  truth, evidence quality, source truth, readiness, economic validity, profitability evidence,
+  paper/live evidence, or net-edge input.
+- Fixtures **pin boundary-case invariants only**; they do not prove schema validity, correctness,
+  stationarity, or economic value. Fixtures are **test/doc-contract scoped only, not production
+  inputs**.
+- Source prohibitions: no copying generated artifacts, no public-data derivation, no
+  auth/secrets/balances/orders/live-CLOB/real-trading data, no runtime data/output artifacts.
+- **Static, read-only constants** discipline: no dynamic construction, no constructor/generator/
+  factory, no runtime mutation, no randomization, no timestamp-now, no env dependency, no network
+  dependency.
+- Implementing a **fixture engine/generator/factory/parser/loader is out of scope / contract
+  violation**.
+- Required fixture cases: `eligible_minimal_fixture`, `no_eligible_fixture`,
+  `blocked_missing_provenance_fixture`, `blocked_unresolved_friction_placeholder_fixture`,
+  `malformed_or_unknown_field_fixture`, `forbidden_claim_reporting_fixture` — each with fail-closed
+  invariants.
+- Fixture expected outputs must contain **no economic/readiness/execution/net-edge/guarantee claims**.
+- Fixture records preserve all 9 input-schema categories, the observed/derived/blocked vocabulary,
+  `BLOCKED_NEEDS_EVIDENCE` semantics, and `source_artifact`/`source_field` provenance requirements;
+  blocked fixture records must not downgrade blocked into zero, false, pass, observed, derived,
+  eligible, executable, tradable, ready, profitable, or net-edge input.
+- Depends on all prior Phase 5 contracts.
+- **Phase 5 remains contract/planning only** — no implementation, no calculator, no net-edge, no
+  friction engine, no fixture engine/generator/factory/parser/loader, no trading authority, no
+  paper/live readiness, no alpha, no PnL, no profitability, no edge claim.
+- **Chainlink/F1b is not the active task here.**
 
-## Next position (after input-schema refinement closeout)
+## Next position (after offline fixture closeout)
 
 - Current position: **Master F → Phase 5 contract/planning layer.**
-- The **input-schema refinement slice is recorded**, but remaining Phase 5 gaps still require
-  separate authorization.
+- The **offline fixture contract slice is recorded**.
 - **The net-edge engine is still not authorized.**
-- Remaining likely Phase 5 gap: the **offline fixture contract**.
+- The previously recorded likely Phase 5 contract gap has now been addressed as a contract/planning
+  artifact.
+- Next likely step is a **separate read-only Phase 5 contract-set gap/completeness audit**, not
+  implementation.
 - Any later implementation **must** proceed **component-by-component with failing tests first and
   declared provenance**.
 
