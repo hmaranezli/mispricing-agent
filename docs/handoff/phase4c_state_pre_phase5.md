@@ -533,29 +533,52 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   net-edge/friction engine/trading/paper-live/endpoints/secrets/Telegram/process-control; the scan
   asserts no positive property and **authorizes no downstream or implementation work**.
 
-## Next position (after phase5_input_provenance_preflight implementation + recursive hardening)
+## Phase 5 `phase5_blocked_result_boundary` planning closeout
 
-- Current position: **Master F → Phase 5 implementation layer (first component landed).**
+- **`c7a49aa` — Add phase5 blocked result boundary planning.** Docs/tests only; a component-scoped
+  **implementation-planning artifact only, not implementation**; it **authorizes no implementation**.
+- `component_name`: `phase5_blocked_result_boundary`.
+- **Purpose:** standardizes how `PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE` and
+  `PLANNING_GATE_CONTRACT_VIOLATION` results are carried forward as an **error/state propagation
+  boundary**.
+- It is **not a validator, parser, calculator, reporting/economic engine, or runtime component**.
+- Artifact (`docs/handoff/phase5_blocked_result_boundary_implementation_planning.md`, pinned by
+  `tests/test_phase5_blocked_result_boundary_implementation_planning.py`).
+- **Planned future packet/header fields:** `component_name`, `origin_component`,
+  `origin_result_status`, `status`, `blocked_status`, `reason_code`, `missing_or_invalid_field`,
+  `source_contract`, `source_artifact`, `source_field`, `deterministic_next_action`,
+  `human_review_required`, `may_retry_after_evidence`, `created_from_contract`, `boundary_version`.
+- **Hard prohibitions:** no truthiness handling; no bool/int/float/string coercion; no conversion to
+  0/False/None/empty container/eligible/observed/derived/pass/cost/edge/net_edge/readiness/
+  profitability/economic value; no try/except masking into defaults; no downstream mutation; no
+  downgrade from blocked/violation to observed/derived/eligible; no human review as a source-evidence
+  substitute.
+- **Allowed handling:** an explicit boundary API or a declared frozen packet type only; pass-through
+  unchanged or fail-closed to a contract violation; deterministic next action remains non-execution
+  authority.
+- **No-claims boundary:** the blocked packet is not evidence quality, not source truth, not data
+  quality, not readiness, not safety, not economic validity, not profitability evidence, not edge,
+  not net-edge input, not trading instruction, and not execution authority.
+- **RED → GREEN:** 17 tests failed first (doc missing); GREEN 17 passed; scoped guard set 92 passed;
+  `tools/phase45_evidence_verifier.py` → PASS.
+- **Verification issue fixed during the task:** the handoff edit temporarily removed the
+  `NO-CLAIMS-START` marker, so the verifier failed on no-claims phrases that stopped being stripped;
+  the marker was restored and the verifier returned to PASS.
+
+## Next position (after phase5_blocked_result_boundary planning closeout)
+
+- Current position: **Master F → Phase 5 implementation + planning layer.**
 - `phase5_input_provenance_preflight` has **implementation + recursive hardening recorded** (three
-  slices: `e7da765`, `5afb87d`, `d26c24a`); it authorizes no downstream or implementation work.
+  slices: `e7da765`, `5afb87d`, `d26c24a`).
+- `phase5_blocked_result_boundary` has **planning recorded** (`c7a49aa`); **implementation remains
+  unauthorized**.
 - **The net-edge engine is still not authorized.**
 - Next step, if pursued, can only be a **separately authorized, component-scoped, failing-tests-first,
-  declared-provenance** offline/TDD implementation or planning task for the next Phase 5 component —
-  **not implementation** of anything beyond that.
+  declared-provenance** offline/TDD implementation or planning task — **not implementation** of
+  anything beyond that.
 - Any later implementation **must** proceed **component-by-component with failing tests first and
   declared provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
-
-### Pending hash-free pointer — phase5_blocked_result_boundary planning (committed-hash closeout deferred)
-
-- A **component implementation-planning artifact** for `phase5_blocked_result_boundary` has landed:
-  `docs/handoff/phase5_blocked_result_boundary_implementation_planning.md`, pinned by
-  `tests/test_phase5_blocked_result_boundary_implementation_planning.py`.
-- It is **implementation-planning only, not implementation**; it **authorizes no implementation**.
-  The component is an **error/state propagation boundary** (not a validator/parser/calculator/
-  reporting/economic engine) that plans how `PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE` and
-  `PLANNING_GATE_CONTRACT_VIOLATION` results are carried forward without silent downgrade.
-- This is a **hash-free pointer**; its committed-hash closeout is deferred to a separate memory task.
 
 <!-- NO-CLAIMS-START -->
 ## No-claims statement
