@@ -397,6 +397,12 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
 - **The net-edge engine is still not authorized.**
 - Next likely step is a **separately authorized implementation-planning gate entrance-criteria task**,
   **not implementation**.
+- See `docs/protocols/phase5_implementation_planning_gate_entrance_criteria.md` (pinned by
+  `tests/test_phase5_implementation_planning_gate_entrance_criteria.py`) — entrance-criteria contract
+  defining gate statuses (`PLANNING_GATE_OBSERVED` / `PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE` /
+  `PLANNING_GATE_CONTRACT_VIOLATION`), component-by-component lock, per-component preflight, no-claims
+  continuity, no silent defaults, and the future implementation-planning entry packet. Authorizes no
+  implementation. (Committed-hash state-update recorded by the follow-up memory task.)
 - Any later implementation **must** proceed **component-by-component with failing tests first and
   declared provenance**.
 
