@@ -266,28 +266,47 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   PUBLIC_REFERENCE_BASKET / SURROGATE_BASKET integration, data fetch, friction implementation, or
   net-edge work.
 
-## Phase 5 contract backlog pointer (no-claims / reporting schema)
+## Phase 5 no-claims/reporting schema closeout
 
-- `docs/protocols/phase5_no_claims_reporting_schema_contract.md` (pinned by
-  `tests/test_phase5_no_claims_reporting_schema_contract.py`) — no-claims / reporting schema contract:
-  reporting is **output-vocabulary only** (authorizes no computation/aggregation/execution/trading/
-  readiness); allowed report states observed / derived / blocked with `BLOCKED_NEEDS_EVIDENCE`
-  canonical; required reporting-record fields; blocked reports emit no derived/fallback/zero/guessed
-  values; **must not convert** states into alpha/PnL/edge/profitability/readiness/net-edge/economic-
-  inference/guarantee claims; every report must carry the no-claims block and contract-planning
-  framing; human review must not convert blocked into observed/derived; fail-closed on missing
-  no-claims / provenance / unknown source contract / forbidden claim wording. Depends on the
-  interface, friction, no-eligible, provenance, fail-closed, and observation/discovery cost contracts.
-  Contract/planning only. (Committed-hash state-update recorded by the follow-up memory task.)
+- **`f9e6260` — Add phase 5 no claims reporting schema contract.** Docs/tests only; a
+  contract/planning artifact only, **not implementation**.
+- Reporting is **output-vocabulary only**; it authorizes no computation, aggregation, execution,
+  trading, readiness, paper/live status, or economic inference.
+- Allowed reporting states are `observed`, `derived`, `blocked`; **`BLOCKED_NEEDS_EVIDENCE` is
+  canonical** when evidence is missing/unknown/mismatched.
+- The contract (`docs/protocols/phase5_no_claims_reporting_schema_contract.md`, pinned by
+  `tests/test_phase5_no_claims_reporting_schema_contract.py`) defines all 12 required reporting-record
+  fields: `report_schema_version`, `report_scope`, `report_status`, `source_contract`,
+  `source_artifact_or_blocked_reason`, `source_field_or_blocked_reason`, `provenance_status`,
+  `observed_or_derived_value_or_blocked_reason`, `blocked_reason_if_any`,
+  `deterministic_next_action_if_blocked`, `no_claims_block_present`, and
+  `created_utc_timestamp_ms_or_blocked_reason`.
+- Blocked reports output only the blocked reason, source/provenance context, and deterministic next
+  action; they **must not** output derived estimates, fallback values, zero values, or guessed values.
+- Reports **must not convert** observed/derived/blocked states into alpha, PnL, edge, profitability,
+  readiness, paper readiness, live readiness, execution authority, trading instruction, net-edge,
+  economic inference, safety guarantee, data-quality guarantee, or data-integrity guarantee.
+- **Every future Phase 5 report must carry the no-claims block** and sample / contract-planning
+  framing. **Human/operator review must not convert blocked evidence into observed or derived
+  reporting.**
+- Missing no-claims block, missing provenance context, unknown source contract, or forbidden claim
+  wording **must fail closed** to `BLOCKED_NEEDS_EVIDENCE` or contract violation as appropriate.
+- It depends on the interface, friction, no-eligible, provenance, fail-closed, and
+  observation/discovery cost contracts.
+- **Phase 5 remains contract/planning only** — no implementation, no calculator, no net-edge
+  aggregation, no friction engine, no trading authority, no paper/live readiness, no alpha, no PnL,
+  no profitability, no edge claim.
+- **Chainlink/F1b is not the active task here.** This closeout does **not** authorize
+  PUBLIC_REFERENCE_BASKET / SURROGATE_BASKET integration, data fetch, friction implementation,
+  input-schema implementation, fixture engine, or net-edge work.
 
-## Next position (after observation/discovery cost closeout)
+## Next position (after no-claims/reporting closeout)
 
 - Current position: **Master F → Phase 5 contract/planning layer.**
-- The **observation/discovery cost schema slice is recorded**, but remaining Phase 5 gaps still
-  require separate authorization.
+- The **no-claims/reporting schema slice is recorded**, but remaining Phase 5 gaps still require
+  separate authorization.
 - **The net-edge engine is still not authorized.**
-- Remaining likely Phase 5 contract gaps include **no-claims / reporting, offline fixture, and any
-  input-schema refinement still needed**.
+- Remaining likely Phase 5 contract gaps include **offline fixture and input-schema refinement**.
 - Any later implementation **must** proceed **component-by-component with failing tests first and
   declared provenance**.
 
