@@ -266,6 +266,20 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   PUBLIC_REFERENCE_BASKET / SURROGATE_BASKET integration, data fetch, friction implementation, or
   net-edge work.
 
+## Phase 5 contract backlog pointer (no-claims / reporting schema)
+
+- `docs/protocols/phase5_no_claims_reporting_schema_contract.md` (pinned by
+  `tests/test_phase5_no_claims_reporting_schema_contract.py`) — no-claims / reporting schema contract:
+  reporting is **output-vocabulary only** (authorizes no computation/aggregation/execution/trading/
+  readiness); allowed report states observed / derived / blocked with `BLOCKED_NEEDS_EVIDENCE`
+  canonical; required reporting-record fields; blocked reports emit no derived/fallback/zero/guessed
+  values; **must not convert** states into alpha/PnL/edge/profitability/readiness/net-edge/economic-
+  inference/guarantee claims; every report must carry the no-claims block and contract-planning
+  framing; human review must not convert blocked into observed/derived; fail-closed on missing
+  no-claims / provenance / unknown source contract / forbidden claim wording. Depends on the
+  interface, friction, no-eligible, provenance, fail-closed, and observation/discovery cost contracts.
+  Contract/planning only. (Committed-hash state-update recorded by the follow-up memory task.)
+
 ## Next position (after observation/discovery cost closeout)
 
 - Current position: **Master F → Phase 5 contract/planning layer.**

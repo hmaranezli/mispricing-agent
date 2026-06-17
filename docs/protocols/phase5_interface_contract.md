@@ -93,6 +93,9 @@ only, with no values authorized here:
 - Any future report must carry the standard no-claims block and sample-only framing.
 - Reports may state observed deltas and operator-attention signals; they must not state economic
   conclusions.
+- This reporting boundary is refined at output-vocabulary level by the
+  [No-Claims / Reporting Schema Contract](phase5_no_claims_reporting_schema_contract.md)
+  (output-vocabulary only; no state→claim conversion; fail-closed to `BLOCKED_NEEDS_EVIDENCE`).
 
 <!-- PROHIBITED-OUTPUTS-START -->
 ### Forbidden outputs and claims
