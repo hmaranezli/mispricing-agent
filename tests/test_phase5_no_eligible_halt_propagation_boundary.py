@@ -220,6 +220,29 @@ def test_pass_through_wrong_type_no_stringify_or_introspect():
         pass_through_no_eligible_halt_packet(_Hostile())
 
 
+# Hardening: pass-through accepts only the exact NoEligibleHaltPacket type, not subclasses.
+def test_pass_through_rejects_subclass():
+    class _Sub(NoEligibleHaltPacket):
+        def __repr__(self):
+            raise AssertionError("repr must not be called on subclass")
+        def __str__(self):
+            raise AssertionError("str must not be called on subclass")
+        def __eq__(self, other):
+            raise AssertionError("eq must not be called on subclass")
+        def __hash__(self):
+            return 0
+
+    sub = object.__new__(_Sub)
+    assert isinstance(sub, NoEligibleHaltPacket)  # it IS a subclass instance
+    with pytest.raises(NoEligibleTypeError):
+        pass_through_no_eligible_halt_packet(sub)
+
+
+def test_pass_through_exact_type_still_identity():
+    p = make_no_eligible_halt_packet(**_valid_kwargs())
+    assert pass_through_no_eligible_halt_packet(p) is p
+
+
 # no BlockedPacket reuse
 def test_not_blocked_packet():
     p = make_no_eligible_halt_packet(**_valid_kwargs())

@@ -170,8 +170,10 @@ def pass_through_no_eligible_halt_packet(packet):
     NO_ELIGIBLE, and never calls str/repr or introspects the offending object (only its type name is
     used in the message).
     """
-    if isinstance(packet, NoEligibleHaltPacket):
+    # Exact-type check (not isinstance): the packet is an atomic sealed carrier, so a subclass — which
+    # could carry hidden state or override behavior — must not pass through as a valid packet.
+    if type(packet) is NoEligibleHaltPacket:
         return packet
     raise NoEligibleTypeError(
-        "pass-through requires a NoEligibleHaltPacket, not " + type(packet).__name__
+        "pass-through requires an exact NoEligibleHaltPacket, not " + type(packet).__name__
     )
