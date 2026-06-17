@@ -388,21 +388,42 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   friction engine, no fixture engine/generator/factory/parser/loader, no trading authority, no
   paper/live readiness, no alpha, no PnL, no profitability, no edge claim.
 
-## Next position (after contract-set audit closeout)
+## Phase 5 implementation-planning gate entrance-criteria closeout
+
+- **`0b12ea1` — Add phase 5 implementation planning gate entrance criteria.** Docs/tests only; a
+  contract/planning artifact only, **not implementation**; it **authorizes no implementation**.
+- Purpose: defines the narrow entrance criteria that must be satisfied **before** any future Phase 5
+  implementation-planning task may begin. It defines how a future component may become eligible for a
+  separately authorized planning task; it does not select or implement a component.
+- The gate (`docs/protocols/phase5_implementation_planning_gate_entrance_criteria.md`, pinned by
+  `tests/test_phase5_implementation_planning_gate_entrance_criteria.py`) defines three planning gate
+  statuses: `PLANNING_GATE_OBSERVED`, `PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE`, and
+  `PLANNING_GATE_CONTRACT_VIOLATION` (with `BLOCKED_NEEDS_EVIDENCE` remaining canonical for
+  missing/unknown/mismatched evidence).
+- **Component-by-component lock:** future implementation planning must be component-scoped; no global
+  Phase 5 plan may bundle multiple components unless separately authorized; each component must
+  declare source contracts/artifacts/fields, blocked behavior, and tests before planning.
+- **Per-component preflight/audit requirement:** each component must pass a scoped preflight/audit
+  gate before implementation planning, verifying provenance, fail-closed behavior, no-claims
+  continuity, fixture/test scope, and the absence of stale hash-free pointers; if the component lacks
+  evidence, source fields, or blocked semantics, the planning gate must block.
+- **No-claims continuity and no silent defaults:** planning documents must not convert
+  observed/derived/blocked states into alpha/PnL/edge/net-edge/profitability/readiness/trading-
+  instruction/execution-authority/guarantee claims, and must not assume future implementation will
+  produce economic value; missing/malformed/unresolved/unknown/mismatched inputs must not become
+  zero/false/pass/default/floor/baseline/assumed/guessed/eligible/executable/tradable/ready/profitable/
+  net-edge input.
+- **Any later implementation still requires a separate explicit authorization, failing tests first,
+  declared provenance, and component-scoped work.**
+
+## Next position (after implementation-planning gate entrance-criteria closeout)
 
 - Current position: **Master F → Phase 5 contract/planning layer.**
-- The **contract-set gap/completeness audit is recorded**.
-- The audit **observed no gap within the checked docs/tests/handoff scope, but authorizes no
-  implementation**.
+- The **implementation-planning gate entrance-criteria contract is recorded**; it authorizes no
+  implementation.
 - **The net-edge engine is still not authorized.**
-- Next likely step is a **separately authorized implementation-planning gate entrance-criteria task**,
-  **not implementation**.
-- See `docs/protocols/phase5_implementation_planning_gate_entrance_criteria.md` (pinned by
-  `tests/test_phase5_implementation_planning_gate_entrance_criteria.py`) — entrance-criteria contract
-  defining gate statuses (`PLANNING_GATE_OBSERVED` / `PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE` /
-  `PLANNING_GATE_CONTRACT_VIOLATION`), component-by-component lock, per-component preflight, no-claims
-  continuity, no silent defaults, and the future implementation-planning entry packet. Authorizes no
-  implementation. (Committed-hash state-update recorded by the follow-up memory task.)
+- Next step, if pursued, can only be a **separately authorized, component-scoped implementation-
+  planning task** that satisfies the entrance-criteria entry packet — **not implementation**.
 - Any later implementation **must** proceed **component-by-component with failing tests first and
   declared provenance**.
 
