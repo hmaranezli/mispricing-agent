@@ -669,7 +669,40 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
 - **No calculator / net-edge / friction / trading / reporting-economic / runtime / paper / live
   readiness is authorized** by this batch.
 
-## Next position (after halt-propagation integration batch closeout)
+## Closeout — phase5_observable_cost_friction_boundary batch
+
+- Planning commit `f74db3f` (Add phase5 observable cost friction planning).
+- Implementation commit `e97469d` (Implement phase5 observable cost observation).
+- `component_name`: **`phase5_observable_cost_friction_boundary`**.
+- Purpose: a **single atomic observable-cost/friction observation carrier** — **not a calculator,
+  not a parser, not an aggregate**. It is a pre-net-edge component that carries exactly one observed
+  cost/friction fact with provenance.
+- `ObservableCostObservation` implemented as **frozen / `repr=False` / `init=False`** with **exactly
+  12 fields** (`component_name`, `origin_component`, `origin_result_status`, `status`,
+  `cost_component_type`, `signed_decimal_value`, `unit`, `source_contract`, `source_artifact`,
+  `source_field`, `zero_cost_evidence`, `boundary_version`).
+- `make_observable_cost_observation(*, ...)` is **keyword-only** and enforces exact
+  `type(value) is str`, non-empty, non-whitespace, no `None`, no containers, no bool/int/float/object,
+  and **no str subclasses**.
+- `signed_decimal_value` is a **canonical decimal string only** (`-?\d+(\.\d+)?`): **no float
+  parsing, no binary-float arithmetic, no rounding, no normalization**.
+- Sign convention preserved: **positive = cost, negative = rebate/credit, zero = explicitly observed
+  zero only** (never clipped, absolutized, or converted).
+- Zero-cost epistemology: numerically zero values **require explicit `zero_cost_evidence`**;
+  `OBSERVABLE_COST_ZERO_EVIDENCE_NOT_APPLICABLE` is allowed **only for non-zero** values;
+  **missing-as-zero / default-zero are impossible**.
+- **Anti-truthiness** (`__bool__`/`__len__`) and **anti-coercion** (`__int__`/`__float__`/
+  `__complex__`/`__index__`/`__str__`/`__bytes__`) implemented; safe `__repr__` exposes only limited
+  debug fields (component_name, status, cost_component_type, unit) and **no value/provenance/evidence**.
+- `reject_misrouted_halt_carrier(payload)` raises **`MisroutedHaltCarrierError`** for **exact
+  `BlockedPacket` / `NoEligibleHaltPacket` only** (no isinstance; subclasses → no-op `None`); the
+  offending object is **never coerced/repr'd/introspected** (only `type(payload).__name__`).
+- **No aggregate/economic fields or behavior**: no `total_cost`, `net_cost`, `effective_cost`,
+  `gross_edge`, `net_edge`, `profit`, `readiness`, or `eligibility`.
+- **No adapter / parser / loader / fee model / slippage model / aggregation / calculator / reporting
+  / trading / paper-live / net-edge work is authorized** by this batch.
+
+## Next position (after observable-cost/friction batch closeout)
 
 - Current position: **Master F → Phase 5 implementation + planning layer.**
 - `phase5_input_provenance_preflight`: implementation + recursive hardening (`e7da765`, `5afb87d`,
@@ -680,12 +713,14 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
   hardening (`ea200cf`, `0038949`).
 - `phase5_no_eligible_halt_propagation_boundary`: planning (`6337921`) + implementation + scalar-field
   + pass-through exact-type hardening (`6a2fbfe`, `4f6c28d`, `d77b182`).
-- `phase5_halt_propagation_integration_boundary`: **planning (`e53e6ab`) + implementation
-  (`345330a`)** — exact-type halt-carrier routing is **planned and implemented**.
-- **No net-edge / calculator / friction / trading / reporting / runtime / paper / live readiness is
-  authorized.**
-- **Next likely step:** a **separately authorized** observable-cost / friction boundary **planning**
-  task — **docs + tests only, not implementation** unless separately authorized.
+- `phase5_halt_propagation_integration_boundary`: planning (`e53e6ab`) + implementation
+  (`345330a`) — exact-type halt-carrier routing is planned and implemented.
+- `phase5_observable_cost_friction_boundary`: **planning (`f74db3f`) + atomic implementation
+  (`e97469d`)** — single observed-cost/friction observation carrier is **planned and implemented**.
+- **No net-edge / calculator / friction-aggregation / trading / reporting / runtime / paper / live
+  readiness is authorized.**
+- **Next likely step:** a **separately authorized** typed-result-to-observation **adapter planning**
+  task — **docs + tests only, not a raw parser and not implementation** unless separately authorized.
 - Any later work **must** proceed **component-by-component with failing tests first and declared
   provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
