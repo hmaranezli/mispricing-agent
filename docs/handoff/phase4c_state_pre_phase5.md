@@ -565,19 +565,65 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   `NO-CLAIMS-START` marker, so the verifier failed on no-claims phrases that stopped being stripped;
   the marker was restored and the verifier returned to PASS.
 
-## Next position (after phase5_blocked_result_boundary planning closeout)
+## Phase 5 blocked-result-boundary + preflight-to-blocked-packet adapter batch closeout
+
+This batch covers five committed slices: `285faf9`, `8ae8455`, `1d8c50a`, `ea200cf`, `0038949`.
+
+### blocked_result_boundary — implementation + construction hardening
+
+- **`285faf9` — Implement phase5 blocked result boundary.** **`8ae8455` — Harden phase5 blocked
+  result boundary construction.** Code + tests only (`phase5/blocked_result_boundary.py`, pinned by
+  `tests/test_phase5_blocked_result_boundary.py`).
+- `BlockedPacket` is a **frozen, scalar-only** dataclass: **anti-truthiness** (`__bool__`/`__len__`
+  raise `BlockedPacketTruthinessError`) and **anti-coercion** (`__int__`/`__float__`/`__complex__`/
+  `__index__`/`__str__`/`__bytes__` raise `BlockedPacketCoercionError`, both `TypeError` subclasses);
+  no str/bytes/numeric conversion; **safe `repr` only** (component_name/status/reason_code, no
+  provenance values, no truth/data-quality/economic/readiness meaning).
+- `make_blocked_packet` is **explicit keyword-only**, **rejects container values including tuple**
+  (list/dict/set/frozenset/tuple → `BlockedPacketConstructionError`), **rejects None for required
+  fields**, and accepts None only for the documented nullable fields (`blocked_status`,
+  `missing_or_invalid_field`). It accepts no arbitrary dict and performs no attribute introspection.
+- `pass_through_blocked_packet` returns the identical packet for a `BlockedPacket`; for a malformed
+  non-packet it **fails closed** to a `PLANNING_GATE_CONTRACT_VIOLATION` packet **without
+  str/repr/introspection**, carrying the sanitized `type(obj).__name__` through the existing
+  `origin_result_status` field and the three unknown-source sentinels.
+
+### preflight_to_blocked_packet_adapter — planning + implementation + state-guard hardening
+
+- **`1d8c50a` — Add phase5 preflight to blocked packet adapter planning** (docs/tests only). **`ea200cf`
+  — Implement phase5 preflight to blocked packet adapter.** **`0038949` — Harden phase5 preflight
+  adapter state guard.** (`phase5/preflight_to_blocked_packet_adapter.py`, pinned by
+  `tests/test_phase5_preflight_to_blocked_packet_adapter.py`; planning artifact
+  `docs/handoff/phase5_preflight_to_blocked_packet_adapter_implementation_planning.md`.)
+- The adapter is a **format boundary**: it accepts **only a typed/frozen `PreflightResult`**.
+- It **rejects raw dict / generic Mapping / arbitrary object / attribute-guessed input** with
+  `PreflightToBlockedPacketTypeError` (a `TypeError` subclass) **before any attribute is read** (the
+  `isinstance` type guard runs first; only `type(obj).__name__` is used in the message).
+- It converts **only** `PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE` and `PLANNING_GATE_CONTRACT_VIOLATION`
+  into a `BlockedPacket` via `make_blocked_packet` with an explicit 10→15 keyword field map (no
+  downgrade, no upgrade, no default/empty/false/zero conversion).
+- It **rejects `PLANNING_GATE_OBSERVED` / NO_ELIGIBLE / unknown** states with
+  `PreflightToBlockedPacketStateError` (a `ValueError` subclass); it never returns None/empty/default
+  and never silently passes.
+- **State-guard hardening:** a **non-string status is rejected before the membership comparison**, so
+  a hostile status can never reach a `__eq__`/`__repr__`/`__str__` path; the invalid-status message
+  uses only `type(...).__name__` or a fixed phrase.
+- **NO_ELIGIBLE remains a separate later boundary** and is **not encoded as a `BlockedPacket`**.
+
+## Next position (after blocked + adapter batch closeout)
 
 - Current position: **Master F → Phase 5 implementation + planning layer.**
-- `phase5_input_provenance_preflight` has **implementation + recursive hardening recorded** (three
-  slices: `e7da765`, `5afb87d`, `d26c24a`).
-- `phase5_blocked_result_boundary` has **planning recorded** (`c7a49aa`); **implementation remains
-  unauthorized**.
-- **The net-edge engine is still not authorized.**
-- Next step, if pursued, can only be a **separately authorized, component-scoped, failing-tests-first,
-  declared-provenance** offline/TDD implementation or planning task — **not implementation** of
-  anything beyond that.
-- Any later implementation **must** proceed **component-by-component with failing tests first and
-  declared provenance**.
+- `phase5_input_provenance_preflight`: implementation + recursive hardening (`e7da765`, `5afb87d`,
+  `d26c24a`).
+- `phase5_blocked_result_boundary`: planning (`c7a49aa`) + implementation + construction hardening
+  (`285faf9`, `8ae8455`).
+- `phase5_preflight_to_blocked_packet_adapter`: planning (`1d8c50a`) + implementation + state-guard
+  hardening (`ea200cf`, `0038949`).
+- **No net-edge / calculator / friction / trading / paper / live readiness is authorized.**
+- **Next likely step:** a **separately authorized** `no_eligible` / halt-propagation boundary
+  **planning** task — **not implementation**.
+- Any later work **must** proceed **component-by-component with failing tests first and declared
+  provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
 
 <!-- NO-CLAIMS-START -->
