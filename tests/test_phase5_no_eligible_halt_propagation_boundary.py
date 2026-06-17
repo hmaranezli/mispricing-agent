@@ -150,6 +150,49 @@ def test_none_rejected_for_required_fields():
             make_no_eligible_halt_packet(**kwargs)
 
 
+# Hardening: every field must be an explicit non-empty string.
+def test_non_string_scalars_rejected():
+    for bad in [0, False, 1, 3.14, True]:
+        kwargs = _valid_kwargs()
+        kwargs["status"] = bad
+        with pytest.raises(NoEligibleConstructionError):
+            make_no_eligible_halt_packet(**kwargs)
+
+
+def test_empty_and_whitespace_strings_rejected():
+    for bad in ["", " ", "   ", "\t", "\n", "  \t\n "]:
+        kwargs = _valid_kwargs()
+        kwargs["no_eligible_reason"] = bad
+        with pytest.raises(NoEligibleConstructionError):
+            make_no_eligible_halt_packet(**kwargs)
+
+
+def test_str_subclass_rejected_exact_type():
+    class _StrSub(str):
+        pass
+    kwargs = _valid_kwargs()
+    kwargs["status"] = _StrSub("NO_ELIGIBLE")
+    with pytest.raises(NoEligibleConstructionError):
+        make_no_eligible_halt_packet(**kwargs)
+
+
+def test_hostile_object_rejected_without_str_repr_eq():
+    class _Hostile:
+        def __repr__(self):
+            raise AssertionError("repr must not be called")
+        def __str__(self):
+            raise AssertionError("str must not be called")
+        def __eq__(self, other):
+            raise AssertionError("eq must not be called")
+        def __hash__(self):
+            return 0
+
+    kwargs = _valid_kwargs()
+    kwargs["source_field"] = _Hostile()
+    with pytest.raises(NoEligibleConstructionError):
+        make_no_eligible_halt_packet(**kwargs)
+
+
 # pass-through identity
 def test_pass_through_identity():
     p = make_no_eligible_halt_packet(**_valid_kwargs())

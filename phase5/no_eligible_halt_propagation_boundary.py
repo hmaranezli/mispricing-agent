@@ -146,6 +146,16 @@ def make_no_eligible_halt_packet(
             raise NoEligibleConstructionError(
                 "field {!r} rejects a container value in this atomic slice".format(name)
             )
+        # Every field must be an explicit non-empty string. Use exact-type check (not isinstance) so
+        # str subclasses and non-string scalars are rejected; never call str/repr/eq on the value.
+        if type(value) is not str:
+            raise NoEligibleConstructionError(
+                "field {!r} must be a str, not {}".format(name, type(value).__name__)
+            )
+        if value.strip() == "":
+            raise NoEligibleConstructionError(
+                "field {!r} must be a non-empty, non-whitespace string".format(name)
+            )
     packet = object.__new__(NoEligibleHaltPacket)
     for name, value in provided.items():
         object.__setattr__(packet, name, value)
