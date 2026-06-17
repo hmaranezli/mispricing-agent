@@ -133,6 +133,9 @@ Fail-closed behavior is the required default; silent continuation is forbidden.
   fixtures** — no endpoints, no market-data fetch, no subprocess batch.
 - Fixtures must be clearly labeled (e.g. `diagnostic_fixture: true`) and must cover at least: an
   eligible-records case and a **no-eligible** case.
+- These fixture requirements are refined at case/discipline level by the
+  [Offline Fixture Contract](phase5_offline_fixture_contract.md)
+  (synthetic static constants only; named boundary cases; no generator/factory/loader; fail-closed).
 
 <!-- NO-CLAIMS-START -->
 ## No-claims statement

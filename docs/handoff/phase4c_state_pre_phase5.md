@@ -332,6 +332,23 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   no edge claim.
 - **Chainlink/F1b is not the active task here.**
 
+## Phase 5 contract backlog pointer (offline fixture)
+
+- `docs/protocols/phase5_offline_fixture_contract.md` (pinned by
+  `tests/test_phase5_offline_fixture_contract.py`) — offline fixture contract: offline fixtures are
+  **synthetic diagnostic examples only**; fixture presence is not market truth / evidence quality /
+  source truth / readiness / economic validity / net-edge input; fixtures pin boundary-case
+  invariants only (prove no correctness/stationarity/economic value); **static, read-only constants**
+  discipline (no dynamic construction / generator / factory / loader / parser / mutation /
+  randomization / timestamp-now / env / network dependence); required fixture cases
+  `eligible_minimal_fixture`, `no_eligible_fixture`, `blocked_missing_provenance_fixture`,
+  `blocked_unresolved_friction_placeholder_fixture`, `malformed_or_unknown_field_fixture`,
+  `forbidden_claim_reporting_fixture`, each with fail-closed invariants; preserves input-schema
+  categories, observed/derived/blocked vocabulary, `BLOCKED_NEEDS_EVIDENCE` semantics, and
+  provenance requirements; implementing a fixture engine/generator/factory/parser/loader is **out of
+  scope / contract violation** for that task. Depends on all prior Phase 5 contracts. Contract/planning
+  only. (Committed-hash state-update recorded by the follow-up memory task.)
+
 ## Next position (after input-schema refinement closeout)
 
 - Current position: **Master F → Phase 5 contract/planning layer.**
