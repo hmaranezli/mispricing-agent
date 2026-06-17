@@ -702,7 +702,40 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
 - **No adapter / parser / loader / fee model / slippage model / aggregation / calculator / reporting
   / trading / paper-live / net-edge work is authorized** by this batch.
 
-## Next position (after observable-cost/friction batch closeout)
+## Closeout — phase5_observable_cost_source_result_adapter batch
+
+- Planning commit `451fdc3` (Add phase5 observable cost source result adapter planning).
+- Implementation commit `221a463` (Implement phase5 observable cost source result adapter).
+- `component_name`: **`phase5_observable_cost_source_result_adapter`**.
+- Purpose: a **typed-to-typed adapter** from a typed/frozen `ObservableCostSourceResult` into exactly
+  one `ObservableCostObservation` — **not a raw parser, not a loader, not an aggregator, not a
+  calculator**.
+- `ObservableCostSourceResult` implemented as **frozen / `repr=False` / `init=False`** with the
+  **same exactly-12 fields** as `ObservableCostObservation` (no aggregate/economic fields); safe
+  `__repr__` exposes only component_name/status/cost_component_type/unit (no value/provenance/evidence).
+- `make_observable_cost_source_result(*, ...)` is **keyword-only** and mirrors the observation
+  factory discipline: exact `type(value) is str`, non-empty/non-whitespace, no `None`, no containers,
+  no bool/int/float/object, no str subclasses; `signed_decimal_value` canonical decimal string
+  (`-?\d+(\.\d+)?`) preserved verbatim (no float parsing/arithmetic/normalization); zero requires
+  explicit `zero_cost_evidence`, sentinel only for non-zero, missing/default-zero impossible.
+- Three custom exceptions: `ObservableCostSourceResultConstructionError(TypeError)`,
+  `ObservableCostSourceResultTypeError(TypeError)`, `ObservableCostSourceResultStateError(ValueError)`.
+- `adapt_observable_cost_source_result_to_observation(result)`:
+  - exact halt carriers (`BlockedPacket` / `NoEligibleHaltPacket`) rejected as a **misroute** by
+    reusing `reject_misrouted_halt_carrier` → `MisroutedHaltCarrierError` (no `route_halt_carrier`
+    duplication; no BLOCKED/CONTRACT_VIOLATION/NO_ELIGIBLE conversion);
+  - **exact-type only** (`type(result) is ObservableCostSourceResult`; no isinstance → **subclasses
+    rejected**) with `ObservableCostSourceResultTypeError`; message uses only `type(result).__name__`
+    (no attribute read / coercion / repr / duck typing);
+  - maps **all 12 fields 1:1 with explicit keyword args** into `make_observable_cost_observation(*,
+    ...)` — **nothing hardcoded, inferred, normalized, or invented**; factory exceptions never caught
+    or downgraded; defensive state guard means it **never silently returns `None`**.
+- **No aggregate/economic output**: no `total_cost`, `net_cost`, `effective_cost`, `gross_edge`,
+  `net_edge`, `profit`, `readiness`, or `eligibility`; no list/collection/batch observations.
+- **No raw/JSON/exchange parser, loader, endpoint reader, fee/slippage model, aggregation,
+  calculator, reporting, trading, paper-live, or net-edge work is authorized** by this batch.
+
+## Next position (after observable-cost source-result adapter batch closeout)
 
 - Current position: **Master F → Phase 5 implementation + planning layer.**
 - `phase5_input_provenance_preflight`: implementation + recursive hardening (`e7da765`, `5afb87d`,
@@ -715,12 +748,15 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
   + pass-through exact-type hardening (`6a2fbfe`, `4f6c28d`, `d77b182`).
 - `phase5_halt_propagation_integration_boundary`: planning (`e53e6ab`) + implementation
   (`345330a`) — exact-type halt-carrier routing is planned and implemented.
-- `phase5_observable_cost_friction_boundary`: **planning (`f74db3f`) + atomic implementation
-  (`e97469d`)** — single observed-cost/friction observation carrier is **planned and implemented**.
+- `phase5_observable_cost_friction_boundary`: planning (`f74db3f`) + atomic implementation
+  (`e97469d`) — single observed-cost/friction observation carrier is planned and implemented.
+- `phase5_observable_cost_source_result_adapter`: **planning (`451fdc3`) + atomic implementation
+  (`221a463`)** — typed source-result → observation adapter is **planned and implemented**.
 - **No net-edge / calculator / friction-aggregation / trading / reporting / runtime / paper / live
   readiness is authorized.**
-- **Next likely step:** a **separately authorized** typed-result-to-observation **adapter planning**
-  task — **docs + tests only, not a raw parser and not implementation** unless separately authorized.
+- **Next likely step:** a **separately authorized** planning task for the next pre-net-edge
+  component — e.g. an observed-cost **collection/set boundary** or a **calculator-input boundary** —
+  **docs + tests only, not implementation** unless separately authorized.
 - Any later work **must** proceed **component-by-component with failing tests first and declared
   provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
