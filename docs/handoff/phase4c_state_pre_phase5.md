@@ -364,19 +364,39 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   paper/live readiness, no alpha, no PnL, no profitability, no edge claim.
 - **Chainlink/F1b is not the active task here.**
 
-## Next position (after offline fixture closeout)
+## Phase 5 contract-set gap/completeness audit closeout
+
+- **`8fe9fb8` — Add phase 5 contract set completeness audit.** Docs/tests only; a **read-only audit
+  artifact only, not implementation**.
+- Audit inspected HEAD `f0151fcfa2f00cf8fee4cf76d82b0229a6e0d0dc`.
+- **Audit result: `OBSERVED_NO_GAP_WITHIN_CHECKED_SCOPE`.** The result is **scoped only to checked
+  docs/tests/handoff invariants**. No `GAP_OBSERVED` item and no `BLOCKED_NEEDS_EVIDENCE` item was
+  raised within the checked scope.
+- The audit (`docs/handoff/phase5_contract_set_gap_completeness_audit.md`, pinned by
+  `tests/test_phase5_contract_set_gap_completeness_audit.py`) independently checked: all 10 Phase 5
+  protocol docs exist; all 10 `test_phase5_*` files exist; the interface contract links to each of the
+  8 refining contracts; the handoff records all 8 closeout hashes; and no stale hash-free backlog
+  pointer remains in the handoff.
+- The audit observed: contract/planning-only framing, no implementation authority, no
+  net-edge/calculator/friction-engine/parser-loader-fixture-engine/trading/paper-live authorization,
+  no forbidden claims outside no-claims/prohibited-output context, `BLOCKED_NEEDS_EVIDENCE`
+  consistency, observed/derived/blocked consistency, fail-closed not silently-defaulted, fixtures
+  test/doc-scoped only, friction placeholders non-value/non-computable, and Chainlink/F1b not active.
+- `OBSERVED_NO_GAP_WITHIN_CHECKED_SCOPE` **does not mean ready, complete, safe, profitable,
+  implementation-authorized, paper/live authorized, or net-edge authorized**.
+- **Phase 5 remains contract/planning only** — no implementation, no calculator, no net-edge, no
+  friction engine, no fixture engine/generator/factory/parser/loader, no trading authority, no
+  paper/live readiness, no alpha, no PnL, no profitability, no edge claim.
+
+## Next position (after contract-set audit closeout)
 
 - Current position: **Master F → Phase 5 contract/planning layer.**
-- The **offline fixture contract slice is recorded**.
+- The **contract-set gap/completeness audit is recorded**.
+- The audit **observed no gap within the checked docs/tests/handoff scope, but authorizes no
+  implementation**.
 - **The net-edge engine is still not authorized.**
-- The previously recorded likely Phase 5 contract gap has now been addressed as a contract/planning
-  artifact.
-- Next likely step is a **separate read-only Phase 5 contract-set gap/completeness audit**, not
-  implementation.
-- See `docs/handoff/phase5_contract_set_gap_completeness_audit.md` (pinned by
-  `tests/test_phase5_contract_set_gap_completeness_audit.py`) — read-only audit;
-  `OBSERVED_NO_GAP_WITHIN_CHECKED_SCOPE` at HEAD `f0151fc`; scoped to checked docs/tests/handoff
-  invariants; authorizes nothing. (Committed-hash state-update recorded by the follow-up memory task.)
+- Next likely step is a **separately authorized implementation-planning gate entrance-criteria task**,
+  **not implementation**.
 - Any later implementation **must** proceed **component-by-component with failing tests first and
   declared provenance**.
 
