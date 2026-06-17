@@ -300,30 +300,45 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   PUBLIC_REFERENCE_BASKET / SURROGATE_BASKET integration, data fetch, friction implementation,
   input-schema implementation, fixture engine, or net-edge work.
 
-## Phase 5 contract backlog pointer (input-schema refinement)
+## Phase 5 input-schema refinement closeout
 
-- `docs/protocols/phase5_input_schema_refinement_contract.md` (pinned by
-  `tests/test_phase5_input_schema_refinement_contract.py`) — input-schema refinement contract:
-  defines input **shape only** (presence is not evidence quality / source truth / readiness /
-  economic validity); separates inputs into record_identity, gross_edge_fields, eligibility_state,
-  no_eligible_state, friction_component_placeholders, mechanical_observation_metadata,
-  provenance_fields, reporting_boundary_fields, and blocked_state_fields; gross-edge fields read-only
-  (no recompute/refresh/fetch/live); friction placeholders are **non-value, non-computable** slots
-  that fail closed to `BLOCKED_NEEDS_EVIDENCE` (no impute/coerce/cast/default); mechanical metadata
-  stays separate with no count→cost conversion; preserves observed/derived/blocked vocabulary;
-  fail-closed on missing/malformed/unknown inputs; human review must not substitute for source
-  evidence. Depends on the interface, friction, no-eligible, provenance, fail-closed,
-  observation/discovery cost, and no-claims/reporting contracts. Contract/planning only; defined
-  before the offline fixture contract so fixtures know which shape they represent. (Committed-hash
-  state-update recorded by the follow-up memory task.)
+- **`ebe5d16` — Add phase 5 input schema refinement contract.** Docs/tests only; a contract/planning
+  artifact only, **not implementation**.
+- The input schema **defines shape only**; input presence is **not** evidence quality, source truth,
+  readiness, or economic validity.
+- It **separates inputs** into `record_identity`, `gross_edge_fields`, `eligibility_state`,
+  `no_eligible_state`, `friction_component_placeholders`, `mechanical_observation_metadata`,
+  `provenance_fields`, `reporting_boundary_fields`, and `blocked_state_fields`.
+- It records the required `record_identity` fields (`input_schema_version`, `input_record_type`,
+  `batch_id`, `run_id`, `observation_id`, `source_contract`) and provenance fields (`source_artifact`,
+  `source_field`, `artifact_type_or_blocked_reason`, `artifact_phase_or_blocked_reason`,
+  `provenance_status`, `source_sha256_or_blocked_reason`, `parser_version_or_blocked_reason`,
+  `verifier_result_or_blocked_reason`).
+- Gross-edge fields are **read-only descriptive inputs**; no recompute, refresh, fetch, or live-data
+  treatment.
+- No-eligible remains **explicit** and must not become error, zero value, opportunity cost, idle cost,
+  profitability evidence, or readiness signal.
+- Friction placeholders are **non-value and non-computable** (no 0/null/false/empty/default/floor/
+  baseline/assumed/guessed/usable numeric input). Unresolved placeholders **must fail closed** to
+  `BLOCKED_NEEDS_EVIDENCE` or contract violation; no silent impute/coerce/cast/default.
+- Mechanical metadata stays separate; no count→cost conversion. Reporting boundary preserves
+  observed/derived/blocked vocabulary.
+- Missing/malformed/unknown inputs, missing provenance, unknown source contract, source-field
+  mismatch, or forbidden claim wording **fail closed**. **Human/operator review must not substitute
+  for `source_artifact`/`source_field` evidence.**
+- Depends on all prior Phase 5 contracts including no-claims/reporting.
+- **Phase 5 remains contract/planning only** — no implementation, no calculator, no net-edge, no
+  friction engine, no trading authority, no paper/live readiness, no alpha, no PnL, no profitability,
+  no edge claim.
+- **Chainlink/F1b is not the active task here.**
 
-## Next position (after no-claims/reporting closeout)
+## Next position (after input-schema refinement closeout)
 
 - Current position: **Master F → Phase 5 contract/planning layer.**
-- The **no-claims/reporting schema slice is recorded**, but remaining Phase 5 gaps still require
+- The **input-schema refinement slice is recorded**, but remaining Phase 5 gaps still require
   separate authorization.
 - **The net-edge engine is still not authorized.**
-- Remaining likely Phase 5 contract gaps include **offline fixture and input-schema refinement**.
+- Remaining likely Phase 5 gap: the **offline fixture contract**.
 - Any later implementation **must** proceed **component-by-component with failing tests first and
   declared provenance**.
 
