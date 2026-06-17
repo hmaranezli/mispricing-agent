@@ -234,6 +234,20 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
 - **Chainlink/F1b is not the active task here.** This closeout does **not** authorize
   PUBLIC_REFERENCE_BASKET / SURROGATE_BASKET integration, data fetch, or net-edge work.
 
+## Phase 5 contract backlog pointer (observation/discovery cost schema)
+
+- `docs/protocols/phase5_observation_discovery_cost_schema_contract.md` (pinned by
+  `tests/test_phase5_observation_discovery_cost_schema_contract.py`) — observation/discovery cost
+  schema contract: represents mechanical observation activity as **evidence-bearing metadata only**
+  (a representation schema), distinguishes mechanical metadata from market-content observations,
+  anchors to audited Phase 4C obs #1/#2/#3 mechanical facts, and **must not** convert counts into
+  dollars/bps/edge/net-edge/profitability/readiness. Missing provenance/accounting →
+  `BLOCKED_NEEDS_EVIDENCE`; no fixed/default/floor/baseline/assumed/guessed cost; obs #3 no-eligible
+  is **not a cost** (not zero/opportunity/idle cost, not profitability evidence). Depends on the
+  provenance, fail-closed, no-eligible, and friction contracts. Contract/planning only; this closes
+  only the observation/discovery cost schema slice — remaining Phase 5 gaps still require separate
+  authorization. (Committed-hash state-update recorded by the follow-up memory task.)
+
 ## Next position (after fail-closed closeout)
 
 - Current position: **Master F → Phase 5 contract/planning layer.**

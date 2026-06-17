@@ -73,6 +73,9 @@ only, with no values authorized here:
   cost, floor cost, baseline overhead, or economic treatment is authorized here**.
 - Mechanical observation metadata (counts, stage order, artifact/log counts) must be schema-separated
   from market-content observations (eligibility, gross-edge fields).
+- This handling is refined at field level by the
+  [Observation/Discovery Cost Schema Contract](phase5_observation_discovery_cost_schema_contract.md)
+  (representation-only; no count→cost conversion; fail-closed to `BLOCKED_NEEDS_EVIDENCE`).
 
 ## 5. Artifact provenance schema
 
