@@ -455,6 +455,19 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
 - Any later implementation **must** proceed **component-by-component with failing tests first and
   declared provenance**.
 
+### Pending hash-free implementation pointer (to be replaced by a committed closeout)
+
+- The **first authorized offline/TDD implementation** of `phase5_input_provenance_preflight` has
+  landed in the working tree: `phase5/__init__.py`, `phase5/const.py`,
+  `phase5/input_provenance_preflight.py`, pinned by `tests/test_phase5_input_provenance_preflight.py`.
+  It is a **pure, in-memory, deterministic** preflight evaluator over declared input shape +
+  provenance fields; it reads no artifact, computes no SHA256, runs no parser/verifier, performs no
+  IO/network/env/datetime/random, mutates no input, returns a frozen result, and **authorizes no
+  downstream or implementation work**. It is **not a validator** and asserts no market truth, data
+  quality, source truth/reliability, economic validity, profitability, readiness, or edge.
+- This is a **hash-free pointer**; its committed-hash closeout will be recorded in a separate memory
+  task.
+
 <!-- NO-CLAIMS-START -->
 ## No-claims statement
 
