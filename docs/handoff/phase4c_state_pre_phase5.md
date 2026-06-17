@@ -416,22 +416,42 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
 - **Any later implementation still requires a separate explicit authorization, failing tests first,
   declared provenance, and component-scoped work.**
 
-## Next position (after implementation-planning gate entrance-criteria closeout)
+## Phase 5 input provenance preflight planning closeout
+
+- **`c3dbfb0` — Add phase 5 input provenance preflight planning.** Docs/tests only; the first
+  component-scoped **implementation-planning artifact only, not implementation**; it **authorizes no
+  implementation**.
+- `component_name`: `phase5_input_provenance_preflight`.
+- The component **does not validate market truth, data quality, economic validity, profitability,
+  readiness, source truth, or source reliability**. It **only plans checks for declared input shape
+  and provenance requirements before downstream Phase 5 component planning**.
+- The artifact (`docs/handoff/phase5_input_provenance_preflight_implementation_planning.md`, pinned by
+  `tests/test_phase5_input_provenance_preflight_implementation_planning.py`) plans these key checks:
+  `source_contract` known/allowed; `source_artifact` declared read-only; `source_field` mapped;
+  record identity / provenance fields declared; `source_sha256_or_blocked_reason` declared;
+  `parser_version_or_blocked_reason` declared; `verifier_result_or_blocked_reason` declared; and any
+  not-yet-implemented fields become **explicit blocked fields, not omissions**. It also defines
+  chain-break fail conditions for missing/unknown source_artifact, missing/mismatched source_field,
+  and the three missing blocked-reason fields.
+- Deterministic status mapping: evidence present within checked scope → `PLANNING_GATE_OBSERVED`;
+  missing/unknown evidence → `PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE`; forbidden field mapping /
+  unsupported source-contract assertion / claim that planning authorizes implementation / claiming
+  source truth / data validity / source reliability / data-quality-or-integrity guarantee →
+  `PLANNING_GATE_CONTRACT_VIOLATION`.
+- **No silent defaults** (missing/malformed/unknown/mismatched inputs must not become
+  zero/false/pass/default/floor/baseline/assumed/guessed/eligible/executable/tradable/ready/profitable/
+  net-edge input) and **no-claims continuity** (no alpha/PnL/edge/net-edge/profitability/readiness/
+  trading-instruction/execution-authority/guarantee/source-truth output).
+
+## Next position (after input provenance preflight planning closeout)
 
 - Current position: **Master F → Phase 5 contract/planning layer.**
-- The **implementation-planning gate entrance-criteria contract is recorded**; it authorizes no
-  implementation.
+- The **first component implementation-planning artifact (`phase5_input_provenance_preflight`) is
+  recorded**; it authorizes no implementation.
 - **The net-edge engine is still not authorized.**
-- Next step, if pursued, can only be a **separately authorized, component-scoped implementation-
-  planning task** that satisfies the entrance-criteria entry packet — **not implementation**.
-- First component-scoped implementation-planning artifact recorded: see
-  `docs/handoff/phase5_input_provenance_preflight_implementation_planning.md` (pinned by
-  `tests/test_phase5_input_provenance_preflight_implementation_planning.py`) — component
-  `phase5_input_provenance_preflight`; declares source contracts / artifacts / fields, planned input
-  checks (incl. `source_sha256`/`parser_version`/`verifier_result` blocked-reason fields and
-  chain-break fail conditions), the `PLANNING_GATE_OBSERVED` / `PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE` /
-  `PLANNING_GATE_CONTRACT_VIOLATION` status mapping, and the required failing-test plan. Authorizes no
-  implementation. (Committed-hash state-update recorded by the follow-up memory task.)
+- Next step, if pursued, can only be a **separately authorized offline/TDD implementation task for
+  `phase5_input_provenance_preflight`** (failing tests first, declared provenance, component-scoped),
+  or a separately authorized planning task for the next component — **not implementation**.
 - Any later implementation **must** proceed **component-by-component with failing tests first and
   declared provenance**.
 
