@@ -36,6 +36,9 @@ records (descriptive inputs, not signals):
 - eligibility status per record (eligible / ineligible) and ineligible reason codes.
 - The contract fixes field **names/types/units expectations** so schema drift is detectable; it
   assigns no economic meaning to any field.
+- This input shape is refined at category/field level by the
+  [Input-Schema Refinement Contract](phase5_input_schema_refinement_contract.md)
+  (shape-only; non-value friction placeholders; fail-closed to `BLOCKED_NEEDS_EVIDENCE`).
 
 ## 2. Friction component schema
 

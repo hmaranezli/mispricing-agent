@@ -300,6 +300,23 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   PUBLIC_REFERENCE_BASKET / SURROGATE_BASKET integration, data fetch, friction implementation,
   input-schema implementation, fixture engine, or net-edge work.
 
+## Phase 5 contract backlog pointer (input-schema refinement)
+
+- `docs/protocols/phase5_input_schema_refinement_contract.md` (pinned by
+  `tests/test_phase5_input_schema_refinement_contract.py`) — input-schema refinement contract:
+  defines input **shape only** (presence is not evidence quality / source truth / readiness /
+  economic validity); separates inputs into record_identity, gross_edge_fields, eligibility_state,
+  no_eligible_state, friction_component_placeholders, mechanical_observation_metadata,
+  provenance_fields, reporting_boundary_fields, and blocked_state_fields; gross-edge fields read-only
+  (no recompute/refresh/fetch/live); friction placeholders are **non-value, non-computable** slots
+  that fail closed to `BLOCKED_NEEDS_EVIDENCE` (no impute/coerce/cast/default); mechanical metadata
+  stays separate with no count→cost conversion; preserves observed/derived/blocked vocabulary;
+  fail-closed on missing/malformed/unknown inputs; human review must not substitute for source
+  evidence. Depends on the interface, friction, no-eligible, provenance, fail-closed,
+  observation/discovery cost, and no-claims/reporting contracts. Contract/planning only; defined
+  before the offline fixture contract so fixtures know which shape they represent. (Committed-hash
+  state-update recorded by the follow-up memory task.)
+
 ## Next position (after no-claims/reporting closeout)
 
 - Current position: **Master F → Phase 5 contract/planning layer.**
