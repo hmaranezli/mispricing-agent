@@ -802,7 +802,7 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
 - **No raw/JSON/exchange parser, loader, endpoint reader, order-book/venue/sizing model, aggregation,
   calculator, net-edge, trading, reporting, or paper-live work is authorized** by this batch.
 
-## Next position (after gross-edge source-result adapter batch closeout)
+## Next position (after pre-net-edge calculation input boundary batch closeout)
 
 - Current position: **Master F → Phase 5 implementation + planning layer.**
 - `phase5_input_provenance_preflight`: implementation + recursive hardening (`e7da765`, `5afb87d`,
@@ -823,12 +823,38 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
   (`8d98815`) — single observed gross-edge carrier is planned and implemented.
 - `phase5_gross_edge_source_result_adapter`: **planning (`9ecc8c3`) + atomic implementation
   (`3048a59`)** — typed gross-edge source-result → observation adapter is **planned and implemented**.
-- **No net-edge / calculator / friction-aggregation / trading / reporting / runtime / paper / live
+- `phase5_pre_net_edge_calculation_input_boundary`: **planning (`69031a1`) + atomic carrier
+  implementations (`7a12aca`, `0e424ac`)** — both carrier slices are **planned and implemented**.
+  - `69031a1` — pre-net-edge calculation input planning (docs + tests only).
+  - `7a12aca` — `ObservableCostValidityContext` atomic implementation.
+  - `0e424ac` — `PreNetEdgeCalculationInput` atomic implementation.
+  - `ObservableCostValidityContext` wraps **exactly one** `ObservableCostObservation` plus explicit
+    validity metadata (`valid_from_epoch_ms`, `valid_until_epoch_ms`, validity provenance,
+    `validity_assertion_type`, `boundary_version`). It enforces **exact type/format only**: it does
+    **not** compare `valid_from_epoch_ms <= valid_until_epoch_ms`; it does **not** infer
+    TTL/duration/current-time/freshness/`valid_until`; and it does **not** compare against any gross
+    observation time. A reversed or equal interval is accepted as a format-only carrier.
+  - `PreNetEdgeCalculationInput` wraps **exactly one** `GrossEdgeObservation` plus a **non-empty
+    exact `tuple` of exact `ObservableCostValidityContext` items**. Tuple **order is preserved** and
+    the exact tuple object is kept verbatim; an **empty tuple is rejected**; and
+    **lists/sets/dicts/frozensets/Mappings/generators/iterators are rejected**. It performs **no
+    sorting/dedup/filter/aggregate**, **no cross-object validation**, **no unit-compatibility check**,
+    **no freshness check**, **no instrument/venue/size comparison**, and **no arithmetic** (tuple
+    traversal is for exact item-type checks only).
+  - A one-line prior-test correction (`0e424ac`) removed only the now-obsolete
+    `PreNetEdgeCalculationInput` / `make_pre_net_edge_calculation_input` entries from the
+    `ObservableCostValidityContext` guard's banned-symbol list; all other bans
+    (`PreNetEdgeCalculationInputGate`, `net_edge_input_preflight`, `compute_net_edge`, `net_edge`,
+    `total_cost`, `compute_freshness`, `compute_valid_until`) remain intact.
+- **No net-edge / calculator / gate / preflight / cost-aggregator / unit-conversion /
+  friction-aggregation / freshness-validation / trading / reporting / runtime / paper / live
   readiness is authorized.**
-- **Next likely step:** a **separately authorized** planning task for the next pre-net-edge
-  component — e.g. an observed-cost **collection/set boundary** or a **calculator-input boundary**
-  that consumes the cost and gross-edge observations — **docs + tests only, not implementation**
-  unless separately authorized.
+- pre-net-edge planning + both carrier implementation slices are **complete**.
+- **Next required step before any new planning:** VPS / GitHub / local **sync verification** (confirm
+  the local working tree, `origin/master`, and the VPS checkout all agree on `0e424ac`).
+- **Next future component (after sync):** a **separately authorized** planning task for
+  `PreNetEdgeCalculationInputGate` / `net_edge_input_preflight` — the cross-object compatibility gate
+  — **docs + tests only, not implementation** unless separately authorized.
 - Any later work **must** proceed **component-by-component with failing tests first and declared
   provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
