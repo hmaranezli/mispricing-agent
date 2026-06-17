@@ -769,7 +769,40 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
 - **No net-edge / calculator / order-book / sizing / aggregation / trading / reporting / paper-live
   work is authorized** by this batch.
 
-## Next position (after gross-edge observation batch closeout)
+## Closeout — phase5_gross_edge_source_result_adapter batch
+
+- Planning commit `9ecc8c3` (Add phase5 gross edge source result adapter planning).
+- Implementation commit `3048a59` (Implement phase5 gross edge source result adapter).
+- `component_name`: **`phase5_gross_edge_source_result_adapter`**.
+- Purpose: a **typed-to-typed adapter** from a typed/frozen `GrossEdgeSourceResult` into exactly one
+  `GrossEdgeObservation` — **not a raw parser, not a loader, not an order-book model, not an
+  aggregator, not a calculator** (mirrors the observable-cost adapter discipline).
+- `GrossEdgeSourceResult` implemented as **frozen / `repr=False` / `init=False`** with the **same 24
+  fields** as `GrossEdgeObservation` (no forbidden actionable/aggregate/economic fields); safe
+  `__repr__` exposes only component_name/status/edge_direction/base/quote/instrument/venue_scope.
+- `make_gross_edge_source_result(*, ...)` is **keyword-only** and **mirrors the observation factory
+  discipline exactly**: exact `type(value) is str`, non-empty/non-whitespace, no `None`/containers/
+  bool/int/float/object/str-subclass; `gross_edge_value` canonical decimal (negative allowed),
+  `observed_size` canonical decimal **non-negative** (verbatim, no float); `observed_at_epoch_ms`/
+  `staleness_threshold_ms` exact integer strings; `edge_direction` fixed set; `venue_scope` enum with
+  SINGLE buy==sell / CROSS distinct rules and case-insensitive sentinel rejection.
+- Three custom exceptions: `GrossEdgeSourceResultConstructionError(TypeError)`,
+  `GrossEdgeSourceResultTypeError(TypeError)`, `GrossEdgeSourceResultStateError(ValueError)`.
+- `adapt_gross_edge_source_result_to_observation(result)`:
+  - exact halt carriers (`BlockedPacket` / `NoEligibleHaltPacket`) rejected as a **misroute** by
+    reusing `reject_misrouted_halt_carrier` → `MisroutedHaltCarrierError` (no `route_halt_carrier`
+    duplication; no BLOCKED/CONTRACT_VIOLATION/NO_ELIGIBLE conversion);
+  - **exact-type only** (`type(result) is GrossEdgeSourceResult`; no isinstance → **subclasses
+    rejected**) with `GrossEdgeSourceResultTypeError`; message uses only `type(result).__name__` (no
+    attribute read / coercion / repr / duck typing);
+  - maps **all 24 fields 1:1 with explicit keyword args** into `make_gross_edge_observation(*, ...)`
+    — **nothing hardcoded, inferred, normalized, timestamp-substituted, or freshness-computed**;
+    factory exceptions never caught/downgraded; defensive state guard means it **never silently
+    returns `None`**.
+- **No raw/JSON/exchange parser, loader, endpoint reader, order-book/venue/sizing model, aggregation,
+  calculator, net-edge, trading, reporting, or paper-live work is authorized** by this batch.
+
+## Next position (after gross-edge source-result adapter batch closeout)
 
 - Current position: **Master F → Phase 5 implementation + planning layer.**
 - `phase5_input_provenance_preflight`: implementation + recursive hardening (`e7da765`, `5afb87d`,
@@ -786,14 +819,16 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
   (`e97469d`) — single observed-cost/friction observation carrier is planned and implemented.
 - `phase5_observable_cost_source_result_adapter`: planning (`451fdc3`) + atomic implementation
   (`221a463`) — typed source-result → observation adapter is planned and implemented.
-- `phase5_gross_edge_observation_boundary`: **planning (`d198526`) + atomic implementation
-  (`8d98815`)** — single observed gross-edge carrier is **planned and implemented**.
+- `phase5_gross_edge_observation_boundary`: planning (`d198526`) + atomic implementation
+  (`8d98815`) — single observed gross-edge carrier is planned and implemented.
+- `phase5_gross_edge_source_result_adapter`: **planning (`9ecc8c3`) + atomic implementation
+  (`3048a59`)** — typed gross-edge source-result → observation adapter is **planned and implemented**.
 - **No net-edge / calculator / friction-aggregation / trading / reporting / runtime / paper / live
   readiness is authorized.**
 - **Next likely step:** a **separately authorized** planning task for the next pre-net-edge
-  component — e.g. a gross-edge typed source-result **adapter**, an observed-cost **collection/set
-  boundary**, or a **calculator-input boundary** — **docs + tests only, not implementation** unless
-  separately authorized.
+  component — e.g. an observed-cost **collection/set boundary** or a **calculator-input boundary**
+  that consumes the cost and gross-edge observations — **docs + tests only, not implementation**
+  unless separately authorized.
 - Any later work **must** proceed **component-by-component with failing tests first and declared
   provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
