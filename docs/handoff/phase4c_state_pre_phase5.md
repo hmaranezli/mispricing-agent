@@ -234,27 +234,46 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
 - **Chainlink/F1b is not the active task here.** This closeout does **not** authorize
   PUBLIC_REFERENCE_BASKET / SURROGATE_BASKET integration, data fetch, or net-edge work.
 
-## Phase 5 contract backlog pointer (observation/discovery cost schema)
+## Phase 5 observation/discovery cost schema closeout
 
-- `docs/protocols/phase5_observation_discovery_cost_schema_contract.md` (pinned by
-  `tests/test_phase5_observation_discovery_cost_schema_contract.py`) — observation/discovery cost
-  schema contract: represents mechanical observation activity as **evidence-bearing metadata only**
-  (a representation schema), distinguishes mechanical metadata from market-content observations,
-  anchors to audited Phase 4C obs #1/#2/#3 mechanical facts, and **must not** convert counts into
-  dollars/bps/edge/net-edge/profitability/readiness. Missing provenance/accounting →
-  `BLOCKED_NEEDS_EVIDENCE`; no fixed/default/floor/baseline/assumed/guessed cost; obs #3 no-eligible
-  is **not a cost** (not zero/opportunity/idle cost, not profitability evidence). Depends on the
-  provenance, fail-closed, no-eligible, and friction contracts. Contract/planning only; this closes
-  only the observation/discovery cost schema slice — remaining Phase 5 gaps still require separate
-  authorization. (Committed-hash state-update recorded by the follow-up memory task.)
+- **`cb71d01` — Add phase 5 observation discovery cost contract.** Docs/tests only; a
+  contract/planning artifact only, **not implementation**.
+- It represents mechanical observation activity as **evidence-bearing metadata only** and
+  **distinguishes mechanical observation metadata from market-content observations**.
+- The contract (`docs/protocols/phase5_observation_discovery_cost_schema_contract.md`, pinned by
+  `tests/test_phase5_observation_discovery_cost_schema_contract.py`) defines required mechanical
+  fields: `request_count`, `discovery_requests`, `book_requests`, `stage_order`, `artifact_count`,
+  `log_count`, `candidate_pairs`, `eligible_pairs`, `ineligible_reasons`, `batch_id`, `run_id`,
+  `observation_id`, `source_artifact`, `source_field`, `provenance_status`, and
+  `blocked_reason_if_missing`.
+- It **anchors only to audited Phase 4C obs #1/#2/#3 facts as doc-contract constants**; it does not
+  copy generated artifacts, build a parser, build a loader, build a fixture engine, or create runtime
+  fixtures.
+- It **does not convert** request/discovery/book counts into dollars, bps, edge, net-edge,
+  profitability, readiness, idle cost, opportunity cost, or any cost figure.
+- **Obs #3 no-eligible is not a cost, not zero cost, not opportunity cost, not idle cost, and not
+  profitability evidence.**
+- **Missing provenance/accounting must yield `BLOCKED_NEEDS_EVIDENCE`.**
+- **Future numeric mapping** from mechanical counts to friction component values **requires a separate
+  explicitly authorized TDD/offline task with evidence provenance.**
+- It depends on: `phase5_artifact_provenance_contract.md`,
+  `phase5_fail_closed_blocked_state_contract.md`, `phase5_no_eligible_handling_schema_contract.md`,
+  and `phase5_friction_component_schema_contract.md`.
+- **Phase 5 remains contract/planning only** — no implementation, no calculator, no net-edge
+  aggregation, no friction engine, no trading authority, no paper/live readiness, no alpha, no PnL,
+  no profitability, no edge claim.
+- **Chainlink/F1b is not the active task here.** This closeout does **not** authorize
+  PUBLIC_REFERENCE_BASKET / SURROGATE_BASKET integration, data fetch, friction implementation, or
+  net-edge work.
 
-## Next position (after fail-closed closeout)
+## Next position (after observation/discovery cost closeout)
 
 - Current position: **Master F → Phase 5 contract/planning layer.**
+- The **observation/discovery cost schema slice is recorded**, but remaining Phase 5 gaps still
+  require separate authorization.
 - **The net-edge engine is still not authorized.**
-- Before any net-edge / friction implementation, the remaining Phase 5 contract gaps **must** be
-  explicitly authorized and **TDD/offline first**, including observation/discovery cost, no-claims /
-  reporting, offline fixture, and any input-schema refinement still needed.
+- Remaining likely Phase 5 contract gaps include **no-claims / reporting, offline fixture, and any
+  input-schema refinement still needed**.
 - Any later implementation **must** proceed **component-by-component with failing tests first and
   declared provenance**.
 
