@@ -443,30 +443,77 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   net-edge input) and **no-claims continuity** (no alpha/PnL/edge/net-edge/profitability/readiness/
   trading-instruction/execution-authority/guarantee/source-truth output).
 
-## Next position (after input provenance preflight planning closeout)
+## Phase 5 `phase5_input_provenance_preflight` implementation closeout
 
-- Current position: **Master F → Phase 5 contract/planning layer.**
-- The **first component implementation-planning artifact (`phase5_input_provenance_preflight`) is
-  recorded**; it authorizes no implementation.
+### Slice 1 — implementation (`e7da765`)
+
+- **`e7da765` — Add phase5 input provenance preflight implementation.** Docs/tests + module only;
+  the **first authorized offline/TDD implementation** of `phase5_input_provenance_preflight`.
+- Files: `phase5/__init__.py`, `phase5/const.py`, `phase5/input_provenance_preflight.py`,
+  `tests/test_phase5_input_provenance_preflight.py`; handoff hash-free pointer added.
+- The component is **pure, offline, in-memory, deterministic**, accepts `Mapping`-only input, never
+  mutates the input, and returns a frozen `PreflightResult` dataclass. It performs **no IO, no
+  network, no env lookup, no datetime-now, no randomness, no subprocess**.
+- It is **not a validator** and does not validate market truth, data quality, source truth, source
+  reliability, economic validity, numeric correctness, profitability, readiness, edge, or source
+  integrity.
+- **Checks declared:**
+  - All 9 required top-level input-schema categories present.
+  - `record_identity` is a Mapping declaring: `input_schema_version`, `input_record_type`,
+    `batch_id`, `run_id`, `observation_id`, `source_contract`.
+  - `provenance_fields` is a Mapping declaring: `source_artifact`, `source_field`,
+    `artifact_type_or_blocked_reason`, `artifact_phase_or_blocked_reason`, `provenance_status`,
+    `source_sha256_or_blocked_reason`, `parser_version_or_blocked_reason`,
+    `verifier_result_or_blocked_reason`.
+  - `source_contract` present in the allowed Phase 5 source-contract set.
+  - `source_artifact` declared (not checked against filesystem).
+  - `source_field` declared (path syntax out of scope).
+  - Explicit blocked-reason values in `source_sha256_or_blocked_reason`,
+    `parser_version_or_blocked_reason`, `verifier_result_or_blocked_reason` produce
+    `PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE`, not `PLANNING_GATE_OBSERVED`.
+- **Deterministic status mapping:**
+  - All required declarations present, allowed, non-empty, no blocked reason, no forbidden claim →
+    `PLANNING_GATE_OBSERVED`.
+  - Missing top-level category, missing `record_identity`/`provenance_fields` field, missing
+    `source_artifact`/`source_field`/`source_contract`, missing any `*_or_blocked_reason` field, or
+    explicit blocked-reason value in a provenance field →
+    `PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE` (`BLOCKED_NEEDS_EVIDENCE` canonical).
+  - Non-Mapping input, malformed required container, unsupported `source_contract`, forbidden
+    source-truth/data-quality/reliability/authorizes-downstream claim →
+    `PLANNING_GATE_CONTRACT_VIOLATION`.
+- **No silent defaults:** missing/malformed/unknown/mismatched inputs must not become
+  zero/false/pass/default/floor/baseline/assumed/guessed/eligible/executable/tradable/ready/
+  profitable/net-edge input.
+- **No-claims continuity:** no alpha/PnL/edge/net-edge/profitability/readiness/trading-instruction/
+  execution-authority/guarantee/source-truth output.
+- 16 tests passed (RED → GREEN).
+
+### Slice 2 — forbidden-claim hardening (`5afb87d`)
+
+- **`5afb87d` — Harden phase5 input provenance preflight forbidden claims.**
+- Files: `phase5/input_provenance_preflight.py`, `tests/test_phase5_input_provenance_preflight.py`.
+- **Hardening:** forbidden-claim keys are now scanned at the root record **and one level into every
+  declared top-level Mapping category** (shallow, deterministic, no recursion/parsing/IO). Previously
+  only root + `record_identity` + `provenance_fields` were scanned; a forbidden claim inside
+  `reporting_boundary_fields`, `blocked_state_fields`, or `gross_edge_fields` incorrectly returned
+  `PLANNING_GATE_OBSERVED`.
+- New tests: forbidden claim in `reporting_boundary_fields`, `blocked_state_fields`, and
+  `gross_edge_fields` each return `PLANNING_GATE_CONTRACT_VIOLATION`.
+- 19 tests passed (16 prior preserved + 3 new).
+- `const.py` unchanged; `FORBIDDEN_CLAIM_KEYS` frozenset was already sufficient.
+
+## Next position (after phase5_input_provenance_preflight implementation closeout)
+
+- Current position: **Master F → Phase 5 implementation layer (first component landed).**
+- `phase5_input_provenance_preflight` is **implemented** (two slices: `e7da765`, `5afb87d`); it
+  authorizes no downstream or implementation work.
 - **The net-edge engine is still not authorized.**
-- Next step, if pursued, can only be a **separately authorized offline/TDD implementation task for
-  `phase5_input_provenance_preflight`** (failing tests first, declared provenance, component-scoped),
-  or a separately authorized planning task for the next component — **not implementation**.
+- Next step, if pursued, can only be a **separately authorized offline/TDD implementation or
+  planning task for the next Phase 5 component** — component-by-component, failing tests first,
+  declared provenance.
 - Any later implementation **must** proceed **component-by-component with failing tests first and
   declared provenance**.
-
-### Pending hash-free implementation pointer (to be replaced by a committed closeout)
-
-- The **first authorized offline/TDD implementation** of `phase5_input_provenance_preflight` has
-  landed in the working tree: `phase5/__init__.py`, `phase5/const.py`,
-  `phase5/input_provenance_preflight.py`, pinned by `tests/test_phase5_input_provenance_preflight.py`.
-  It is a **pure, in-memory, deterministic** preflight evaluator over declared input shape +
-  provenance fields; it reads no artifact, computes no SHA256, runs no parser/verifier, performs no
-  IO/network/env/datetime/random, mutates no input, returns a frozen result, and **authorizes no
-  downstream or implementation work**. It is **not a validator** and asserts no market truth, data
-  quality, source truth/reliability, economic validity, profitability, readiness, or edge.
-- This is a **hash-free pointer**; its committed-hash closeout will be recorded in a separate memory
-  task.
+- The absence of stale hash-free pointers has been verified for this closeout.
 
 <!-- NO-CLAIMS-START -->
 ## No-claims statement
