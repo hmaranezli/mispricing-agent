@@ -449,8 +449,6 @@ def test_misroute_returns_none_for_non_halt_without_introspection():
 def test_no_calculator_or_gate_symbols_exported():
     import phase5.pre_net_edge_calculation_input_boundary as mod
     for banned in [
-        "PreNetEdgeCalculationInput",
-        "make_pre_net_edge_calculation_input",
         "PreNetEdgeCalculationInputGate",
         "net_edge_input_preflight",
         "compute_net_edge",

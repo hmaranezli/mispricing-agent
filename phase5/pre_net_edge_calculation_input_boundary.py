@@ -25,6 +25,7 @@ import re
 from dataclasses import dataclass
 
 from phase5.observable_cost_friction_boundary import ObservableCostObservation
+from phase5.gross_edge_observation_boundary import GrossEdgeObservation
 from phase5.blocked_result_boundary import BlockedPacket
 from phase5.no_eligible_halt_propagation_boundary import NoEligibleHaltPacket
 
@@ -239,3 +240,159 @@ def reject_misrouted_halt_carrier(payload):
             + type(payload).__name__
         )
     return None
+
+
+class PreNetEdgeCalculationInputTruthinessError(TypeError):
+    """Raised when a PreNetEdgeCalculationInput is used in a truthiness/length context."""
+
+
+class PreNetEdgeCalculationInputCoercionError(TypeError):
+    """Raised when a PreNetEdgeCalculationInput is coerced to a number, string, or bytes."""
+
+
+class PreNetEdgeCalculationInputConstructionError(TypeError):
+    """Raised when a PreNetEdgeCalculationInput is constructed with a rejected/missing value."""
+
+
+class PreNetEdgeCalculationInputTypeError(TypeError):
+    """Raised when an operation receives anything other than an exact PreNetEdgeCalculationInput."""
+
+
+@dataclass(frozen=True, repr=False, init=False)
+class PreNetEdgeCalculationInput:
+    """A frozen, anti-coercion carrier bundling one gross-edge observation with declared cost-validity
+    contexts, for a future, separately authorized net-edge gate/calculator path.
+
+    Construct only through :func:`make_pre_net_edge_calculation_input`. Direct/positional construction
+    is not supported. This carrier performs NO cross-object validation: it does not compare the gross
+    observed time to any cost validity interval, does not compare ``valid_from``/``valid_until``, does
+    not compare units/instruments/venues/size/depth across objects, and computes no
+    freshness/valid_until/aggregate-cost/net_edge. It only carries an exact :class:`GrossEdgeObservation`
+    and a preserved, non-empty exact tuple of exact :class:`ObservableCostValidityContext` items.
+    """
+
+    gross_observation: object
+    cost_validity_contexts: object
+    boundary_version: object
+
+    # --- anti-truthiness ---
+    def __bool__(self):
+        raise PreNetEdgeCalculationInputTruthinessError(
+            "PreNetEdgeCalculationInput must not be evaluated for truthiness; inspect fields instead."
+        )
+
+    def __len__(self):
+        raise PreNetEdgeCalculationInputTruthinessError(
+            "PreNetEdgeCalculationInput has no length; inspect fields instead."
+        )
+
+    # --- anti-coercion ---
+    def __int__(self):
+        raise PreNetEdgeCalculationInputCoercionError(
+            "PreNetEdgeCalculationInput must not be coerced to int."
+        )
+
+    def __float__(self):
+        raise PreNetEdgeCalculationInputCoercionError(
+            "PreNetEdgeCalculationInput must not be coerced to float."
+        )
+
+    def __complex__(self):
+        raise PreNetEdgeCalculationInputCoercionError(
+            "PreNetEdgeCalculationInput must not be coerced to complex."
+        )
+
+    def __index__(self):
+        raise PreNetEdgeCalculationInputCoercionError(
+            "PreNetEdgeCalculationInput must not be coerced to an index."
+        )
+
+    def __str__(self):
+        raise PreNetEdgeCalculationInputCoercionError(
+            "PreNetEdgeCalculationInput must not be coerced to str."
+        )
+
+    def __bytes__(self):
+        raise PreNetEdgeCalculationInputCoercionError(
+            "PreNetEdgeCalculationInput must not be coerced to bytes."
+        )
+
+    # --- safe debug repr only (no gross/cost values, timestamps, provenance, units, venues, or
+    #     wrapped carriers; no freshness/validity/net-edge/economic meaning) ---
+    def __repr__(self):
+        return "PreNetEdgeCalculationInput(boundary_version={!r})".format(self.boundary_version)
+
+
+def make_pre_net_edge_calculation_input(
+    *,
+    gross_observation,
+    cost_validity_contexts,
+    boundary_version,
+):
+    """Keyword-only constructor for a single :class:`PreNetEdgeCalculationInput`.
+
+    ``gross_observation`` must be an exact :class:`GrossEdgeObservation` (``type(...) is ...`` — no
+    isinstance, so subclasses, halt carriers, dicts/Mappings, duck-typed records, and arbitrary
+    objects are rejected without reading attributes/coercing/repr'ing them). ``cost_validity_contexts``
+    must be an exact, non-empty ``tuple`` (lists/sets/dicts/frozensets/Mappings/generators/iterators
+    are rejected); the exact tuple object is preserved verbatim — order intact, never copied to a
+    list, sorted, deduplicated, filtered, or aggregated — and every item must be an exact
+    :class:`ObservableCostValidityContext`. ``boundary_version`` must be an exact, non-empty,
+    non-whitespace ``str``. No cross-object comparison and no freshness/valid_until/aggregate/net_edge
+    computation are performed (tuple traversal is for exact item-type checks only). Error messages use
+    only field names and ``type(value).__name__`` — never ``str(value)`` or ``repr(value)``.
+    """
+    # Gross observation: exact-type only. A halt carrier here is a misroute, not a gross observation;
+    # the exact-type check rejects it as a construction error without coercion/introspection.
+    if gross_observation is None:
+        raise PreNetEdgeCalculationInputConstructionError(
+            "required field 'gross_observation' must not be None"
+        )
+    if type(gross_observation) is not GrossEdgeObservation:
+        raise PreNetEdgeCalculationInputConstructionError(
+            "field 'gross_observation' must be an exact GrossEdgeObservation, not "
+            + type(gross_observation).__name__
+        )
+
+    # Container: exact tuple only (no isinstance) — lists/sets/dicts/frozensets/Mappings/generators/
+    # iterators and arbitrary collections are rejected without iterating or coercing them.
+    if cost_validity_contexts is None:
+        raise PreNetEdgeCalculationInputConstructionError(
+            "required field 'cost_validity_contexts' must not be None"
+        )
+    if type(cost_validity_contexts) is not tuple:
+        raise PreNetEdgeCalculationInputConstructionError(
+            "field 'cost_validity_contexts' must be a tuple, not "
+            + type(cost_validity_contexts).__name__
+        )
+    if len(cost_validity_contexts) == 0:
+        raise PreNetEdgeCalculationInputConstructionError(
+            "field 'cost_validity_contexts' must be a non-empty tuple"
+        )
+    # Traverse only for exact item-type checks; never coerce/repr/compare item contents and never
+    # sort/dedup/filter/aggregate. The tuple object itself is preserved verbatim below.
+    for item in cost_validity_contexts:
+        if type(item) is not ObservableCostValidityContext:
+            raise PreNetEdgeCalculationInputConstructionError(
+                "every item of 'cost_validity_contexts' must be an exact "
+                "ObservableCostValidityContext, not " + type(item).__name__
+            )
+
+    if boundary_version is None:
+        raise PreNetEdgeCalculationInputConstructionError(
+            "required field 'boundary_version' must not be None"
+        )
+    if type(boundary_version) is not str:
+        raise PreNetEdgeCalculationInputConstructionError(
+            "field 'boundary_version' must be a str, not " + type(boundary_version).__name__
+        )
+    if boundary_version.strip() == "":
+        raise PreNetEdgeCalculationInputConstructionError(
+            "field 'boundary_version' must be a non-empty, non-whitespace string"
+        )
+
+    calc_input = object.__new__(PreNetEdgeCalculationInput)
+    object.__setattr__(calc_input, "gross_observation", gross_observation)
+    object.__setattr__(calc_input, "cost_validity_contexts", cost_validity_contexts)
+    object.__setattr__(calc_input, "boundary_version", boundary_version)
+    return calc_input
