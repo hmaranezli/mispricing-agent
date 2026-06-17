@@ -178,6 +178,67 @@ def test_mutable_field_values_rejected():
             make_blocked_packet(**kwargs)
 
 
+# Hardening: all container field values rejected, including tuple (scalar-only fields) and a tuple
+# carrying a mutable object.
+def test_tuple_field_values_rejected():
+    for bad_value in [(), ("a", "b"), ({"nested": "dict"},), ([1], [2])]:
+        kwargs = _valid_kwargs()
+        kwargs["source_artifact"] = bad_value
+        with pytest.raises(BlockedPacketConstructionError):
+            make_blocked_packet(**kwargs)
+
+
+# Hardening: None rejected for required deterministic fields.
+def test_none_rejected_for_required_fields():
+    required_non_null = [
+        "component_name", "origin_component", "origin_result_status", "status",
+        "reason_code", "source_contract", "source_artifact", "source_field",
+        "deterministic_next_action", "human_review_required", "may_retry_after_evidence",
+        "created_from_contract", "boundary_version",
+    ]
+    for name in required_non_null:
+        kwargs = _valid_kwargs()
+        kwargs[name] = None
+        with pytest.raises(BlockedPacketConstructionError):
+            make_blocked_packet(**kwargs)
+
+
+# Hardening: explicitly nullable fields still accept None.
+def test_none_allowed_for_nullable_fields():
+    kwargs = _valid_kwargs()
+    kwargs["blocked_status"] = None
+    kwargs["missing_or_invalid_field"] = None
+    packet = make_blocked_packet(**kwargs)
+    assert packet.blocked_status is None
+    assert packet.missing_or_invalid_field is None
+
+
+# Hardening: non-packet pass-through must not stringify or introspect the object; it carries only
+# the sanitized type name through the existing origin_result_status field.
+def test_pass_through_non_packet_does_not_stringify_or_introspect():
+    class _Hostile:
+        def __repr__(self):
+            raise RuntimeError("repr must not be called")
+        def __str__(self):
+            raise RuntimeError("str must not be called")
+        def __getattr__(self, name):
+            raise RuntimeError("attribute introspection must not happen")
+
+    result = pass_through_blocked_packet(_Hostile())
+    assert isinstance(result, BlockedPacket)
+    assert result.status == PLANNING_GATE_CONTRACT_VIOLATION
+    assert result.origin_result_status == "_Hostile"   # sanitized type name only
+    assert result.source_contract == BLOCKED_RESULT_BOUNDARY_UNKNOWN_SOURCE_CONTRACT
+
+
+def test_pass_through_non_packet_carries_sanitized_type_name():
+    cases = {None: "NoneType", 42: "int", "x": "str", (1, 2): "tuple"}
+    for obj, expected in cases.items():
+        result = pass_through_blocked_packet(obj)
+        assert result.origin_result_status == expected
+        assert result.status == PLANNING_GATE_CONTRACT_VIOLATION
+
+
 # 13. values not coerced
 def test_values_not_coerced():
     kwargs = _valid_kwargs()

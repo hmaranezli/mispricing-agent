@@ -33,7 +33,12 @@ BLOCKED_RESULT_BOUNDARY_UNKNOWN_SOURCE_ARTIFACT = "BLOCKED_RESULT_BOUNDARY_UNKNO
 BLOCKED_RESULT_BOUNDARY_UNKNOWN_SOURCE_FIELD = "BLOCKED_RESULT_BOUNDARY_UNKNOWN_SOURCE_FIELD"
 
 # Container field values rejected at construction in this atomic slice (no silent conversion).
-_REJECTED_FIELD_TYPES = (list, dict, set, frozenset)
+# Packet fields are scalar-only, so every container type — including tuple — is rejected; a rejected
+# top-level container also blocks any nested container before it can be carried.
+_REJECTED_FIELD_TYPES = (tuple, list, dict, set, frozenset)
+
+# Fields explicitly documented as nullable; every other field must be explicitly non-None.
+_NULLABLE_FIELDS = frozenset({"blocked_status", "missing_or_invalid_field"})
 
 
 class BlockedPacketTruthinessError(TypeError):
@@ -153,19 +158,23 @@ def make_blocked_packet(
         "boundary_version": boundary_version,
     }
     for name, value in provided.items():
+        if value is None and name not in _NULLABLE_FIELDS:
+            raise BlockedPacketConstructionError(
+                "required field {!r} must not be None".format(name)
+            )
         if isinstance(value, _REJECTED_FIELD_TYPES):
             raise BlockedPacketConstructionError(
-                "field {!r} rejects a mutable container value in this atomic slice".format(name)
+                "field {!r} rejects a container value in this atomic slice".format(name)
             )
     return BlockedPacket(**provided)
 
 
-def _fail_closed_boundary_packet():
+def _fail_closed_boundary_packet(*, origin_result_status):
     """A deterministic fail-closed contract-violation packet for a non-packet boundary input."""
     return make_blocked_packet(
         component_name="phase5_blocked_result_boundary",
         origin_component=BLOCKED_RESULT_BOUNDARY_UNKNOWN_ORIGIN,
-        origin_result_status=BLOCKED_RESULT_BOUNDARY_UNKNOWN_ORIGIN,
+        origin_result_status=origin_result_status,
         status=PLANNING_GATE_CONTRACT_VIOLATION,
         blocked_status=None,
         reason_code=CV_MALFORMED_BOUNDARY_PACKET,
@@ -191,4 +200,6 @@ def pass_through_blocked_packet(packet):
     """
     if isinstance(packet, BlockedPacket):
         return packet
-    return _fail_closed_boundary_packet()
+    # Sanitized class name only: no str()/repr() of the object, no attribute introspection.
+    sanitized_type = type(packet).__name__
+    return _fail_closed_boundary_packet(origin_result_status=sanitized_type)
