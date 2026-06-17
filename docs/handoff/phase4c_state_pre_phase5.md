@@ -546,6 +546,17 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   declared provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
 
+### Pending hash-free pointer — phase5_blocked_result_boundary planning (committed-hash closeout deferred)
+
+- A **component implementation-planning artifact** for `phase5_blocked_result_boundary` has landed:
+  `docs/handoff/phase5_blocked_result_boundary_implementation_planning.md`, pinned by
+  `tests/test_phase5_blocked_result_boundary_implementation_planning.py`.
+- It is **implementation-planning only, not implementation**; it **authorizes no implementation**.
+  The component is an **error/state propagation boundary** (not a validator/parser/calculator/
+  reporting/economic engine) that plans how `PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE` and
+  `PLANNING_GATE_CONTRACT_VIOLATION` results are carried forward without silent downgrade.
+- This is a **hash-free pointer**; its committed-hash closeout is deferred to a separate memory task.
+
 <!-- NO-CLAIMS-START -->
 ## No-claims statement
 
