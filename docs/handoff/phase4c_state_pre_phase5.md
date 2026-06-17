@@ -802,7 +802,7 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
 - **No raw/JSON/exchange parser, loader, endpoint reader, order-book/venue/sizing model, aggregation,
   calculator, net-edge, trading, reporting, or paper-live work is authorized** by this batch.
 
-## Next position (after pre-net-edge calculation input boundary batch closeout)
+## Next position (after pre-net-edge input gate batch closeout)
 
 - Current position: **Master F → Phase 5 implementation + planning layer.**
 - `phase5_input_provenance_preflight`: implementation + recursive hardening (`e7da765`, `5afb87d`,
@@ -846,15 +846,71 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
     `ObservableCostValidityContext` guard's banned-symbol list; all other bans
     (`PreNetEdgeCalculationInputGate`, `net_edge_input_preflight`, `compute_net_edge`, `net_edge`,
     `total_cost`, `compute_freshness`, `compute_valid_until`) remain intact.
-- **No net-edge / calculator / gate / preflight / cost-aggregator / unit-conversion /
-  friction-aggregation / freshness-validation / trading / reporting / runtime / paper / live
-  readiness is authorized.**
-- pre-net-edge planning + both carrier implementation slices are **complete**.
-- **Next required step before any new planning:** VPS / GitHub / local **sync verification** (confirm
-  the local working tree, `origin/master`, and the VPS checkout all agree on `0e424ac`).
-- **Next future component (after sync):** a **separately authorized** planning task for
-  `PreNetEdgeCalculationInputGate` / `net_edge_input_preflight` — the cross-object compatibility gate
-  — **docs + tests only, not implementation** unless separately authorized.
+- `phase5_pre_net_edge_calculation_input_gate`: **planning (`0436368`) + V1 implementation
+  (`684c0d4`)** — the **first cross-object validation gate** before the future net-edge calculator is
+  **planned and implemented**.
+  - `0436368` — Add phase5 pre net edge input gate planning (docs + tests only).
+  - `684c0d4` — Implement phase5 pre net edge input gate.
+  - `PreNetEdgeCalculationInputGate` V1 / `net_edge_input_preflight` is the first cross-object
+    validation gate before the future net-edge calculator. It is **not** a carrier, calculator,
+    parser, adapter, cost aggregator, unit converter, FX/oracle, or trading/reporting/paper-live
+    component.
+  - Public runtime entrypoint: `net_edge_input_preflight(*, calculation_input, evaluation_epoch_ms)`.
+    `PreNetEdgeCalculationInputGate` is **stateless/non-carrier** with `__slots__=()` and
+    `preflight = staticmethod(...)`.
+  - It accepts an **exact `PreNetEdgeCalculationInput` only** (subclasses / raw containers / duck-typed
+    objects rejected). Exact `BlockedPacket` / `NoEligibleHaltPacket` reaching this boundary are
+    **misroutes** and raise `MisroutedHaltCarrierError`.
+  - `evaluation_epoch_ms` is an **explicit exact `str` matching `^\d+$`** — no default / current /
+    wall-clock / system / monotonic / datetime fallback. `int()` is used **only locally** after exact
+    integer-string validation; local math is limited to integer comparisons and **one addition**
+    (`gross_observed + gross_staleness`). Carrier fields are **never mutated or re-emitted as ints**.
+    There is **no float, Decimal, economic arithmetic, cost aggregation, total-cost,
+    gross-minus-cost, or net-edge calculation**.
+  - Failure taxonomy and precedence (in order): (1) programmatic wrong-path/wrong-type →
+    `TypeError` / `MisroutedHaltCarrierError`, **never a packet**; (2) `evaluation_time < gross_observed`
+    → BlockedPacket `PLANNING_GATE_CONTRACT_VIOLATION` /
+    `PRE_NET_EDGE_GATE_CONTRACT_VIOLATION_TIME_CAUSALITY`; (3) `cost_from > cost_until` → BlockedPacket
+    `PLANNING_GATE_CONTRACT_VIOLATION` / `PRE_NET_EDGE_GATE_CONTRACT_VIOLATION_INVALID_COST_INTERVAL`;
+    (4) cost interval does not cover `gross_observed` → BlockedPacket `PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE`
+    / `BLOCKED_NEEDS_EVIDENCE` / `PRE_NET_EDGE_GATE_BLOCKED_COST_VALIDITY_DOES_NOT_COVER_GROSS_TIME`;
+    (5) cost interval does not cover `evaluation_time` → BlockedPacket `PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE`
+    / `BLOCKED_NEEDS_EVIDENCE` / `PRE_NET_EDGE_GATE_BLOCKED_COST_VALIDITY_DOES_NOT_COVER_EVALUATION_TIME`;
+    (6) unsupported unit compatibility → BlockedPacket `PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE` /
+    `BLOCKED_NEEDS_EVIDENCE` / `PRE_NET_EDGE_GATE_BLOCKED_UNSUPPORTED_UNIT_COMPATIBILITY`;
+    (7) `evaluation_time > gross_observed + gross_staleness` → NoEligibleHaltPacket `NO_ELIGIBLE` /
+    `PRE_NET_EDGE_GATE_NO_ELIGIBLE_GROSS_SNAPSHOT_STALE`; (8) pass → identical
+    `PreNetEdgeCalculationInput` identity.
+  - Blocked outcomes take precedence over NoEligible; category precedence beats tuple position; the
+    stale boundary is strict `>`; NoEligible is reserved for gross-snapshot staleness only in V1; the
+    pass path creates **no wrapper/result object** and returns input identity.
+  - Unit policy: exact unit match passes; the proportional vocabulary is exact, case-sensitive
+    (`BPS`, `BASIS_POINTS`, `RATE`, `PERCENT`, `PERCENTAGE`); lowercase/mixed-case forms are **not**
+    normalized and do **not** pass; no `.upper`/`.lower`/casefold normalization; no FX / oracle /
+    conversion table / quote-base conversion / Decimal math.
+  - Deferred/prohibited in V1: no instrument/base/quote compatibility, no venue compatibility, no
+    size/depth compatibility, no volume tier / applicable size range, no cost duplicate detection, no
+    cost ordering interpretation, no cost aggregation, no `observed_size > 0` eligibility, no
+    `gross_edge_value` sign/profitability interpretation, no `source_artifact`/`source_field` parsing,
+    no regex extraction from provenance strings, no `source_contract` semantic inference, and no
+    `CostApplicabilityContext`.
+  - Evidence: gate suite **28 passed**; scoped guard suite **358 passed**; evidence verifier
+    `result: PASS`; no full pytest run. The commit touched only the four allowed implementation-task
+    files (`phase5/pre_net_edge_calculation_input_boundary.py`,
+    `tests/test_phase5_pre_net_edge_calculation_input_gate.py`,
+    `tests/test_phase5_pre_net_edge_calculation_input.py`,
+    `tests/test_phase5_observable_cost_validity_context.py`). The obsolete-guard corrections were
+    minimal: removed only `PreNetEdgeCalculationInputGate` and `net_edge_input_preflight` from the
+    prior no-gate banned-symbol lists; all calculator/net-edge/aggregation/freshness/conversion bans
+    stayed intact.
+- **No net-edge / calculator / cost-aggregator / unit-conversion / friction-aggregation /
+  freshness-validation / trading / reporting / runtime / paper / live readiness is authorized.**
+- pre-net-edge input gate planning + implementation are **complete**.
+- **Next required step before any new component:** VPS / GitHub / local **full sync verification**
+  (confirm the local working tree, `origin/master`, and the VPS checkout all agree on `684c0d4`).
+- **Next future component (after sync):** a **separately authorized** `NetEdgeCalculator` planning
+  task — **docs + tests only, not implementation** unless separately authorized. Calculator planning
+  must **not** start until sync is confirmed.
 - Any later work **must** proceed **component-by-component with failing tests first and declared
   provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
