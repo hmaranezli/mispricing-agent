@@ -645,7 +645,31 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
   Wrong-type pass-through **does not mask system/type errors as NO_ELIGIBLE** and **does not call
   str/repr/introspection** (only `type(packet).__name__`).
 
-## Next position (after no_eligible halt-packet batch closeout)
+## Closeout — phase5_halt_propagation_integration_boundary batch
+
+- Planning commit `e53e6ab` (Add phase5 halt propagation integration planning).
+- Implementation commit `345330a` (Implement phase5 halt propagation integration boundary).
+- `component_name`: **`phase5_halt_propagation_integration_boundary`**.
+- Purpose: **exact-type halt-carrier routing / integration boundary** — routes already-typed halt
+  carriers around calculator/net-edge/friction/trading paths and keeps calculator code free of
+  halt-semantics interpretation.
+- `route_halt_carrier(payload)` returns the **identical object** only for:
+  - `type(payload) is BlockedPacket`
+  - `type(payload) is NoEligibleHaltPacket`
+- Unknown / raw / Mapping / subclass / arbitrary / hostile inputs raise **`HaltPropagationTypeError`**
+  (a `TypeError` subclass).
+- **No isinstance**, **no shared `BaseHaltPacket` / `GenericHaltPacket` / union hierarchy, no
+  polymorphic acceptance** — exact `type(x) is ...` checks only.
+- **No cross-conversion** between BLOCKED / CONTRACT_VIOLATION and NO_ELIGIBLE (neither carrier is
+  ever re-emitted, downgraded, upgraded, wrapped, or translated into the other).
+- **No `bool`/`len`/`int`/`float`/`str`/`bytes`/`repr`/equality/introspection/coercion** on offending
+  objects; the rejection message uses only `type(payload).__name__` or a fixed phrase.
+- The **success / actionable payload path remains deliberately deferred** until an explicit actionable
+  payload type / calculator input schema is **separately planned**.
+- **No calculator / net-edge / friction / trading / reporting-economic / runtime / paper / live
+  readiness is authorized** by this batch.
+
+## Next position (after halt-propagation integration batch closeout)
 
 - Current position: **Master F → Phase 5 implementation + planning layer.**
 - `phase5_input_provenance_preflight`: implementation + recursive hardening (`e7da765`, `5afb87d`,
@@ -656,11 +680,12 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
   hardening (`ea200cf`, `0038949`).
 - `phase5_no_eligible_halt_propagation_boundary`: planning (`6337921`) + implementation + scalar-field
   + pass-through exact-type hardening (`6a2fbfe`, `4f6c28d`, `d77b182`).
+- `phase5_halt_propagation_integration_boundary`: **planning (`e53e6ab`) + implementation
+  (`345330a`)** — exact-type halt-carrier routing is **planned and implemented**.
 - **No net-edge / calculator / friction / trading / reporting / runtime / paper / live readiness is
   authorized.**
-- **Next likely step:** a **separately authorized** upstream no-eligible source-result /
-  eligibility-boundary **planning** task, or a halt-propagation integration **planning** task — **not
-  implementation** unless separately authorized.
+- **Next likely step:** a **separately authorized** observable-cost / friction boundary **planning**
+  task — **docs + tests only, not implementation** unless separately authorized.
 - Any later work **must** proceed **component-by-component with failing tests first and declared
   provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
