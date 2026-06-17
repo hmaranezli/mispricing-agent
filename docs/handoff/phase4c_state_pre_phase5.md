@@ -211,6 +211,39 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   source evidence). Contract/planning only; depends on the friction, no-eligible, and provenance
   contracts.
 
+## Phase 5 fail-closed blocked-state closeout
+
+- **`65eaac8` — Add phase 5 fail closed blocked state contract.** Docs/tests only; a contract/planning
+  artifact only, **not implementation**.
+- It defines **`BLOCKED_NEEDS_EVIDENCE` as the canonical blocked status** for missing / unknown /
+  mismatched evidence across the Phase 5 contracts.
+- Blocked is **deterministic and terminal for the current path**.
+- Blocked **must not be downgraded into zero, false, pass, observed, derived, eligible, executable,
+  tradable, ready, profitable, or net-edge input**.
+- Blocked-state records require: `blocked_status`, `blocked_reason`, `blocked_source_contract`,
+  `missing_or_invalid_field`, `source_artifact_or_blocked_reason`, `source_field_or_blocked_reason`,
+  `deterministic_next_action`, `human_review_required`, `may_retry_after_evidence`, and
+  `created_utc_timestamp_ms_or_blocked_reason`.
+- **Human review must not substitute for `source_artifact`/`source_field` evidence.**
+- **Retry requires new evidence or explicit authorization** and remains **TDD/offline first**.
+- It depends on: `phase5_friction_component_schema_contract.md`,
+  `phase5_no_eligible_handling_schema_contract.md`, and `phase5_artifact_provenance_contract.md`.
+- **Phase 5 remains contract/planning only** — no implementation, no calculator, no net-edge
+  aggregation, no trading authority, no paper/live readiness, no alpha, no PnL, no profitability, no
+  edge claim.
+- **Chainlink/F1b is not the active task here.** This closeout does **not** authorize
+  PUBLIC_REFERENCE_BASKET / SURROGATE_BASKET integration, data fetch, or net-edge work.
+
+## Next position (after fail-closed closeout)
+
+- Current position: **Master F → Phase 5 contract/planning layer.**
+- **The net-edge engine is still not authorized.**
+- Before any net-edge / friction implementation, the remaining Phase 5 contract gaps **must** be
+  explicitly authorized and **TDD/offline first**, including observation/discovery cost, no-claims /
+  reporting, offline fixture, and any input-schema refinement still needed.
+- Any later implementation **must** proceed **component-by-component with failing tests first and
+  declared provenance**.
+
 <!-- NO-CLAIMS-START -->
 ## No-claims statement
 
