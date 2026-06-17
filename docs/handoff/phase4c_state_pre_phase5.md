@@ -373,6 +373,10 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
   artifact.
 - Next likely step is a **separate read-only Phase 5 contract-set gap/completeness audit**, not
   implementation.
+- See `docs/handoff/phase5_contract_set_gap_completeness_audit.md` (pinned by
+  `tests/test_phase5_contract_set_gap_completeness_audit.py`) — read-only audit;
+  `OBSERVED_NO_GAP_WITHIN_CHECKED_SCOPE` at HEAD `f0151fc`; scoped to checked docs/tests/handoff
+  invariants; authorizes nothing. (Committed-hash state-update recorded by the follow-up memory task.)
 - Any later implementation **must** proceed **component-by-component with failing tests first and
   declared provenance**.
 
