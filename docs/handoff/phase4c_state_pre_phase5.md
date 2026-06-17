@@ -610,7 +610,42 @@ This batch covers five committed slices: `285faf9`, `8ae8455`, `1d8c50a`, `ea200
   uses only `type(...).__name__` or a fixed phrase.
 - **NO_ELIGIBLE remains a separate later boundary** and is **not encoded as a `BlockedPacket`**.
 
-## Next position (after blocked + adapter batch closeout)
+## Phase 5 no_eligible halt-propagation boundary batch closeout
+
+This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b182`.
+
+### planning
+
+- **`6337921` — Add phase5 no eligible halt propagation planning** (docs/tests only). Planning
+  artifact `docs/handoff/phase5_no_eligible_halt_propagation_boundary_implementation_planning.md`,
+  pinned by `tests/test_phase5_no_eligible_halt_propagation_boundary_implementation_planning.py`. It
+  authorizes no implementation.
+
+### implementation + hardening
+
+- **`6a2fbfe` — Implement phase5 no eligible halt packet.** **`4f6c28d` — Harden phase5 no eligible
+  halt packet scalar fields.** **`d77b182` — Harden phase5 no eligible pass-through exact type.**
+  (`phase5/no_eligible_halt_propagation_boundary.py`, pinned by
+  `tests/test_phase5_no_eligible_halt_propagation_boundary.py`.)
+- `NoEligibleHaltPacket` is implemented as a **separate non-error halt/bypass carrier**, **not a
+  `BlockedPacket`** (no reuse, not a subclass). **NO_ELIGIBLE remains semantically separate from
+  BLOCKED / CONTRACT_VIOLATION.**
+- The packet is **frozen, scalar-only**, has the **exact canonical name** `NoEligibleHaltPacket`, and
+  has **no numeric/economic fields**.
+- **Anti-truthiness** (`NoEligibleTruthinessError`) and **anti-coercion** (`NoEligibleCoercionError`)
+  are enforced; safe `repr` only.
+- `make_no_eligible_halt_packet` is **keyword-only**; **direct/positional construction is rejected**
+  (the dataclass is `init=False`).
+- Field values require **exact `type(value) is str`, non-empty and non-whitespace**; the factory
+  rejects None, containers (tuple/list/dict/set/frozenset), str subclasses, numeric/bool scalars, and
+  hostile objects with `NoEligibleConstructionError` — error messages use only the field name and
+  `type(value).__name__`.
+- `pass_through_no_eligible_halt_packet` returns the identical object **only for exact
+  `type(packet) is NoEligibleHaltPacket`**; **subclasses are rejected with `NoEligibleTypeError`**.
+  Wrong-type pass-through **does not mask system/type errors as NO_ELIGIBLE** and **does not call
+  str/repr/introspection** (only `type(packet).__name__`).
+
+## Next position (after no_eligible halt-packet batch closeout)
 
 - Current position: **Master F → Phase 5 implementation + planning layer.**
 - `phase5_input_provenance_preflight`: implementation + recursive hardening (`e7da765`, `5afb87d`,
@@ -619,9 +654,13 @@ This batch covers five committed slices: `285faf9`, `8ae8455`, `1d8c50a`, `ea200
   (`285faf9`, `8ae8455`).
 - `phase5_preflight_to_blocked_packet_adapter`: planning (`1d8c50a`) + implementation + state-guard
   hardening (`ea200cf`, `0038949`).
-- **No net-edge / calculator / friction / trading / paper / live readiness is authorized.**
-- **Next likely step:** a **separately authorized** `no_eligible` / halt-propagation boundary
-  **planning** task — **not implementation**.
+- `phase5_no_eligible_halt_propagation_boundary`: planning (`6337921`) + implementation + scalar-field
+  + pass-through exact-type hardening (`6a2fbfe`, `4f6c28d`, `d77b182`).
+- **No net-edge / calculator / friction / trading / reporting / runtime / paper / live readiness is
+  authorized.**
+- **Next likely step:** a **separately authorized** upstream no-eligible source-result /
+  eligibility-boundary **planning** task, or a halt-propagation integration **planning** task — **not
+  implementation** unless separately authorized.
 - Any later work **must** proceed **component-by-component with failing tests first and declared
   provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
