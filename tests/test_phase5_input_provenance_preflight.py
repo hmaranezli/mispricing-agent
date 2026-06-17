@@ -151,6 +151,31 @@ def test_forbidden_data_quality_claim_in_provenance_violation():
     assert result.status == PLANNING_GATE_CONTRACT_VIOLATION
 
 
+# Hardening: forbidden claim in ANY declared top-level mapping category, not just
+# record_identity / provenance_fields, must be a CONTRACT_VIOLATION (never OBSERVED).
+def test_forbidden_claim_in_reporting_boundary_fields_violation():
+    rec = _valid_record()
+    rec["reporting_boundary_fields"]["data_quality_guaranteed"] = True
+    result = evaluate_input_provenance_preflight(rec)
+    assert result.status == PLANNING_GATE_CONTRACT_VIOLATION
+    assert result.status != PLANNING_GATE_OBSERVED
+    assert result.human_review_required is True
+
+
+def test_forbidden_claim_in_blocked_state_fields_violation():
+    rec = _valid_record()
+    rec["blocked_state_fields"]["source_is_trusted"] = True
+    result = evaluate_input_provenance_preflight(rec)
+    assert result.status == PLANNING_GATE_CONTRACT_VIOLATION
+
+
+def test_forbidden_claim_in_gross_edge_fields_violation():
+    rec = _valid_record()
+    rec["gross_edge_fields"]["authorizes_downstream"] = True
+    result = evaluate_input_provenance_preflight(rec)
+    assert result.status == PLANNING_GATE_CONTRACT_VIOLATION
+
+
 # 10. malformed non-Mapping input -> CONTRACT_VIOLATION, no exception
 def test_non_mapping_input_violation_no_exception():
     for bad in [None, 42, "a string", ["not", "a", "mapping"], 3.14, object()]:

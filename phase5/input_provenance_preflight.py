@@ -142,8 +142,12 @@ def evaluate_input_provenance_preflight(record) -> PreflightResult:
     src_artifact = provenance.get("source_artifact") if isinstance(provenance, Mapping) else None
     src_field = provenance.get("source_field") if isinstance(provenance, Mapping) else None
 
-    # 2. Forbidden claims anywhere in the scanned scope -> contract violation.
-    for scope in (record, identity, provenance):
+    # 2. Forbidden claims at the root or in ANY declared top-level mapping category -> contract
+    #    violation. Shallow scan only: the root keys plus one level into each top-level mapping
+    #    value (no recursion, no parsing, no IO).
+    scopes = [record]
+    scopes.extend(v for v in record.values() if isinstance(v, Mapping))
+    for scope in scopes:
         hit = _forbidden_claim_in(scope)
         if hit is not None:
             return _violation(CV_FORBIDDEN_CLAIM, hit, src_contract, src_artifact, src_field)
