@@ -176,6 +176,67 @@ def test_forbidden_claim_in_gross_edge_fields_violation():
     assert result.status == PLANNING_GATE_CONTRACT_VIOLATION
 
 
+# Recursive hardening: forbidden claims nested below the first level of any declared top-level
+# container (Mapping/list/tuple) must NOT leak as OBSERVED; they must be CONTRACT_VIOLATIONs.
+def test_nested_mapping_forbidden_claim_in_reporting_boundary_violation():
+    rec = _valid_record()
+    rec["reporting_boundary_fields"] = {"nested": {"deeper": {"data_quality_guaranteed": True}}}
+    result = evaluate_input_provenance_preflight(rec)
+    assert result.status == PLANNING_GATE_CONTRACT_VIOLATION
+    assert result.status != PLANNING_GATE_OBSERVED
+
+
+def test_nested_list_forbidden_claim_in_blocked_state_violation():
+    rec = _valid_record()
+    rec["blocked_state_fields"] = {"items": [{"readiness_confirmed": True}]}
+    result = evaluate_input_provenance_preflight(rec)
+    assert result.status == PLANNING_GATE_CONTRACT_VIOLATION
+
+
+def test_nested_tuple_forbidden_claim_in_gross_edge_violation():
+    rec = _valid_record()
+    rec["gross_edge_fields"] = {"pair": ({"profitability_claimed": True},)}
+    result = evaluate_input_provenance_preflight(rec)
+    assert result.status == PLANNING_GATE_CONTRACT_VIOLATION
+
+
+def test_nested_mapping_source_truth_claim_in_mechanical_metadata_violation():
+    rec = _valid_record()
+    rec["mechanical_metadata"] = {"meta": {"inner": {"source_truth_guaranteed": True}}}
+    result = evaluate_input_provenance_preflight(rec)
+    assert result.status == PLANNING_GATE_CONTRACT_VIOLATION
+
+
+def test_nested_list_authorizes_downstream_claim_in_no_eligible_violation():
+    rec = _valid_record()
+    rec["no_eligible_state"] = {"states": [{"authorizes_downstream": True}]}
+    result = evaluate_input_provenance_preflight(rec)
+    assert result.status == PLANNING_GATE_CONTRACT_VIOLATION
+
+
+def test_cyclic_nested_structure_fails_closed_no_hang():
+    rec = _valid_record()
+    cyclic = {}
+    cyclic["loop"] = cyclic
+    rec["mechanical_metadata"] = {"nested": cyclic}
+    result = evaluate_input_provenance_preflight(rec)
+    assert result.status == PLANNING_GATE_CONTRACT_VIOLATION
+    assert result.blocked_status is None
+
+
+def test_excessive_nested_depth_fails_closed_no_hang():
+    rec = _valid_record()
+    deep = current = {}
+    for _ in range(300):
+        nxt = {}
+        current["child"] = nxt
+        current = nxt
+    rec["mechanical_metadata"] = {"nested": deep}
+    result = evaluate_input_provenance_preflight(rec)
+    assert result.status == PLANNING_GATE_CONTRACT_VIOLATION
+    assert result.blocked_status is None
+
+
 # 10. malformed non-Mapping input -> CONTRACT_VIOLATION, no exception
 def test_non_mapping_input_violation_no_exception():
     for bad in [None, 42, "a string", ["not", "a", "mapping"], 3.14, object()]:

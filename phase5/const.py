@@ -89,13 +89,22 @@ FORBIDDEN_CLAIM_KEYS = frozenset({
     "source_reliability_guaranteed",
     "authorizes_downstream",
     "authorizes_implementation",
+    "readiness_confirmed",
+    "profitability_claimed",
 })
+
+# Deterministic maximum container depth for the structural forbidden-claim scan. Legitimate records
+# are shallow (category -> field -> scalar); anything deeper fails closed rather than recursing
+# unboundedly. This is a fixed structural guard, not an economic or readiness threshold.
+MAX_SCAN_DEPTH = 64
 
 # --- Contract-violation / blocked reason codes ---
 CV_NON_MAPPING_INPUT = "CONTRACT_VIOLATION_NON_MAPPING_INPUT"
 CV_MALFORMED_CONTAINER = "CONTRACT_VIOLATION_MALFORMED_REQUIRED_CONTAINER"
 CV_UNSUPPORTED_SOURCE_CONTRACT = "CONTRACT_VIOLATION_UNSUPPORTED_SOURCE_CONTRACT"
 CV_FORBIDDEN_CLAIM = "CONTRACT_VIOLATION_FORBIDDEN_CLAIM"
+CV_CYCLIC_STRUCTURE = "CONTRACT_VIOLATION_CYCLIC_STRUCTURE"
+CV_MAX_DEPTH_EXCEEDED = "CONTRACT_VIOLATION_MAX_DEPTH_EXCEEDED"
 
 BLOCKED_MISSING_CATEGORY = "BLOCKED_MISSING_TOP_LEVEL_CATEGORY"
 BLOCKED_MISSING_FIELD = "BLOCKED_MISSING_REQUIRED_FIELD"

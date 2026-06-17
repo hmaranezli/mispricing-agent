@@ -32,10 +32,13 @@ from phase5.const import (
     BLOCKED_REASON_PREFIX,
     ALLOWED_SOURCE_CONTRACTS,
     FORBIDDEN_CLAIM_KEYS,
+    MAX_SCAN_DEPTH,
     CV_NON_MAPPING_INPUT,
     CV_MALFORMED_CONTAINER,
     CV_UNSUPPORTED_SOURCE_CONTRACT,
     CV_FORBIDDEN_CLAIM,
+    CV_CYCLIC_STRUCTURE,
+    CV_MAX_DEPTH_EXCEEDED,
     BLOCKED_MISSING_CATEGORY,
     BLOCKED_MISSING_FIELD,
     BLOCKED_EXPLICIT_BLOCKED_REASON,
@@ -119,14 +122,54 @@ def _violation(reason, field, source_contract, source_artifact, source_field) ->
     )
 
 
-def _forbidden_claim_in(mapping) -> Optional[str]:
-    """Return the first truthy forbidden-claim key found in a mapping, else None."""
-    if not isinstance(mapping, Mapping):
-        return None
-    for key in mapping:
-        if key in FORBIDDEN_CLAIM_KEYS and bool(mapping[key]):
-            return key
-    return None
+def _structural_forbidden_scan(root):
+    """Recursively scan JSON-like containers (Mapping / list / tuple) for a truthy forbidden-claim
+    key. Returns a (code, detail) pair where code is one of:
+
+    - ``None``  -> clean (no forbidden claim, no structural defect within scope)
+    - ``"CLAIM"`` -> first truthy forbidden-claim key found (detail = the key)
+    - ``"CYCLE"`` -> a container references itself along the active path (detail = None)
+    - ``"DEPTH"`` -> the deterministic max depth was exceeded (detail = None)
+
+    Scalars and arbitrary non-JSON-like objects are not introspected. Cycles are detected by
+    container identity on the active path so shared acyclic subtrees do not false-positive. The scan
+    is pure: no IO, no network, no env/time/random, no mutation of the input, no coercion.
+    """
+    active = set()
+
+    def walk(obj, depth):
+        if depth > MAX_SCAN_DEPTH:
+            return ("DEPTH", None)
+        if isinstance(obj, Mapping):
+            oid = id(obj)
+            if oid in active:
+                return ("CYCLE", None)
+            active.add(oid)
+            for key, val in obj.items():
+                if key in FORBIDDEN_CLAIM_KEYS and bool(val):
+                    active.discard(oid)
+                    return ("CLAIM", key)
+                sub = walk(val, depth + 1)
+                if sub[0] is not None:
+                    active.discard(oid)
+                    return sub
+            active.discard(oid)
+            return (None, None)
+        if isinstance(obj, (list, tuple)):
+            oid = id(obj)
+            if oid in active:
+                return ("CYCLE", None)
+            active.add(oid)
+            for item in obj:
+                sub = walk(item, depth + 1)
+                if sub[0] is not None:
+                    active.discard(oid)
+                    return sub
+            active.discard(oid)
+            return (None, None)
+        return (None, None)
+
+    return walk(root, 0)
 
 
 def evaluate_input_provenance_preflight(record) -> PreflightResult:
@@ -142,15 +185,16 @@ def evaluate_input_provenance_preflight(record) -> PreflightResult:
     src_artifact = provenance.get("source_artifact") if isinstance(provenance, Mapping) else None
     src_field = provenance.get("source_field") if isinstance(provenance, Mapping) else None
 
-    # 2. Forbidden claims at the root or in ANY declared top-level mapping category -> contract
-    #    violation. Shallow scan only: the root keys plus one level into each top-level mapping
-    #    value (no recursion, no parsing, no IO).
-    scopes = [record]
-    scopes.extend(v for v in record.values() if isinstance(v, Mapping))
-    for scope in scopes:
-        hit = _forbidden_claim_in(scope)
-        if hit is not None:
-            return _violation(CV_FORBIDDEN_CLAIM, hit, src_contract, src_artifact, src_field)
+    # 2. Forbidden claims anywhere in the JSON-like structure -> contract violation. The scan
+    #    recurses through Mapping/list/tuple containers, short-circuits on the first truthy forbidden
+    #    claim, and fails closed on cyclic structure or excessive depth (never hangs, never raises).
+    code, detail = _structural_forbidden_scan(record)
+    if code == "CLAIM":
+        return _violation(CV_FORBIDDEN_CLAIM, detail, src_contract, src_artifact, src_field)
+    if code == "CYCLE":
+        return _violation(CV_CYCLIC_STRUCTURE, None, src_contract, src_artifact, src_field)
+    if code == "DEPTH":
+        return _violation(CV_MAX_DEPTH_EXCEEDED, None, src_contract, src_artifact, src_field)
 
     # 3. Required mapping categories, when present, must be mapping containers.
     for cat in REQUIRED_MAPPING_CATEGORIES:
