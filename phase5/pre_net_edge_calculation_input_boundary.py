@@ -26,8 +26,18 @@ from dataclasses import dataclass
 
 from phase5.observable_cost_friction_boundary import ObservableCostObservation
 from phase5.gross_edge_observation_boundary import GrossEdgeObservation
-from phase5.blocked_result_boundary import BlockedPacket
-from phase5.no_eligible_halt_propagation_boundary import NoEligibleHaltPacket
+from phase5.blocked_result_boundary import BlockedPacket, make_blocked_packet
+from phase5.no_eligible_halt_propagation_boundary import (
+    NoEligibleHaltPacket,
+    make_no_eligible_halt_packet,
+)
+from phase5.const import (
+    PLANNING_GATE_CONTRACT_VIOLATION,
+    PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE,
+    BLOCKED_NEEDS_EVIDENCE,
+    NEXT_ACTION_HALT,
+    NEXT_ACTION_OBTAIN_EVIDENCE,
+)
 
 BOUNDARY_VERSION = "phase5.pre_net_edge_calculation_input_boundary.v0"
 
@@ -396,3 +406,234 @@ def make_pre_net_edge_calculation_input(
     object.__setattr__(calc_input, "cost_validity_contexts", cost_validity_contexts)
     object.__setattr__(calc_input, "boundary_version", boundary_version)
     return calc_input
+
+
+# ---------------------------------------------------------------------------
+# PreNetEdgeCalculationInputGate V1 / net_edge_input_preflight
+#
+# A pure, offline, deterministic cross-object preflight over exactly one
+# PreNetEdgeCalculationInput. It is NOT a carrier, calculator, parser, adapter, cost aggregator, unit
+# converter, FX/oracle, or trading/reporting component. It performs no IO/network/env/time/datetime/
+# random/subprocess and no economic/cost/net-edge arithmetic. The only arithmetic is local integer
+# timestamp comparison plus the single addition gross_observed + gross_staleness, on ints parsed via
+# int() only after exact ^\d+$ validation; carrier fields are never mutated/re-emitted. Outputs are
+# exactly: input identity (pass), an existing BlockedPacket, or an existing NoEligibleHaltPacket —
+# no new wrapper / union / shared base / polymorphic halt hierarchy.
+# ---------------------------------------------------------------------------
+
+PRE_NET_EDGE_GATE_COMPONENT_NAME = "phase5_pre_net_edge_calculation_input_gate"
+PRE_NET_EDGE_GATE_BOUNDARY_VERSION = "phase5.pre_net_edge_calculation_input_gate.v0"
+PRE_NET_EDGE_GATE_SOURCE_CONTRACT = "phase5_pre_net_edge_calculation_input_gate_implementation_planning.md"
+PRE_NET_EDGE_GATE_SOURCE_ARTIFACT = "docs/handoff/phase5_pre_net_edge_calculation_input_gate_implementation_planning.md"
+
+# Exact reason vocabulary — character-for-character; no shorter aliases.
+PRE_NET_EDGE_GATE_CONTRACT_VIOLATION_TIME_CAUSALITY = "PRE_NET_EDGE_GATE_CONTRACT_VIOLATION_TIME_CAUSALITY"
+PRE_NET_EDGE_GATE_CONTRACT_VIOLATION_INVALID_COST_INTERVAL = "PRE_NET_EDGE_GATE_CONTRACT_VIOLATION_INVALID_COST_INTERVAL"
+PRE_NET_EDGE_GATE_BLOCKED_COST_VALIDITY_DOES_NOT_COVER_GROSS_TIME = "PRE_NET_EDGE_GATE_BLOCKED_COST_VALIDITY_DOES_NOT_COVER_GROSS_TIME"
+PRE_NET_EDGE_GATE_BLOCKED_COST_VALIDITY_DOES_NOT_COVER_EVALUATION_TIME = "PRE_NET_EDGE_GATE_BLOCKED_COST_VALIDITY_DOES_NOT_COVER_EVALUATION_TIME"
+PRE_NET_EDGE_GATE_BLOCKED_UNSUPPORTED_UNIT_COMPATIBILITY = "PRE_NET_EDGE_GATE_BLOCKED_UNSUPPORTED_UNIT_COMPATIBILITY"
+PRE_NET_EDGE_GATE_NO_ELIGIBLE_GROSS_SNAPSHOT_STALE = "PRE_NET_EDGE_GATE_NO_ELIGIBLE_GROSS_SNAPSHOT_STALE"
+
+# No-eligible packet literals (gross-snapshot staleness is the only V1 no-eligible market fact).
+_NO_ELIGIBLE_STATUS = "NO_ELIGIBLE"
+_NO_ELIGIBLE_NEXT_ACTION = "HALT_BYPASS_NO_ELIGIBLE"
+
+# Exact, case-sensitive proportional cost-unit vocabulary admissible without conversion.
+_PRE_NET_EDGE_GATE_PROPORTIONAL_UNITS = frozenset(
+    {"BPS", "BASIS_POINTS", "RATE", "PERCENT", "PERCENTAGE"}
+)
+
+
+class PreNetEdgeCalculationInputGateTypeError(TypeError):
+    """Raised for a programmatic wrong-path / wrong-type input to the pre-net-edge gate."""
+
+
+def _gate_parse_epoch_int(value, field_name):
+    """Parse an exact integer string into a local int, ONLY after exact ^\\d+$ validation.
+
+    No int() is ever called before validation; values that are not exact integer strings are a
+    programmatic/corrupted-carrier-state condition and raise the gate type error using only the field
+    name and ``type(value).__name__`` (never ``str(value)``/``repr(value)``).
+    """
+    if type(value) is not str or _EXACT_INTEGER.fullmatch(value) is None:
+        raise PreNetEdgeCalculationInputGateTypeError(
+            "field {!r} must be an exact integer string, not {}".format(
+                field_name, type(value).__name__
+            )
+        )
+    return int(value)
+
+
+def _gate_blocked(*, status, blocked_status, reason_code, missing_or_invalid_field,
+                  deterministic_next_action, may_retry_after_evidence):
+    """Build a gate BlockedPacket via the existing factory — no new packet class, no wrapper."""
+    return make_blocked_packet(
+        component_name=PRE_NET_EDGE_GATE_COMPONENT_NAME,
+        origin_component=PRE_NET_EDGE_GATE_COMPONENT_NAME,
+        origin_result_status=status,
+        status=status,
+        blocked_status=blocked_status,
+        reason_code=reason_code,
+        missing_or_invalid_field=missing_or_invalid_field,
+        source_contract=PRE_NET_EDGE_GATE_SOURCE_CONTRACT,
+        source_artifact=PRE_NET_EDGE_GATE_SOURCE_ARTIFACT,
+        source_field=reason_code,
+        deterministic_next_action=deterministic_next_action,
+        human_review_required=True,
+        may_retry_after_evidence=may_retry_after_evidence,
+        created_from_contract=PRE_NET_EDGE_GATE_SOURCE_CONTRACT,
+        boundary_version=PRE_NET_EDGE_GATE_BOUNDARY_VERSION,
+    )
+
+
+def _gate_no_eligible():
+    """Build the gate NoEligibleHaltPacket via the existing factory — gross-snapshot staleness only."""
+    return make_no_eligible_halt_packet(
+        component_name=PRE_NET_EDGE_GATE_COMPONENT_NAME,
+        origin_component=PRE_NET_EDGE_GATE_COMPONENT_NAME,
+        origin_result_status=_NO_ELIGIBLE_STATUS,
+        status=_NO_ELIGIBLE_STATUS,
+        no_eligible_reason=PRE_NET_EDGE_GATE_NO_ELIGIBLE_GROSS_SNAPSHOT_STALE,
+        source_contract=PRE_NET_EDGE_GATE_SOURCE_CONTRACT,
+        source_artifact=PRE_NET_EDGE_GATE_SOURCE_ARTIFACT,
+        source_field=PRE_NET_EDGE_GATE_NO_ELIGIBLE_GROSS_SNAPSHOT_STALE,
+        deterministic_next_action=_NO_ELIGIBLE_NEXT_ACTION,
+        boundary_version=PRE_NET_EDGE_GATE_BOUNDARY_VERSION,
+    )
+
+
+def net_edge_input_preflight(*, calculation_input, evaluation_epoch_ms):
+    """Pure cross-object preflight over exactly one :class:`PreNetEdgeCalculationInput`.
+
+    Returns the identical ``calculation_input`` object on pass; an existing :class:`BlockedPacket` for
+    a contract/data contradiction or an evidence/applicability failure; or an existing
+    :class:`NoEligibleHaltPacket` only for gross-snapshot staleness. Programmatic wrong-path / wrong-
+    type inputs raise :class:`PreNetEdgeCalculationInputGateTypeError` or
+    :class:`MisroutedHaltCarrierError` and never produce a packet. See the planning artifact
+    ``phase5_pre_net_edge_calculation_input_gate_implementation_planning.md`` for the pinned contract.
+    """
+    # --- A. Programmatic wrong-path / wrong-type (before any semantic gate result) ---
+    # Exact halt carriers at this boundary are a misroute (routing/integration bug), not inputs.
+    reject_misrouted_halt_carrier(calculation_input)
+    reject_misrouted_halt_carrier(evaluation_epoch_ms)
+
+    # Exact-type only (no isinstance); a wrong/subclass/duck-typed/hostile input is rejected without
+    # attribute access, coercion, or repr — only its type name is used in the message.
+    if type(calculation_input) is not PreNetEdgeCalculationInput:
+        raise PreNetEdgeCalculationInputGateTypeError(
+            "net_edge_input_preflight requires an exact PreNetEdgeCalculationInput, not "
+            + type(calculation_input).__name__
+        )
+
+    # evaluation_epoch_ms must be an explicit exact integer string — no clock/default fallback.
+    if evaluation_epoch_ms is None:
+        raise PreNetEdgeCalculationInputGateTypeError(
+            "required field 'evaluation_epoch_ms' must not be None"
+        )
+    if type(evaluation_epoch_ms) is not str:
+        raise PreNetEdgeCalculationInputGateTypeError(
+            "field 'evaluation_epoch_ms' must be a str, not " + type(evaluation_epoch_ms).__name__
+        )
+    if evaluation_epoch_ms.strip() == "":
+        raise PreNetEdgeCalculationInputGateTypeError(
+            "field 'evaluation_epoch_ms' must be a non-empty, non-whitespace string"
+        )
+    if _EXACT_INTEGER.fullmatch(evaluation_epoch_ms) is None:
+        raise PreNetEdgeCalculationInputGateTypeError(
+            "field 'evaluation_epoch_ms' must be an exact integer string"
+        )
+
+    gross = calculation_input.gross_observation
+    contexts = calculation_input.cost_validity_contexts
+
+    # Local integer temporaries only — int() strictly after ^\d+$ validation; carrier fields untouched.
+    gross_observed = _gate_parse_epoch_int(gross.observed_at_epoch_ms, "observed_at_epoch_ms")
+    gross_staleness = _gate_parse_epoch_int(gross.staleness_threshold_ms, "staleness_threshold_ms")
+    evaluation_time = int(evaluation_epoch_ms)
+
+    # --- B. Causal time contradiction (contract violation) ---
+    if evaluation_time < gross_observed:
+        return _gate_blocked(
+            status=PLANNING_GATE_CONTRACT_VIOLATION,
+            blocked_status=None,
+            reason_code=PRE_NET_EDGE_GATE_CONTRACT_VIOLATION_TIME_CAUSALITY,
+            missing_or_invalid_field="evaluation_epoch_ms",
+            deterministic_next_action=NEXT_ACTION_HALT,
+            may_retry_after_evidence=False,
+        )
+
+    # --- C. Invalid cost interval (contract violation), tuple order ---
+    for context in contexts:
+        cost_from = _gate_parse_epoch_int(context.valid_from_epoch_ms, "valid_from_epoch_ms")
+        cost_until = _gate_parse_epoch_int(context.valid_until_epoch_ms, "valid_until_epoch_ms")
+        if cost_from > cost_until:
+            return _gate_blocked(
+                status=PLANNING_GATE_CONTRACT_VIOLATION,
+                blocked_status=None,
+                reason_code=PRE_NET_EDGE_GATE_CONTRACT_VIOLATION_INVALID_COST_INTERVAL,
+                missing_or_invalid_field="cost_validity_interval",
+                deterministic_next_action=NEXT_ACTION_HALT,
+                may_retry_after_evidence=False,
+            )
+
+    # --- D. Cost validity does not cover gross observed time (needs evidence), tuple order ---
+    for context in contexts:
+        cost_from = _gate_parse_epoch_int(context.valid_from_epoch_ms, "valid_from_epoch_ms")
+        cost_until = _gate_parse_epoch_int(context.valid_until_epoch_ms, "valid_until_epoch_ms")
+        if not (cost_from <= gross_observed <= cost_until):
+            return _gate_blocked(
+                status=PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE,
+                blocked_status=BLOCKED_NEEDS_EVIDENCE,
+                reason_code=PRE_NET_EDGE_GATE_BLOCKED_COST_VALIDITY_DOES_NOT_COVER_GROSS_TIME,
+                missing_or_invalid_field="cost_validity_interval_for_gross_observed_time",
+                deterministic_next_action=NEXT_ACTION_OBTAIN_EVIDENCE,
+                may_retry_after_evidence=True,
+            )
+
+    # --- E. Cost validity does not cover evaluation time (needs evidence), tuple order ---
+    for context in contexts:
+        cost_from = _gate_parse_epoch_int(context.valid_from_epoch_ms, "valid_from_epoch_ms")
+        cost_until = _gate_parse_epoch_int(context.valid_until_epoch_ms, "valid_until_epoch_ms")
+        if not (cost_from <= evaluation_time <= cost_until):
+            return _gate_blocked(
+                status=PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE,
+                blocked_status=BLOCKED_NEEDS_EVIDENCE,
+                reason_code=PRE_NET_EDGE_GATE_BLOCKED_COST_VALIDITY_DOES_NOT_COVER_EVALUATION_TIME,
+                missing_or_invalid_field="cost_validity_interval_for_evaluation_time",
+                deterministic_next_action=NEXT_ACTION_OBTAIN_EVIDENCE,
+                may_retry_after_evidence=True,
+            )
+
+    # --- F. Unsupported unit compatibility (needs evidence), tuple order ---
+    # Case-sensitive exact checks only: exact match, or exact-uppercase proportional vocabulary.
+    gross_unit = gross.gross_edge_unit
+    for context in contexts:
+        cost_unit = context.cost_observation.unit
+        if cost_unit != gross_unit and cost_unit not in _PRE_NET_EDGE_GATE_PROPORTIONAL_UNITS:
+            return _gate_blocked(
+                status=PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE,
+                blocked_status=BLOCKED_NEEDS_EVIDENCE,
+                reason_code=PRE_NET_EDGE_GATE_BLOCKED_UNSUPPORTED_UNIT_COMPATIBILITY,
+                missing_or_invalid_field="cost_observation.unit",
+                deterministic_next_action=NEXT_ACTION_OBTAIN_EVIDENCE,
+                may_retry_after_evidence=True,
+            )
+
+    # --- G. Gross snapshot stale (the only V1 no-eligible market fact) ---
+    if evaluation_time > gross_observed + gross_staleness:
+        return _gate_no_eligible()
+
+    # --- H. Pass: return the identical input object by identity (no copy/wrap/enrich/mutate) ---
+    return calculation_input
+
+
+class PreNetEdgeCalculationInputGate:
+    """Stateless, non-carrier namespace for the pre-net-edge calculation-input preflight gate.
+
+    It carries no market state and requires no construction for normal use; the runtime entrypoint is
+    the pure function :func:`net_edge_input_preflight`, exposed here as a static method.
+    """
+
+    __slots__ = ()
+
+    preflight = staticmethod(net_edge_input_preflight)

@@ -477,8 +477,6 @@ def test_halt_carrier_as_whole_container_rejected():
 def test_no_gate_or_calculator_symbols_exported():
     import phase5.pre_net_edge_calculation_input_boundary as mod
     for banned in [
-        "PreNetEdgeCalculationInputGate",
-        "net_edge_input_preflight",
         "compute_net_edge",
         "net_edge",
         "aggregate_cost",
