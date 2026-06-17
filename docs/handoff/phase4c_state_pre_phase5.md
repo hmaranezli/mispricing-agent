@@ -502,15 +502,46 @@ Phase 5 contract backlog (planning artifacts only, no implementation):
 - 19 tests passed (16 prior preserved + 3 new).
 - `const.py` unchanged; `FORBIDDEN_CLAIM_KEYS` frozenset was already sufficient.
 
-## Next position (after phase5_input_provenance_preflight implementation closeout)
+### Slice 3 — recursive no-claims hardening (`d26c24a`)
+
+- **`d26c24a` — Harden phase5 preflight recursive forbidden claims.** This is a **recursive
+  no-claims hardening slice** for `phase5_input_provenance_preflight`, **not a new component**.
+- Files: `phase5/const.py`, `phase5/input_provenance_preflight.py`,
+  `tests/test_phase5_input_provenance_preflight.py`.
+- **Defect fixed:** the prior shallow scan (Slice 2) only reached the first level of each top-level
+  category, so a forbidden claim nested **below** the first level leaked as `PLANNING_GATE_OBSERVED`.
+- **RED → GREEN:** 7 new tests failed first — forbidden claims nested in Mapping/list/tuple
+  containers, a cyclic nested structure, and excessive nested depth all wrongly returned
+  `PLANNING_GATE_OBSERVED`. After implementation: full preflight file **26/26 passed** (19 prior
+  preserved + 7 new); scoped Phase 5 set **94 passed**; `tools/phase45_evidence_verifier.py` →
+  **PASS** on the VPS.
+- **Changed behavior:** forbidden-claim scanning is now a **recursive structural scan** that
+  - traverses **only JSON-like Mapping/list/tuple containers** (no arbitrary object introspection);
+  - **short-circuits on the first truthy forbidden-claim key**;
+  - **detects cycles** via active-path container identity (shared acyclic subtrees do not
+    false-positive);
+  - enforces a **deterministic max scan depth**;
+  - and **fails closed to `PLANNING_GATE_CONTRACT_VIOLATION`** for a forbidden claim, a cyclic
+    structure, or a depth overflow (never hangs, never raises).
+- **`const.py` updates:** `readiness_confirmed` and `profitability_claimed` added to
+  `FORBIDDEN_CLAIM_KEYS`; `MAX_SCAN_DEPTH = 64` added as a **structural guard only, not an
+  economic/readiness threshold**; reason codes `CV_CYCLIC_STRUCTURE` and `CV_MAX_DEPTH_EXCEEDED`
+  added.
+- **No-claims / no-implementation boundary preserved:** still **not a validator**; no
+  market-truth/data-quality/source-truth/source-reliability/economic/numeric/profitability/
+  readiness/edge logic; no parser/loader/artifact reader/data fetch/fixture engine/calculator/
+  net-edge/friction engine/trading/paper-live/endpoints/secrets/Telegram/process-control; the scan
+  asserts no positive property and **authorizes no downstream or implementation work**.
+
+## Next position (after phase5_input_provenance_preflight implementation + recursive hardening)
 
 - Current position: **Master F → Phase 5 implementation layer (first component landed).**
-- `phase5_input_provenance_preflight` is **implemented** (two slices: `e7da765`, `5afb87d`); it
-  authorizes no downstream or implementation work.
+- `phase5_input_provenance_preflight` has **implementation + recursive hardening recorded** (three
+  slices: `e7da765`, `5afb87d`, `d26c24a`); it authorizes no downstream or implementation work.
 - **The net-edge engine is still not authorized.**
-- Next step, if pursued, can only be a **separately authorized offline/TDD implementation or
-  planning task for the next Phase 5 component** — component-by-component, failing tests first,
-  declared provenance.
+- Next step, if pursued, can only be a **separately authorized, component-scoped, failing-tests-first,
+  declared-provenance** offline/TDD implementation or planning task for the next Phase 5 component —
+  **not implementation** of anything beyond that.
 - Any later implementation **must** proceed **component-by-component with failing tests first and
   declared provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
