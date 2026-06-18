@@ -802,7 +802,7 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
 - **No raw/JSON/exchange parser, loader, endpoint reader, order-book/venue/sizing model, aggregation,
   calculator, net-edge, trading, reporting, or paper-live work is authorized** by this batch.
 
-## Next position (after venue instrument readiness gate implementation batch closeout)
+## Next position (after liquidity capacity evidence planning batch closeout)
 
 - Current position: **Master F → Phase 5 implementation + planning layer.**
 - `phase5_input_provenance_preflight`: implementation + recursive hardening (`e7da765`, `5afb87d`,
@@ -1226,6 +1226,81 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
     pytest run.
 - venue/instrument readiness **carrier (Slice 1) and gate (Slice 2) are complete; the component is
   fully implemented and memory-closed after this batch**.
+- `phase5_liquidity_capacity_evidence_boundary`: **planning only (`02a34e9`)** — a future
+  **dual-slice** liquidity/depth capacity sufficiency boundary is **planned but not implemented**.
+  - `02a34e933bede15ebf3c237f9632ad0e44941bef` — Add phase5 liquidity capacity evidence planning
+    (**docs + tests only**:
+    `docs/handoff/phase5_liquidity_capacity_evidence_boundary_implementation_planning.md` +
+    `tests/test_phase5_liquidity_capacity_evidence_boundary_implementation_planning.py`).
+  - Latest prior completed memory closeout was
+    `1efac1832b1d97cdb30a5cba8f1c7e070cc1cabc` ("Update memory after phase5 venue instrument readiness
+    gate"); no memory closeout had been recorded for this planning batch before this entry.
+  - **Runtime implementation has not started:** `phase5/liquidity_capacity_evidence_boundary.py` does
+    not exist and no `LiquidityCapacityEvidenceContext` / `make_liquidity_capacity_evidence_context`
+    / `LiquidityCapacityGate` / `liquidity_capacity_preflight` runtime symbols exist.
+  - **Dual-slice future boundary:** (1) a frozen explicit `LiquidityCapacityEvidenceContext` carrier
+    with factory `make_liquidity_capacity_evidence_context`, and (2) a `LiquidityCapacityGate` /
+    `liquidity_capacity_preflight(*, evidence_envelope, liquidity_evidence)` evaluator comparing the
+    upstream `PostProfitabilityEvidenceEnvelope` to that supplied capacity evidence. It is a
+    **capacity sufficiency boundary only** — not a slippage calculator, net-edge calculator, sizing
+    engine, order router, execution component, balance/capital/margin component, reporting component,
+    or paper/live readiness.
+  - **Pinned carrier fields (17, incl. passive `estimated_slippage_bps`):** `component_name`, `venue`,
+    `instrument_id`, `base_asset`, `quote_asset`, `observed_size`, `observed_size_unit`,
+    `available_capacity`, `capacity_unit`, `liquidity_snapshot_epoch_ms`, `evidence_epoch_tolerance_ms`,
+    `source_contract`, `source_artifact`, `source_field`, `liquidity_evidence_id`, `boundary_version`,
+    `estimated_slippage_bps`. Identity/provenance/string fields are exact non-empty non-whitespace str
+    (str subclasses rejected); magnitude fields are exact non-empty decimal strings (reject
+    float/int/Decimal objects, bool, None, bytes, dicts, exponent, NaN, Infinity, signed Infinity,
+    empty, whitespace, malformed); `liquidity_snapshot_epoch_ms` / `evidence_epoch_tolerance_ms` are
+    canonical unsigned integer strings. Any future Decimal conversion is **local/ephemeral for
+    comparison only and must not mutate carrier or envelope attributes**.
+  - **Deterministic staleness (no internal clock / no time fetch):**
+    `abs(evidence_envelope.observed_at_epoch_ms - liquidity_snapshot_epoch_ms) <=
+    evidence_epoch_tolerance_ms`; missing/malformed epoch or tolerance fails closed; negative tolerance
+    fails closed; stale evidence → BlockedPacket (not NoEligible).
+  - **Inclusive capacity sufficiency:** `observed_size <= available_capacity` (equal capacity is
+    sufficient). `available_capacity` of "0" or negative is **malformed evidence → BlockedPacket, not
+    NoEligible**; `observed_size` zero/negative/malformed fails closed per the upstream envelope
+    contract; unit mismatch → BlockedPacket; identity mismatch (venue/instrument_id/base_asset/
+    quote_asset, exact case-sensitive) → BlockedPacket; insufficient positive capacity → NoEligible;
+    sufficient positive capacity → the **same upstream `PostProfitabilityEvidenceEnvelope` by
+    identity**.
+  - **Slippage passivity:** `estimated_slippage_bps` is passive evidence/audit metadata only and
+    non-decisioning. The gate must not read it for decisioning and must not compute a slippage model,
+    net-edge minus slippage, profitability recalculation, or any threshold comparison.
+  - **Pinned reason taxonomy:** `LIQUIDITY_CAPACITY_GATE_BLOCKED_MISSING_LIQUIDITY_EVIDENCE`,
+    `LIQUIDITY_CAPACITY_GATE_BLOCKED_MALFORMED_LIQUIDITY_EVIDENCE`,
+    `LIQUIDITY_CAPACITY_GATE_BLOCKED_IDENTITY_MISMATCH`,
+    `LIQUIDITY_CAPACITY_GATE_BLOCKED_UNIT_MISMATCH`,
+    `LIQUIDITY_CAPACITY_GATE_BLOCKED_STALE_EVIDENCE`,
+    `LIQUIDITY_CAPACITY_GATE_NO_ELIGIBLE_INSUFFICIENT_CAPACITY` — the `LIQUIDITY_CAPACITY_GATE_`
+    prefix only; **no profitability/threshold/net-edge reason-token carry-over** and **no
+    malformed-threshold token**.
+  - **Provenance rule:** future BlockedPacket / NoEligibleHaltPacket take
+    `source_contract` / `source_artifact` / `source_field` from the upstream
+    `PostProfitabilityEvidenceEnvelope`; `LiquidityCapacityEvidenceContext` provenance is decision
+    context only and must not overwrite the upstream envelope provenance; no new packet
+    field/schema/factory/reason-builder is invented.
+  - **Explicit non-actionability / prohibitions:** no trade-ready, actionable, executable, order-ready,
+    fillable, routable, paper-ready, live-ready, safe-to-trade, order-intent, execution-payload,
+    signal, candidate, opportunity, position sizing, balance/capital/margin, wallet/custody, routing,
+    fill probability, orderbook simulation, slippage model, net-edge recalculation, profitability
+    recalculation, threshold copying, or PnL claim; no float-based calculation; no clock/time fetch;
+    sufficient capacity is **not** broadened into execution readiness; the boundary claims no
+    liquidity correctness, source truth/reliability, market truth, fill certainty, or price
+    correctness.
+  - **Quarantine evidence:** read-only sync + semantic quarantine **clean** at `02a34e9` — every
+    threshold/profitability/net-edge/slippage/clock hit in the planning doc is prohibition wording, a
+    legitimate upstream-envelope reference, or the passive metadata field; `net_edge` (underscore),
+    `malformed_threshold`, and `float(` are absent from the doc.
+  - Evidence: planning test RED **29 failed** (doc absent) then GREEN **29 passed**; scoped guard suite
+    (`pytest -k phase5`) **1062 passed, 1472 deselected**; evidence verifier `result: PASS`; runtime
+    module absent; no full pytest run. The commit touched only the two planning files; the central
+    handoff was untouched before this closeout.
+- liquidity capacity evidence **planning is complete; runtime implementation has not started**. If
+  later authorized, implementation must be **split: Slice 1 carrier only first, then a memory
+  closeout, then Slice 2 gate only** (each separately authorized, TDD-first, declared-provenance).
 - **Next required step before any new component:** VPS / GitHub / local **full sync verification** on
   the new memory-closeout commit (confirm the local working tree, `origin/master`, and the VPS
   checkout all agree on the closeout HEAD).
