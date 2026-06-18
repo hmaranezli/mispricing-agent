@@ -802,7 +802,7 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
 - **No raw/JSON/exchange parser, loader, endpoint reader, order-book/venue/sizing model, aggregation,
   calculator, net-edge, trading, reporting, or paper-live work is authorized** by this batch.
 
-## Next position (after net-edge profitability gate batch closeout)
+## Next position (after post profitability evidence envelope planning batch closeout)
 
 - Current position: **Master F → Phase 5 implementation + planning layer.**
 - `phase5_input_provenance_preflight`: implementation + recursive hardening (`e7da765`, `5afb87d`,
@@ -981,11 +981,60 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
   authorized.** Passing the profitability gate means **only** that a net edge met an explicit
   threshold; it is **not** actionable, ready, executable, or trade-authorized.
 - net-edge profitability gate planning + carrier + gate implementation are **complete**.
+- `phase5_post_profitability_evidence_envelope_boundary`: **planning only (`16b5578`)** — the future
+  **explicit evidence aggregation carrier** after the profitability gate is **planned but not
+  implemented**.
+  - `16b5578` — Add phase5 post profitability evidence envelope planning (**docs + tests only**:
+    `docs/handoff/phase5_post_profitability_evidence_envelope_implementation_planning.md` +
+    `tests/test_phase5_post_profitability_evidence_envelope_implementation_planning.py`).
+  - **Runtime implementation has not started:** `phase5/post_profitability_evidence_envelope_boundary.py`
+    does not exist and no `PostProfitabilityEvidenceEnvelope` / `make_post_profitability_evidence_envelope`
+    runtime symbols exist.
+  - Future carrier `PostProfitabilityEvidenceEnvelope` with factory
+    `make_post_profitability_evidence_envelope`; `component_name` =
+    `phase5_post_profitability_evidence_envelope_boundary`. It is an **explicit evidence aggregation
+    carrier only** — **NOT** a profitability pass certificate, **NOT** proof that
+    `NetEdgeProfitabilityGate` evaluated the result, and **NOT** actionable / trade-ready / executable /
+    paper-ready / live-ready / an order / signal / candidate.
+  - **Field set closed at 15:** `component_name`, `calculation_result`, `venue`, `instrument_id`,
+    `base_asset`, `quote_asset`, `side`, `observed_size`, `size_unit`, `observed_at_epoch_ms`,
+    `staleness_threshold_ms`, `source_contract`, `source_artifact`, `source_field`, `boundary_version`.
+    The factory is **keyword-only** with the **14 parameters** (the field set minus `component_name`).
+  - Carrier rules: frozen / repr-safe / anti-truthiness / anti-coercion / factory-only;
+    `calculation_result` must be **exact `NetEdgeCalculationResult` by `type()`**, **stored by
+    identity** (not copied / unpacked / serialized); all other fields **exact `str`, non-empty,
+    non-whitespace** (str subclasses rejected); `observed_size` canonical unsigned decimal
+    `0|[1-9]\d*(\.\d+)?`; `observed_at_epoch_ms` / `staleness_threshold_ms` canonical unsigned integer
+    `0|[1-9]\d*`; `side` exact `str` only (**no enum, no BUY/buy normalization, no semantic
+    interpretation**); `size_unit` exact `str` only (**no conversion / normalization**).
+  - **V1 single-provenance aggregation only:** all topology/size/time fields come from the **single
+    explicit** `source_contract`/`source_artifact`/`source_field` supplied to the factory; **mixed-source
+    aggregation is deferred and forbidden in V1**. **No derivation** from `calculation_result`,
+    `source_artifact`, `source_field`, or any upstream object; **no reach-back to
+    `GrossEdgeObservation`**.
+  - Hard prohibitions: **no parser, no inference, no default, no clock, no network/API probe, no case
+    normalization, no unit normalization**; the planning artifact **bans re-attach / recover /
+    reconstruct / hydrate / enrich / resolve** semantics — the sanctioned framing is **explicitly
+    supplied evidence aggregation only**.
+  - Planned failure taxonomy: exact halt carrier as `calculation_result` → `MisroutedHaltCarrierError`;
+    wrong type / None / dict / float / duck / subclass (carrier or string fields) →
+    `PostProfitabilityEvidenceEnvelopeTypeError`; empty/whitespace string field → `ValueError`;
+    malformed `observed_size` / `observed_at_epoch_ms` / `staleness_threshold_ms` → `ValueError`. It
+    **never returns `BlockedPacket`**, **never returns `NoEligibleHaltPacket`**, and **never performs
+    market/economic evaluation**.
+  - Banned output/actionability names pinned as prohibited: `ActionableCandidate`, `TradeCandidate`,
+    `ReadyEnvelope`, `ExecutableSignal`, `Opportunity`, `ExecutionPayload`, `Signal`, `OrderIntent`,
+    `Fillable`, `Tradable`, `Candidate`.
+  - Evidence: planning test **22 passed**; scoped guard suite (`pytest -k phase5`) **943 passed, 1472
+    deselected**; evidence verifier `result: PASS`; no full pytest run.
+- post-profitability evidence envelope **planning is complete; runtime implementation has not
+  started**.
 - **Next required step before any new component:** VPS / GitHub / local **full sync verification** on
   the new memory-closeout commit (confirm the local working tree, `origin/master`, and the VPS
   checkout all agree on the closeout HEAD).
-- **No next component is selected yet.** The next future component must be **separately planned and
-  authorized** via its own brainstorm/planning task **after sync** — not selected here.
+- **No next component is selected beyond the planned envelope runtime implementation.** The envelope
+  runtime implementation, and any later component, must be **separately authorized** (TDD-first,
+  component-scoped, declared-provenance) **after sync and review** — not started here.
 - Any later work **must** proceed **component-by-component with failing tests first and declared
   provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
