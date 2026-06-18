@@ -18,10 +18,20 @@ guard. Per the planning artifact (`phase5_net_edge_profitability_gate_implementa
 """
 import re
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields as _dataclass_fields
+from decimal import Decimal
 
-from phase5.blocked_result_boundary import BlockedPacket
-from phase5.no_eligible_halt_propagation_boundary import NoEligibleHaltPacket
+from phase5.blocked_result_boundary import BlockedPacket, make_blocked_packet
+from phase5.no_eligible_halt_propagation_boundary import (
+    NoEligibleHaltPacket,
+    make_no_eligible_halt_packet,
+)
+from phase5.net_edge_calculator_boundary import NetEdgeCalculationResult
+from phase5.const import (
+    PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE,
+    BLOCKED_NEEDS_EVIDENCE,
+    NEXT_ACTION_OBTAIN_EVIDENCE,
+)
 
 PROFITABILITY_THRESHOLD_POLICY_COMPONENT_NAME = "phase5_net_edge_profitability_gate_boundary"
 BOUNDARY_VERSION = "phase5.net_edge_profitability_gate_boundary.v0"
@@ -209,3 +219,159 @@ def reject_misrouted_halt_carrier(payload):
             + type(payload).__name__
         )
     return None
+
+
+# ---------------------------------------------------------------------------
+# NetEdgeProfitabilityGate V1 / net_edge_profitability_preflight
+#
+# A pure, offline, deterministic profitability-threshold gate over exactly one NetEdgeCalculationResult
+# and one ProfitabilityThresholdPolicyContext. The only arithmetic is a single local Decimal comparison
+# (net_edge_value >= threshold_value) from already-canonical strings. Outputs are exactly: input
+# identity (pass), an existing BlockedPacket (missing/malformed/unit-mismatch policy evidence), or an
+# existing NoEligibleHaltPacket (below threshold). No new carrier/wrapper; never returns a packet for a
+# programmatic wrong-path/misroute.
+# ---------------------------------------------------------------------------
+
+GATE_SOURCE_CONTRACT = "phase5_net_edge_profitability_gate_implementation_planning.md"
+GATE_SOURCE_ARTIFACT = "docs/handoff/phase5_net_edge_profitability_gate_implementation_planning.md"
+
+# Pinned reason vocabulary (planning-fixed; no aliases).
+NET_EDGE_PROFITABILITY_GATE_BLOCKED_MISSING_THRESHOLD_POLICY = "NET_EDGE_PROFITABILITY_GATE_BLOCKED_MISSING_THRESHOLD_POLICY"
+NET_EDGE_PROFITABILITY_GATE_BLOCKED_MALFORMED_THRESHOLD_POLICY = "NET_EDGE_PROFITABILITY_GATE_BLOCKED_MALFORMED_THRESHOLD_POLICY"
+NET_EDGE_PROFITABILITY_GATE_BLOCKED_UNIT_MISMATCH = "NET_EDGE_PROFITABILITY_GATE_BLOCKED_UNIT_MISMATCH"
+NET_EDGE_PROFITABILITY_GATE_NO_ELIGIBLE_BELOW_THRESHOLD = "NET_EDGE_PROFITABILITY_GATE_NO_ELIGIBLE_BELOW_THRESHOLD"
+
+# No-eligible packet literals (below-threshold is the only V1 no-eligible market fact here).
+_NO_ELIGIBLE_STATUS = "NO_ELIGIBLE"
+_NO_ELIGIBLE_NEXT_ACTION = "HALT_BYPASS_NO_ELIGIBLE"
+
+# net_edge_value as produced by the calculator: canonical decimal string (no exponent).
+_RESULT_CANONICAL_DECIMAL = re.compile(r"-?\d+(\.\d+)?")
+
+# The exact field set the policy carrier must carry (read from its dataclass definition).
+_POLICY_REQUIRED_FIELDS = tuple(f.name for f in _dataclass_fields(ProfitabilityThresholdPolicyContext))
+
+_MISSING = object()
+
+
+class NetEdgeProfitabilityGateTypeError(TypeError):
+    """Raised for a programmatic wrong-path / wrong-type input to the profitability gate."""
+
+
+def _gate_blocked(*, reason_code, missing_or_invalid_field):
+    """Build a gate BlockedPacket via the existing factory — no new packet class, no wrapper."""
+    return make_blocked_packet(
+        component_name=PROFITABILITY_THRESHOLD_POLICY_COMPONENT_NAME,
+        origin_component=PROFITABILITY_THRESHOLD_POLICY_COMPONENT_NAME,
+        origin_result_status=PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE,
+        status=PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE,
+        blocked_status=BLOCKED_NEEDS_EVIDENCE,
+        reason_code=reason_code,
+        missing_or_invalid_field=missing_or_invalid_field,
+        source_contract=GATE_SOURCE_CONTRACT,
+        source_artifact=GATE_SOURCE_ARTIFACT,
+        source_field=reason_code,
+        deterministic_next_action=NEXT_ACTION_OBTAIN_EVIDENCE,
+        human_review_required=True,
+        may_retry_after_evidence=True,
+        created_from_contract=GATE_SOURCE_CONTRACT,
+        boundary_version=BOUNDARY_VERSION,
+    )
+
+
+def _gate_no_eligible():
+    """Build the gate NoEligibleHaltPacket via the existing factory — below-threshold only."""
+    return make_no_eligible_halt_packet(
+        component_name=PROFITABILITY_THRESHOLD_POLICY_COMPONENT_NAME,
+        origin_component=PROFITABILITY_THRESHOLD_POLICY_COMPONENT_NAME,
+        origin_result_status=_NO_ELIGIBLE_STATUS,
+        status=_NO_ELIGIBLE_STATUS,
+        no_eligible_reason=NET_EDGE_PROFITABILITY_GATE_NO_ELIGIBLE_BELOW_THRESHOLD,
+        source_contract=GATE_SOURCE_CONTRACT,
+        source_artifact=GATE_SOURCE_ARTIFACT,
+        source_field=NET_EDGE_PROFITABILITY_GATE_NO_ELIGIBLE_BELOW_THRESHOLD,
+        deterministic_next_action=_NO_ELIGIBLE_NEXT_ACTION,
+        boundary_version=BOUNDARY_VERSION,
+    )
+
+
+def net_edge_profitability_preflight(*, calculation_result, threshold_policy):
+    """Pure profitability-threshold gate over one NetEdgeCalculationResult and one policy context.
+
+    Returns the identical ``calculation_result`` on pass (``net_edge_value >= threshold_value``, equality
+    passes); an existing :class:`BlockedPacket` for missing/malformed/unit-mismatch threshold policy
+    evidence; and an existing :class:`NoEligibleHaltPacket` only when below threshold. Programmatic
+    wrong-path / wrong-type inputs raise :class:`NetEdgeProfitabilityGateTypeError` or
+    :class:`MisroutedHaltCarrierError` and never produce a packet. See
+    ``phase5_net_edge_profitability_gate_implementation_planning.md`` for the pinned contract.
+    """
+    # --- Programmatic wrong-path / wrong-type first ---
+    reject_misrouted_halt_carrier(calculation_result)
+    reject_misrouted_halt_carrier(threshold_policy)
+    if type(calculation_result) is not NetEdgeCalculationResult:
+        raise NetEdgeProfitabilityGateTypeError(
+            "net_edge_profitability_preflight requires an exact NetEdgeCalculationResult, not "
+            + type(calculation_result).__name__
+        )
+    if type(threshold_policy) is not ProfitabilityThresholdPolicyContext:
+        raise NetEdgeProfitabilityGateTypeError(
+            "net_edge_profitability_preflight requires an exact ProfitabilityThresholdPolicyContext, not "
+            + type(threshold_policy).__name__
+        )
+
+    # --- Malformed result internal state → programmatic gate TypeError (never a market packet) ---
+    # Only reachable via a factory-bypassed result; the planning artifact has no packet reason for it.
+    net_value = getattr(calculation_result, "net_edge_value", _MISSING)
+    net_unit = getattr(calculation_result, "net_edge_unit", _MISSING)
+    if (net_value is _MISSING or type(net_value) is not str
+            or _RESULT_CANONICAL_DECIMAL.fullmatch(net_value) is None):
+        raise NetEdgeProfitabilityGateTypeError(
+            "NetEdgeCalculationResult.net_edge_value is not a canonical decimal string"
+        )
+    if net_unit is _MISSING or type(net_unit) is not str or net_unit.strip() == "":
+        raise NetEdgeProfitabilityGateTypeError(
+            "NetEdgeCalculationResult.net_edge_unit is not a non-empty string"
+        )
+
+    # --- Policy evidence: missing required fields (factory bypassed) → BlockedPacket ---
+    for name in _POLICY_REQUIRED_FIELDS:
+        value = getattr(threshold_policy, name, _MISSING)
+        if value is _MISSING or type(value) is not str or value.strip() == "":
+            return _gate_blocked(
+                reason_code=NET_EDGE_PROFITABILITY_GATE_BLOCKED_MISSING_THRESHOLD_POLICY,
+                missing_or_invalid_field="threshold_policy",
+            )
+
+    # --- Policy evidence: malformed threshold_value (factory bypassed) → BlockedPacket ---
+    threshold_value = threshold_policy.threshold_value
+    if _CANONICAL_SIGNED_DECIMAL.fullmatch(threshold_value) is None:
+        return _gate_blocked(
+            reason_code=NET_EDGE_PROFITABILITY_GATE_BLOCKED_MALFORMED_THRESHOLD_POLICY,
+            missing_or_invalid_field="threshold_value",
+        )
+
+    # --- Unit policy: case-sensitive exact match only → BlockedPacket on mismatch ---
+    if net_unit != threshold_policy.threshold_unit:
+        return _gate_blocked(
+            reason_code=NET_EDGE_PROFITABILITY_GATE_BLOCKED_UNIT_MISMATCH,
+            missing_or_invalid_field="threshold_unit",
+        )
+
+    # --- Single Decimal comparison from already-canonical strings (no float, no rounding) ---
+    if Decimal(net_value) < Decimal(threshold_value):
+        return _gate_no_eligible()
+
+    # --- Pass: return the identical result object by identity (no wrap/copy/enrich/mutate) ---
+    return calculation_result
+
+
+class NetEdgeProfitabilityGate:
+    """Stateless, non-carrier namespace for the net-edge profitability gate.
+
+    Carries no state and requires no construction; the runtime entrypoint is the pure function
+    :func:`net_edge_profitability_preflight`, exposed here as a static method.
+    """
+
+    __slots__ = ()
+
+    preflight = staticmethod(net_edge_profitability_preflight)

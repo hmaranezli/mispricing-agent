@@ -346,8 +346,6 @@ def test_misroute_returns_none_for_non_halt_without_introspection():
 def test_no_gate_or_comparator_symbols_exported():
     import phase5.net_edge_profitability_gate_boundary as mod
     for banned in [
-        "NetEdgeProfitabilityGate",
-        "net_edge_profitability_preflight",
         "compare_net_edge",
         "evaluate_profitability",
         "net_edge_threshold_evaluation",
