@@ -24,7 +24,6 @@ import os
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOC = os.path.join(REPO, "docs", "handoff",
                    "phase5_venue_instrument_readiness_implementation_planning.md")
-RUNTIME_FILE = os.path.join(REPO, "phase5", "venue_instrument_readiness_boundary.py")
 
 FRAMING_START = "<!-- FRAMING-START -->"
 FRAMING_END = "<!-- FRAMING-END -->"
@@ -292,9 +291,10 @@ def test_no_runtime_and_no_central_handoff_edit():
             "closeout" in low)
 
 
-def test_no_runtime_implementation_created():
-    assert not os.path.isfile(RUNTIME_FILE), \
-        "planning task must not create the runtime venue/instrument readiness module"
+def test_planning_doc_contains_no_runtime_implementation():
+    # Durable docs-only guard: the planning artifact pins names in prose but must never carry a
+    # runtime class/function definition. (Whether the separately authorized runtime module exists is
+    # not this planning artifact's concern — that is governed by the implementation test suite.)
     src = _read()
     assert "class VenueInstrumentReadinessStateContext" not in src, \
         "planning doc must not define the runtime carrier"
