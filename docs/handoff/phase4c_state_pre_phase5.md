@@ -802,7 +802,7 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
 - **No raw/JSON/exchange parser, loader, endpoint reader, order-book/venue/sizing model, aggregation,
   calculator, net-edge, trading, reporting, or paper-live work is authorized** by this batch.
 
-## Next position (after post profitability evidence envelope planning batch closeout)
+## Next position (after post profitability evidence envelope implementation batch closeout)
 
 - Current position: **Master F → Phase 5 implementation + planning layer.**
 - `phase5_input_provenance_preflight`: implementation + recursive hardening (`e7da765`, `5afb87d`,
@@ -1027,14 +1027,58 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
     `Fillable`, `Tradable`, `Candidate`.
   - Evidence: planning test **22 passed**; scoped guard suite (`pytest -k phase5`) **943 passed, 1472
     deselected**; evidence verifier `result: PASS`; no full pytest run.
-- post-profitability evidence envelope **planning is complete; runtime implementation has not
-  started**.
+- `phase5_post_profitability_evidence_envelope_boundary`: **planning (`16b5578`) + atomic carrier
+  implementation (`35c0d44`)** — the **explicit evidence aggregation carrier** after the
+  profitability gate is **planned and implemented**.
+  - `16b5578` — Add phase5 post profitability evidence envelope planning (docs + tests only).
+  - `35c0d44` — Implement phase5 post profitability evidence envelope.
+  - Implementation files: `phase5/post_profitability_evidence_envelope_boundary.py`,
+    `tests/test_phase5_post_profitability_evidence_envelope_boundary.py`, and a minimal
+    obsolete-guard correction to
+    `tests/test_phase5_post_profitability_evidence_envelope_implementation_planning.py`.
+  - **Obsolete-guard correction:** the planning test's **no-runtime point-in-time guard** (which
+    asserted the runtime module did not yet exist) was **replaced with a durable
+    planning-doc-is-docs-only guard** (the planning doc must not define the runtime carrier/factory).
+    **No planning invariant was weakened** — all parser/inference/default/clock/network/actionability/
+    re-attach-recover-reconstruct-hydrate-enrich-resolve bans, banned output-name checks, field-set,
+    factory-shape, regex, single-provenance, identity-storage, non-actionability, and no-claims
+    assertions remain intact.
+  - `PostProfitabilityEvidenceEnvelope` is a **frozen / repr-safe / anti-truthiness / anti-coercion /
+    factory-only** carrier; factory `make_post_profitability_evidence_envelope` is **keyword-only**.
+    **Closed 15-field set:** `component_name`, `calculation_result`, `venue`, `instrument_id`,
+    `base_asset`, `quote_asset`, `side`, `observed_size`, `size_unit`, `observed_at_epoch_ms`,
+    `staleness_threshold_ms`, `source_contract`, `source_artifact`, `source_field`,
+    `boundary_version`. `component_name` is fixed to
+    `phase5_post_profitability_evidence_envelope_boundary`;
+    `BOUNDARY_VERSION = phase5.post_profitability_evidence_envelope_boundary.v0`. A **defensive
+    module-load assertion pins the exact dataclass field tuple**.
+  - `calculation_result` must be **exact `NetEdgeCalculationResult` by `type()`** (no subclass / duck
+    object) and is **stored by identity** (not copied / unpacked / serialized). An exact
+    `BlockedPacket` / `NoEligibleHaltPacket` here → `MisroutedHaltCarrierError`; wrong type / None /
+    dict / float / duck / subclass → `PostProfitabilityEvidenceEnvelopeTypeError`.
+  - All string fields are **exact `str` only** (str subclasses → `PostProfitabilityEvidenceEnvelopeTypeError`);
+    empty/whitespace → `ValueError`. `observed_size` is a canonical unsigned decimal
+    `(0|[1-9]\d*)(\.\d+)?`; `observed_at_epoch_ms` / `staleness_threshold_ms` are canonical unsigned
+    integers `0|[1-9]\d*`; all preserved verbatim (malformed → `ValueError`). `side` / `size_unit`
+    are exact `str` only — **no enum, no BUY/buy normalization, no semantic interpretation, no unit
+    conversion/normalization**.
+  - Safe `repr` exposes only `component_name` and `boundary_version`. **No derivation** from
+    `calculation_result` / `source_artifact` / `source_field` / upstream; **no reach-back to
+    `GrossEdgeObservation`**; **no parser / inference / default / clock / network / case-or-unit
+    normalization**. It **never returns `BlockedPacket` / `NoEligibleHaltPacket` and never constructs
+    them**, performs **no market/economic evaluation**, and introduces **no
+    venue-readiness / liquidity / balance / sizing / trading / reporting / paper-live / execution
+    behavior** and **no banned output/actionability names**.
+  - Evidence: implementation test **24 passed**; planning test **22 passed** (combined **46 passed**);
+    scoped guard suite (`pytest -k phase5`) **967 passed, 1472 deselected**; evidence verifier
+    `result: PASS`; no full pytest run.
+- post-profitability evidence envelope **planning and implementation are complete**.
 - **Next required step before any new component:** VPS / GitHub / local **full sync verification** on
   the new memory-closeout commit (confirm the local working tree, `origin/master`, and the VPS
   checkout all agree on the closeout HEAD).
-- **No next component is selected beyond the planned envelope runtime implementation.** The envelope
-  runtime implementation, and any later component, must be **separately authorized** (TDD-first,
-  component-scoped, declared-provenance) **after sync and review** — not started here.
+- **No next component is selected.** The next future boundary must be **separately authorized** via
+  its own brainstorm/planning task (TDD-first, component-scoped, declared-provenance) **after sync and
+  review** — not started here.
 - Any later work **must** proceed **component-by-component with failing tests first and declared
   provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
