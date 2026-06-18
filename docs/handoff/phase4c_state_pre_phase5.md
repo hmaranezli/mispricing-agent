@@ -1429,8 +1429,9 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
     sync + gate-purity verification at `4a362df` PASS; no full pytest run.
 - liquidity capacity evidence **carrier (Slice 1) and gate (Slice 2) are complete; the component is
   fully implemented and memory-closed after this batch**.
-- `phase5_capital_margin_evidence_boundary`: **planning only (`3ec2296`)** — a future **dual-slice**
-  capital/margin sufficiency boundary is **planned but not implemented**.
+- `phase5_capital_margin_evidence_boundary`: **planning (`3ec2296`) + atomic Slice 1 carrier
+  implementation (`634168d`)** — the explicit supplied capital/margin-evidence **carrier** is
+  **planned and implemented**; the gate/preflight slice (Slice 2) is **not** implemented.
   - `3ec229650c0f22698da3a89d0f3253b7c1a06975` — Add phase5 capital margin evidence planning
     (**docs + tests only**:
     `docs/handoff/phase5_capital_margin_evidence_boundary_implementation_planning.md` +
@@ -1438,9 +1439,11 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
   - Previous central-handoff closeout `51d462fcc56b98217b1fe7e89edb9ef6ed1ef4d8` ("Update memory after
     phase5 liquidity capacity evidence gate"); no closeout had been recorded for `3ec2296` before this
     entry.
-  - **Runtime implementation has not started:** `phase5/capital_margin_evidence_boundary.py` was **not
-    created**, and no `CapitalMarginEvidenceContext` / `make_capital_margin_evidence_context` /
-    `CapitalMarginGate` / `capital_margin_preflight` runtime symbols exist.
+  - **Slice 1 carrier is implemented; the gate slice has not started:**
+    `phase5/capital_margin_evidence_boundary.py` now exists as **carrier/factory only** and defines
+    `CapitalMarginEvidenceContext` + `make_capital_margin_evidence_context`; the gate symbols
+    `CapitalMarginGate` / `capital_margin_preflight` remain **absent** (see the Slice 1 implementation
+    closeout below).
   - **Dual-slice future boundary:** (1) a frozen explicit `CapitalMarginEvidenceContext` carrier with
     factory `make_capital_margin_evidence_context`, and (2) a `CapitalMarginGate` /
     `capital_margin_preflight(*, evidence_envelope, capital_evidence, expected_capital_scope_id)`
@@ -1491,10 +1494,70 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
     evidence verifier `result: PASS`; runtime module absent; read-only capital-margin planning
     verification at `3ec2296` PASS; no full pytest run. The commit touched only the two planning files;
     the central handoff was untouched before this closeout.
-- capital margin evidence **planning is complete; runtime implementation has not started**. If later
-  authorized, implementation must be **split: Slice 1 carrier only first, then a memory closeout, then
-  Slice 2 gate only** (each separately authorized, TDD-first, declared-provenance) — **not started
-  here**.
+- `phase5_capital_margin_evidence_boundary`: **atomic Slice 1 carrier implementation (`634168d`)** —
+  the explicit supplied capital/margin-evidence **carrier** is **implemented**; the gate/preflight
+  slice is **not** implemented.
+  - `634168dd9956d5fc42eda3388292c7eb2bf2bf1d` — Implement phase5 capital margin evidence state context
+    (Slice 1 carrier only).
+  - Prior planning closeout `cd736f4452d7ed63c0598fccb1efa3d6e4ef9650` ("Update memory after phase5
+    capital margin evidence planning"); this batch is the Slice 1 carrier memory closeout (no closeout
+    had been recorded for `634168d` before this entry).
+  - Implementation batch files (exactly three): `phase5/capital_margin_evidence_boundary.py` (new),
+    `tests/test_phase5_capital_margin_evidence_boundary.py` (new, 28 tests), and a minimal
+    obsolete-guard correction to
+    `tests/test_phase5_capital_margin_evidence_boundary_implementation_planning.py`.
+  - **Obsolete-guard correction:** the planning test's **point-in-time runtime-absence guard**
+    (`test_runtime_module_is_absent`, which asserted `os.path.isfile(...)` was false) was **renamed to
+    `test_planning_doc_remains_planning_only_docs_artifact` and the `os.path.isfile` assertion replaced
+    with a durable docs-only planning guard** (the planning doc must stay planning-only and carry no
+    runtime class/factory definition). It was **not** converted into a gate-absence guard. **No
+    semantic-quarantine / no-claims / prohibited-output / reason-token / field-set / branch-priority /
+    provenance / no-calculator planning check was weakened**; the planning doc itself was not edited.
+  - **Implemented:** `CapitalMarginEvidenceContext` + `make_capital_margin_evidence_context`.
+    **Not implemented:** `CapitalMarginGate`, `capital_margin_preflight`, the `CAPITAL_MARGIN_GATE_*`
+    reason tokens, packet construction, and all sufficiency/staleness/identity/unit/scope/side
+    comparison logic.
+  - `CapitalMarginEvidenceContext` is a **frozen / repr-safe / anti-truthiness / anti-coercion /
+    slotted (`slots=True`, no `__dict__`) / factory-only** carrier with **direct construction
+    physically blocked** (a raising `__init__`, so the no-arg, positional, and keyword forms all raise
+    `TypeError`; the factory builds via `object.__new__` + `object.__setattr__`). **Closed 21-field
+    set, exact order:** `component_name`, `venue`, `instrument_id`, `base_asset`, `quote_asset`,
+    `side`, `observed_size`, `observed_size_unit`, `required_capital`, `required_capital_unit`,
+    `available_free_capital`, `available_free_capital_unit`, `required_capital_epoch_ms`,
+    `available_free_capital_snapshot_epoch_ms`, `evidence_epoch_tolerance_ms`, `capital_scope_id`,
+    `source_contract`, `source_artifact`, `source_field`, `capital_evidence_id`, `boundary_version`. A
+    **defensive module-load assertion pins the exact dataclass field tuple**.
+  - Factory `make_capital_margin_evidence_context` is **keyword-only**, accepts **exactly the 20
+    user-supplied fields** (the field set minus `component_name`), and sets `component_name` internally
+    to `phase5_capital_margin_evidence_boundary`;
+    `BOUNDARY_VERSION = phase5.capital_margin_evidence_boundary.v0`.
+  - **Carrier-only validation (uniform):** every user-supplied field is **exact `str` only**
+    (`type(value) is str` — **no `isinstance`**; str subclasses, `None`, `bool`, `int`, `float`,
+    `complex`, `bytes`, dict/list/tuple, and duck-typed string-likes rejected →
+    `CapitalMarginEvidenceContextTypeError`); empty/whitespace → `ValueError`; accepted values
+    preserved **verbatim**. The carrier performs **no decimal/int/float parsing and no
+    numeric/magnitude/epoch validation** — magnitude-like and scalar epoch fields are kept as exact
+    strings only (validation deferred entirely to the future gate; values like `"abc"`, `"-5"`, `"0"`,
+    `"NaN"`, `"1,000"`, `"banana"` are stored verbatim).
+  - **Behavior / purity (read-only verification at `634168d` PASS):** safe `repr` exposes **only**
+    `component_name` + `boundary_version` (AST-confirmed); anti-truthiness (`bool`/`len`) and
+    anti-coercion (`int`/`float`/`complex`/`index`/`str`/`bytes`) raise carrier-specific `TypeError`s;
+    error messages carry **field name + `type(value).__name__` only — no raw value leakage**;
+    **imports are `dataclasses` only** (no Decimal/re/time/datetime/os/pathlib/json/requests/urllib/
+    http/socket); **no `PostProfitabilityEvidenceEnvelope` / `BlockedPacket` / `NoEligibleHaltPacket`
+    references**; **no `CapitalMarginGate` / `capital_margin_preflight` / `CAPITAL_MARGIN_GATE_*`
+    symbols**; **no decision/serialization helper names** (`is_sufficient`, `is_valid`, `has_funds`,
+    `has_capital`, `is_stale`, `is_eligible`, `is_tradable`, `can_pass`, `can_trade`, `order_ready`,
+    `actionable`, `executable`, `to_dict`, `as_dict`, `model_dump`); AST shows **no ordering
+    comparison and no arithmetic** (compare ops are only the exact-type and empty-string checks).
+  - Evidence: focused carrier suite **28 passed** (genuine RED first: `ModuleNotFoundError`); planning
+    test **29 passed**; combined carrier + planning **57 passed**; scoped guard suite
+    (`pytest -k phase5`) **1177 passed, 1472 deselected**; evidence verifier `result: PASS`; read-only
+    sync + carrier-purity verification at `634168d` PASS; no full pytest run.
+- capital margin evidence **planning is complete; Slice 1 carrier is implemented and memory-closed
+  after this batch**; the gate slice (Slice 2 — `CapitalMarginGate` / `capital_margin_preflight`) has
+  **not** started and requires **separate authorization** (TDD-first, component-scoped,
+  declared-provenance) before any implementation.
 - **Next required step before any new component:** VPS / GitHub / local **full sync verification** on
   the new memory-closeout commit (confirm the local working tree, `origin/master`, and the VPS
   checkout all agree on the closeout HEAD).
