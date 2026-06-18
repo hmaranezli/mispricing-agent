@@ -146,11 +146,10 @@ def test_planning_only_not_implementation():
     assert "no implementation is authorized" in low or "authorizes no implementation" in low
 
 
-def test_no_runtime_implementation_created():
-    # Durable docs-only guard: planning artifact pins names in prose but never carries a runtime
-    # class/function definition, and the runtime module must not be created by this planning task.
-    assert not os.path.isfile(os.path.join(REPO, "phase5", "liquidity_capacity_evidence_boundary.py")), \
-        "planning task must not create the runtime liquidity capacity module"
+def test_planning_doc_contains_no_runtime_implementation():
+    # Durable docs-only guard: the planning artifact pins names in prose but must never carry a
+    # runtime class/function definition. (Whether the separately authorized runtime module exists is
+    # governed by the implementation test suite, not this planning artifact.)
     src = _read()
     assert "class LiquidityCapacityEvidenceContext" not in src
     assert "class LiquidityCapacityGate" not in src
