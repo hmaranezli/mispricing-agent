@@ -1226,8 +1226,9 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
     pytest run.
 - venue/instrument readiness **carrier (Slice 1) and gate (Slice 2) are complete; the component is
   fully implemented and memory-closed after this batch**.
-- `phase5_liquidity_capacity_evidence_boundary`: **planning only (`02a34e9`)** — a future
-  **dual-slice** liquidity/depth capacity sufficiency boundary is **planned but not implemented**.
+- `phase5_liquidity_capacity_evidence_boundary`: **planning (`02a34e9`) + atomic Slice 1 carrier
+  implementation (`e110ac8`)** — the explicit supplied liquidity/depth capacity-evidence **carrier** is
+  **planned and implemented**; the gate/preflight slice (Slice 2) is **not** implemented.
   - `02a34e933bede15ebf3c237f9632ad0e44941bef` — Add phase5 liquidity capacity evidence planning
     (**docs + tests only**:
     `docs/handoff/phase5_liquidity_capacity_evidence_boundary_implementation_planning.md` +
@@ -1235,9 +1236,10 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
   - Latest prior completed memory closeout was
     `1efac1832b1d97cdb30a5cba8f1c7e070cc1cabc` ("Update memory after phase5 venue instrument readiness
     gate"); no memory closeout had been recorded for this planning batch before this entry.
-  - **Runtime implementation has not started:** `phase5/liquidity_capacity_evidence_boundary.py` does
-    not exist and no `LiquidityCapacityEvidenceContext` / `make_liquidity_capacity_evidence_context`
-    / `LiquidityCapacityGate` / `liquidity_capacity_preflight` runtime symbols exist.
+  - **Slice 1 carrier is implemented; the gate slice has not started:**
+    `phase5/liquidity_capacity_evidence_boundary.py` now defines `LiquidityCapacityEvidenceContext` +
+    `make_liquidity_capacity_evidence_context`; the gate symbols `LiquidityCapacityGate` /
+    `liquidity_capacity_preflight` remain **absent** (see the Slice 1 implementation closeout below).
   - **Dual-slice future boundary:** (1) a frozen explicit `LiquidityCapacityEvidenceContext` carrier
     with factory `make_liquidity_capacity_evidence_context`, and (2) a `LiquidityCapacityGate` /
     `liquidity_capacity_preflight(*, evidence_envelope, liquidity_evidence)` evaluator comparing the
@@ -1298,9 +1300,62 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
     (`pytest -k phase5`) **1062 passed, 1472 deselected**; evidence verifier `result: PASS`; runtime
     module absent; no full pytest run. The commit touched only the two planning files; the central
     handoff was untouched before this closeout.
-- liquidity capacity evidence **planning is complete; runtime implementation has not started**. If
-  later authorized, implementation must be **split: Slice 1 carrier only first, then a memory
-  closeout, then Slice 2 gate only** (each separately authorized, TDD-first, declared-provenance).
+- `phase5_liquidity_capacity_evidence_boundary`: **atomic Slice 1 carrier implementation
+  (`e110ac8`)** — the explicit supplied liquidity/depth capacity-evidence **carrier** is
+  **implemented**; the gate/preflight slice is **not** implemented.
+  - `e110ac85c1ffd3d84a305ea4a72917867f2a0ff4` — Implement phase5 liquidity capacity evidence state
+    context (Slice 1 carrier only).
+  - Prior planning closeout `c3937b9ee301248c87fee2142ff12762cf718ae9` ("Update memory after phase5
+    liquidity capacity evidence planning"); this batch is the Slice 1 carrier memory closeout (no
+    closeout had been recorded for `e110ac8` before this entry).
+  - Implementation batch files (exactly three): `phase5/liquidity_capacity_evidence_boundary.py` (new),
+    `tests/test_phase5_liquidity_capacity_evidence_boundary.py` (new, 21 tests), and a minimal
+    obsolete-guard correction to
+    `tests/test_phase5_liquidity_capacity_evidence_boundary_implementation_planning.py`.
+  - **Obsolete-guard correction:** the planning test's **no-runtime point-in-time guard**
+    (`test_no_runtime_implementation_created`, which asserted the runtime module did not yet exist via
+    `os.path.isfile(...)`) was **renamed to `test_planning_doc_contains_no_runtime_implementation` and
+    the `os.path.isfile` assertion removed**, leaving the four durable planning-doc-remains-docs-only
+    assertions intact. **No semantic-quarantine or planning invariant was weakened**; the file was not
+    deleted.
+  - **Implemented:** `LiquidityCapacityEvidenceContext` + `make_liquidity_capacity_evidence_context`.
+    **Not implemented:** `LiquidityCapacityGate`, `liquidity_capacity_preflight`, envelope comparison,
+    identity matching, capacity/staleness/slippage decisioning, and halt-packet construction.
+  - `LiquidityCapacityEvidenceContext` is a **frozen / repr-safe / anti-truthiness / anti-coercion /
+    factory-only** carrier. **Closed 17-field set, exact order:** `component_name`, `venue`,
+    `instrument_id`, `base_asset`, `quote_asset`, `observed_size`, `observed_size_unit`,
+    `available_capacity`, `capacity_unit`, `liquidity_snapshot_epoch_ms`, `evidence_epoch_tolerance_ms`,
+    `source_contract`, `source_artifact`, `source_field`, `liquidity_evidence_id`, `boundary_version`,
+    `estimated_slippage_bps`. A **defensive module-load assertion pins the exact dataclass field
+    tuple**.
+  - Factory `make_liquidity_capacity_evidence_context` is **keyword-only**, accepts **exactly the 16
+    user-supplied fields** (the field set minus `component_name`), and sets `component_name` internally
+    to `phase5_liquidity_capacity_evidence_boundary`;
+    `BOUNDARY_VERSION = phase5.liquidity_capacity_evidence_boundary.v0`.
+  - **Carrier-only validation (uniform):** every user-supplied field is **exact `str` only** (str
+    subclasses rejected → `LiquidityCapacityEvidenceContextTypeError`); empty/whitespace → `ValueError`;
+    accepted values preserved **verbatim**. The carrier performs **no numeric / decimal / epoch parsing
+    or validation** — quantity-like and scalar epoch fields are kept as exact strings only (format and
+    validity are deferred entirely to the future gate), and `estimated_slippage_bps` is stored
+    **verbatim as passive metadata** and is never interpreted here.
+  - **Behavior:** safe `repr` exposes **only** `component_name` + `boundary_version`; anti-truthiness
+    (`bool`/`len`) and anti-coercion (`int`/`float`/`complex`/`index`/`str`/`bytes`) raise
+    carrier-specific `TypeError`s; **no arithmetic**, **no `<=`/`>=`/`abs(` comparison**, **no
+    capacity/staleness/slippage decisioning**, and **no market/economic evaluation**. It references
+    **no `PostProfitabilityEvidenceEnvelope`**, **no `BlockedPacket` / `NoEligibleHaltPacket`**, builds
+    **no halt packet**, and exposes **no decision helper methods/properties** (`is_tradable`,
+    `is_eligible`, `is_sufficient`, `is_stale`, `can_pass`, `capacity_ok`, `order_ready`, `actionable`,
+    `executable`).
+  - **Explicit non-actionability:** the carrier is a supplied-evidence descriptor only — **not** trade
+    readiness, **not** actionability, **not** execution safety, **not** liquidity readiness, **not**
+    balance/margin readiness, **not** paper-ready or live-ready, and **not** order-placement proof.
+  - Evidence: focused carrier suite **21 passed**; planning + carrier **50 passed**; scoped guard suite
+    (`pytest -k phase5`) **1083 passed, 1472 deselected**; evidence verifier `result: PASS`; read-only
+    sync + carrier-purity verification at `e110ac8` PASS; no full pytest run.
+- liquidity capacity evidence **planning is complete; Slice 1 carrier is implemented and
+  memory-closed after this batch**; the gate slice (Slice 2) has **not** started and requires
+  **separate authorization** (TDD-first, component-scoped, declared-provenance) before any
+  implementation.
 - **Next required step before any new component:** VPS / GitHub / local **full sync verification** on
   the new memory-closeout commit (confirm the local working tree, `origin/master`, and the VPS
   checkout all agree on the closeout HEAD).
