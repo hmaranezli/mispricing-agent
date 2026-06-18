@@ -802,7 +802,7 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
 - **No raw/JSON/exchange parser, loader, endpoint reader, order-book/venue/sizing model, aggregation,
   calculator, net-edge, trading, reporting, or paper-live work is authorized** by this batch.
 
-## Next position (after pre-net-edge input gate batch closeout)
+## Next position (after net-edge calculator batch closeout)
 
 - Current position: **Master F → Phase 5 implementation + planning layer.**
 - `phase5_input_provenance_preflight`: implementation + recursive hardening (`e7da765`, `5afb87d`,
@@ -903,14 +903,48 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
     minimal: removed only `PreNetEdgeCalculationInputGate` and `net_edge_input_preflight` from the
     prior no-gate banned-symbol lists; all calculator/net-edge/aggregation/freshness/conversion bans
     stayed intact.
-- **No net-edge / calculator / cost-aggregator / unit-conversion / friction-aggregation /
-  freshness-validation / trading / reporting / runtime / paper / live readiness is authorized.**
-- pre-net-edge input gate planning + implementation are **complete**.
-- **Next required step before any new component:** VPS / GitHub / local **full sync verification**
-  (confirm the local working tree, `origin/master`, and the VPS checkout all agree on `684c0d4`).
-- **Next future component (after sync):** a **separately authorized** `NetEdgeCalculator` planning
-  task — **docs + tests only, not implementation** unless separately authorized. Calculator planning
-  must **not** start until sync is confirmed.
+- `phase5_net_edge_calculator_boundary`: **planning (`8911471`) + atomic implementation
+  (`2120f55`)** — the **first deterministic net-edge algebra boundary** is **planned and
+  implemented**.
+  - `8911471` — Add phase5 net edge calculator planning (docs + tests only).
+  - `2120f55` — Implement phase5 net edge calculator.
+  - `calculate_net_edge(*, calculation_input)` / `NetEdgeCalculationResult` (with the stateless
+    `NetEdgeCalculator` wrapper, `calculate = staticmethod(...)`) are **pure/offline/deterministic
+    algebra only**: `net_edge = gross_edge - sum(cost_i)` over the cost tuple in order, with signed
+    cost/rebate algebra and zero-cost components **retained and counted**; the input and all carriers
+    are **never mutated** and the tuple is never sorted/deduplicated/filtered.
+  - It accepts an **exact `PreNetEdgeCalculationInput` only** (subclasses / raw containers / duck-typed
+    rejected → `NetEdgeCalculatorTypeError`); exact `BlockedPacket` / `NoEligibleHaltPacket` at this
+    boundary are **misroutes** → `MisroutedHaltCarrierError`; wrong-type/misroute is never a packet.
+  - **Decimal-only local arithmetic** constructed from canonical decimal strings inside a
+    `localcontext(prec=60)`; **no float, no Decimal-from-float, no rounding/quantize**; results are
+    serialized to canonical decimal strings (no exponent, no leading plus, minus preserved, zero
+    canonicalized to `"0"`). **No unit conversion, no FX/oracle, no `.upper`/`.lower`/`.casefold`/alias
+    normalization.**
+  - Dimensional compatibility V1 is **case-sensitive exact-token only** (compute only when gross and
+    every cost share the identical unit token — proportional vocab `BPS`, `BASIS_POINTS`, `RATE`,
+    `PERCENT`, `PERCENTAGE`, or an identical absolute token). Mismatches return a `BlockedPacket` with
+    the pinned vocabulary: `MISSING_NOTIONAL_FOR_PROPORTIONAL_COST`,
+    `MISSING_CONVERSION_BASIS_FOR_ABSOLUTE_COST`, `MIXED_PROPORTIONAL_UNITS`,
+    `INCOMPATIBLE_ABSOLUTE_UNITS`, `UNSUPPORTED_UNIT_VOCABULARY` (all `NEEDS_EVIDENCE`), and
+    `CONTRACT_VIOLATION_MALFORMED_INPUT_STATE` (a defensive `CONTRACT_VIOLATION` for a corrupted
+    carrier discovered during calculation).
+  - The calculator **never returns `NoEligibleHaltPacket`**; negative, zero, and positive net edge are
+    all **successful (non-actionable)** results. It produces **no profitability, no readiness, no
+    actionability, no order size/allocation, no trading, and no paper/live** output or fields.
+  - Evidence: calculator suite **30 passed**; scoped guard suite **413 passed**; evidence verifier
+    `result: PASS`; no full pytest run. The commit touched only the two allowed files
+    (`phase5/net_edge_calculator_boundary.py`, `tests/test_phase5_net_edge_calculator_boundary.py`);
+    no obsolete-guard correction was needed (no prior guard banned the calculator symbols).
+- **No profitability / readiness / actionability gate / cost-aggregator / unit-conversion / FX-oracle /
+  CostApplicabilityContext / trading / reporting / runtime / paper / live readiness is authorized.**
+- net-edge calculator planning + implementation are **complete**.
+- **Next required step before any new component:** VPS / GitHub / local **full sync verification** on
+  the new memory-closeout commit (confirm the local working tree, `origin/master`, and the VPS
+  checkout all agree on the closeout HEAD).
+- **Next future component (after sync):** must be **separately planned and authorized** — not selected
+  here. Likely candidates remain a future `ProfitabilityGate` / `ReadinessGate` (deferred), but no
+  next component is authorized by this closeout.
 - Any later work **must** proceed **component-by-component with failing tests first and declared
   provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
