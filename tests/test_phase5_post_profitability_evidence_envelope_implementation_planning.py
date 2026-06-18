@@ -259,19 +259,16 @@ def test_no_runtime_and_no_central_handoff_edit():
             "closeout" in low)
 
 
-def test_no_implementation_file_or_runtime_symbols():
-    assert not os.path.isfile(RUNTIME_FILE), \
-        "planning task must not create the runtime envelope module"
-    if os.path.isdir(PHASE5_DIR):
-        for name in os.listdir(PHASE5_DIR):
-            if not name.endswith(".py"):
-                continue
-            with open(os.path.join(PHASE5_DIR, name), encoding="utf-8") as f:
-                src = f.read()
-            assert "class PostProfitabilityEvidenceEnvelope" not in src, \
-                f"runtime carrier class must not exist yet (found in {name})"
-            assert "def make_post_profitability_evidence_envelope" not in src, \
-                f"runtime factory must not exist yet (found in {name})"
+def test_planning_doc_contains_no_runtime_implementation():
+    # Obsolete-guard correction: the runtime module
+    # phase5/post_profitability_evidence_envelope_boundary.py is now separately authorized and may
+    # exist. The durable invariant is that the planning DOC remains docs-only — it must not define
+    # the runtime carrier class or factory.
+    src = _read()
+    assert "class PostProfitabilityEvidenceEnvelope" not in src, \
+        "planning doc must not define the runtime carrier"
+    assert "def make_post_profitability_evidence_envelope" not in src, \
+        "planning doc must not define the runtime factory"
 
 
 def test_future_implementation_gate():
