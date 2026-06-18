@@ -1429,6 +1429,72 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
     sync + gate-purity verification at `4a362df` PASS; no full pytest run.
 - liquidity capacity evidence **carrier (Slice 1) and gate (Slice 2) are complete; the component is
   fully implemented and memory-closed after this batch**.
+- `phase5_capital_margin_evidence_boundary`: **planning only (`3ec2296`)** — a future **dual-slice**
+  capital/margin sufficiency boundary is **planned but not implemented**.
+  - `3ec229650c0f22698da3a89d0f3253b7c1a06975` — Add phase5 capital margin evidence planning
+    (**docs + tests only**:
+    `docs/handoff/phase5_capital_margin_evidence_boundary_implementation_planning.md` +
+    `tests/test_phase5_capital_margin_evidence_boundary_implementation_planning.py`).
+  - Previous central-handoff closeout `51d462fcc56b98217b1fe7e89edb9ef6ed1ef4d8` ("Update memory after
+    phase5 liquidity capacity evidence gate"); no closeout had been recorded for `3ec2296` before this
+    entry.
+  - **Runtime implementation has not started:** `phase5/capital_margin_evidence_boundary.py` was **not
+    created**, and no `CapitalMarginEvidenceContext` / `make_capital_margin_evidence_context` /
+    `CapitalMarginGate` / `capital_margin_preflight` runtime symbols exist.
+  - **Dual-slice future boundary:** (1) a frozen explicit `CapitalMarginEvidenceContext` carrier with
+    factory `make_capital_margin_evidence_context`, and (2) a `CapitalMarginGate` /
+    `capital_margin_preflight(*, evidence_envelope, capital_evidence, expected_capital_scope_id)`
+    evaluator auditing the upstream `PostProfitabilityEvidenceEnvelope` against the supplied
+    capital/margin evidence and the explicit capital-scope control scalar.
+  - **Core principle:** the capital/margin boundary is a **ledger auditor, not a calculator**.
+    `required_capital` and `available_free_capital` are **supplied evidence scalars**; the gate audits
+    them and **does not compute** price, notional, leverage, fee, a margin requirement, capital
+    reservation, sizing, allocation, routing, execution, PnL, profitability, or net edge.
+  - **Pinned carrier fields (closed 21-set):** `component_name`, `venue`, `instrument_id`,
+    `base_asset`, `quote_asset`, `side`, `observed_size`, `observed_size_unit`, `required_capital`,
+    `required_capital_unit`, `available_free_capital`, `available_free_capital_unit`,
+    `required_capital_epoch_ms`, `available_free_capital_snapshot_epoch_ms`,
+    `evidence_epoch_tolerance_ms`, `capital_scope_id`, `source_contract`, `source_artifact`,
+    `source_field`, `capital_evidence_id`, `boundary_version`. Carrier rules: exact non-empty
+    non-whitespace `str` only (str subclasses rejected), preserved verbatim, **no decimal/int parsing
+    and no numeric validation in the carrier**, no bool/truthiness/coercion, safe repr =
+    `component_name` + `boundary_version`.
+  - **Six pinned reason tokens (`CAPITAL_MARGIN_GATE_` prefix only; no liquidity/profitability/threshold
+    carry-over):** `..._BLOCKED_MISSING_CAPITAL_EVIDENCE`, `..._BLOCKED_MALFORMED_CAPITAL_EVIDENCE`,
+    `..._BLOCKED_IDENTITY_MISMATCH`, `..._BLOCKED_UNIT_MISMATCH`, `..._BLOCKED_STALE_EVIDENCE`,
+    `..._NO_ELIGIBLE_INSUFFICIENT_CAPITAL`.
+  - **Branch priority (documented in order):** misroute (`MisroutedHaltCarrierError`) → exact
+    type/control scalar (`CapitalMarginGateTypeError`; `expected_capital_scope_id` must be an exact
+    non-empty str) → missing → malformed/positivity → identity → unit → stale → insufficient
+    (NoEligible) → pass-through (same `evidence_envelope` by identity).
+  - **Critical planning locks:** zero `available_free_capital` (`"0"`) is a **NoEligible**, not
+    malformed; **negative** `available_free_capital` is **malformed**; `required_capital <= 0` is
+    **malformed**; `side` binding is an **identity** comparison; `Decimal(observed_size)` binding is an
+    **identity** comparison; `expected_capital_scope_id == capital_evidence.capital_scope_id` is an
+    **identity** comparison; unit binding is `evidence_envelope.size_unit ==
+    capital_evidence.observed_size_unit` **and** `capital_evidence.required_capital_unit ==
+    capital_evidence.available_free_capital_unit`; **two separate staleness checks** (on
+    `required_capital_epoch_ms` and `available_free_capital_snapshot_epoch_ms`, both vs
+    `evidence_envelope.observed_at_epoch_ms` within `evidence_epoch_tolerance_ms`, no clock).
+  - **Provenance:** future packets take `source_contract` / `source_artifact` / `source_field` from the
+    upstream `PostProfitabilityEvidenceEnvelope` only; the carrier's `source_*` / `capital_evidence_id`
+    / `boundary_version` are **barred as packet provenance**; reasons/details carry **no raw value
+    leakage** (no raw size/capital/epoch/tolerance/scope values); no new packet field/schema/factory/
+    reason-builder is invented.
+  - **Explicit prohibitions / non-actionability:** no position sizing, allocation, order quantity,
+    order routing, execution, wallet/balance fetch, network, or clock; no price/notional/fee/leverage/
+    margin-formula; no PnL/profitability/threshold/net-edge recalculation; passing is **not**
+    trade-ready, actionable, executable, order-ready, paper-ready, or live-ready. FRAMING / NO-CLAIMS /
+    PROHIBITED-OUTPUTS marker blocks are present in the planning doc.
+  - Evidence: planning test RED first (28 failed on the missing doc, 1 passed runtime-absence guard)
+    then GREEN **29 passed**; scoped guard suite (`pytest -k phase5`) **1149 passed, 1472 deselected**;
+    evidence verifier `result: PASS`; runtime module absent; read-only capital-margin planning
+    verification at `3ec2296` PASS; no full pytest run. The commit touched only the two planning files;
+    the central handoff was untouched before this closeout.
+- capital margin evidence **planning is complete; runtime implementation has not started**. If later
+  authorized, implementation must be **split: Slice 1 carrier only first, then a memory closeout, then
+  Slice 2 gate only** (each separately authorized, TDD-first, declared-provenance) — **not started
+  here**.
 - **Next required step before any new component:** VPS / GitHub / local **full sync verification** on
   the new memory-closeout commit (confirm the local working tree, `origin/master`, and the VPS
   checkout all agree on the closeout HEAD).
