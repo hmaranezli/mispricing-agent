@@ -136,9 +136,17 @@ def test_doc_exists():
     assert _read().strip(), "planning doc is empty"
 
 
-def test_runtime_module_is_absent():
-    assert not os.path.isfile(RUNTIME), \
-        "planning-only task must not create phase5/capital_margin_evidence_boundary.py"
+def test_planning_doc_remains_planning_only_docs_artifact():
+    # Durable docs-only guard (replaces the obsolete point-in-time runtime-absence assertion now that
+    # the separately authorized Slice 1 carrier module exists): the planning artifact must remain
+    # planning-only and must never carry runtime class/function definitions for the planned carrier or
+    # factory. Whether the runtime module exists is governed by the implementation test suite, not this
+    # planning artifact.
+    src = _read()
+    low = src.lower()
+    assert "implementation-planning only, not implementation" in low
+    assert "class CapitalMarginEvidenceContext" not in src
+    assert "def make_capital_margin_evidence_context" not in src
 
 
 def test_component_name_present():
