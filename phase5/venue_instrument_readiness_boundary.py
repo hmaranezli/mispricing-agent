@@ -1,11 +1,13 @@
-"""phase5/venue_instrument_readiness_boundary.py — Slice 1 atomic implementation of the
-`phase5_venue_instrument_readiness_boundary` component: `VenueInstrumentReadinessStateContext`.
+"""phase5/venue_instrument_readiness_boundary.py — atomic implementation of the
+`phase5_venue_instrument_readiness_boundary` component: `VenueInstrumentReadinessStateContext`
+(Slice 1) and `VenueInstrumentReadinessGate` / `venue_instrument_readiness_preflight` (Slice 2).
 
 Per the component planning artifact
-(`phase5_venue_instrument_readiness_implementation_planning.md`), this implements ONLY a frozen,
-repr-safe, anti-truthiness, anti-coercion, factory-only carrier that wraps exactly the explicitly
-supplied venue/instrument readiness-state evidence. Slice 2 (the gate and its preflight function) is
-a separate, separately authorized task and is deliberately NOT implemented in this module.
+(`phase5_venue_instrument_readiness_implementation_planning.md`), Slice 1 is a frozen, repr-safe,
+anti-truthiness, anti-coercion, factory-only carrier that wraps exactly the explicitly supplied
+venue/instrument readiness-state evidence, and Slice 2 is a pure/offline/deterministic readiness-state
+gate over one exact upstream evidence envelope and one exact readiness-state carrier. The Slice 1
+carrier below is unchanged by Slice 2.
 
 This carrier is strictly a supplied venue/instrument state descriptor. It is NOT trade readiness, NOT
 actionability, NOT execution safety, NOT liquidity readiness, NOT balance/margin readiness, NOT
@@ -28,6 +30,20 @@ Discipline:
   no halt carrier.
 """
 from dataclasses import dataclass, fields as dataclass_fields
+
+from phase5.blocked_result_boundary import BlockedPacket, make_blocked_packet
+from phase5.no_eligible_halt_propagation_boundary import (
+    NoEligibleHaltPacket,
+    make_no_eligible_halt_packet,
+)
+from phase5.post_profitability_evidence_envelope_boundary import (
+    PostProfitabilityEvidenceEnvelope,
+)
+from phase5.const import (
+    PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE,
+    BLOCKED_NEEDS_EVIDENCE,
+    NEXT_ACTION_OBTAIN_EVIDENCE,
+)
 
 VENUE_INSTRUMENT_READINESS_BOUNDARY_COMPONENT_NAME = (
     "phase5_venue_instrument_readiness_boundary"
@@ -234,3 +250,189 @@ _EXPECTED_FIELD_NAMES = (
 )
 assert tuple(f.name for f in dataclass_fields(VenueInstrumentReadinessStateContext)) == \
     _EXPECTED_FIELD_NAMES
+
+
+# ---------------------------------------------------------------------------
+# Slice 2: VenueInstrumentReadinessGate / venue_instrument_readiness_preflight
+#
+# A pure, offline, deterministic venue/instrument readiness-state gate over exactly one
+# PostProfitabilityEvidenceEnvelope and one VenueInstrumentReadinessStateContext. Outputs are exactly:
+# the identical envelope (active + identity match), an existing BlockedPacket (missing / malformed /
+# unrecognized readiness evidence, or identity mismatch), or an existing NoEligibleHaltPacket (a valid
+# explicit non-active state). A programmatic wrong-path / misroute raises and never produces a packet.
+# The gate reads only already-explicit fields; it performs no normalization, parsing, inference,
+# defaulting, clock, network, or arithmetic, mutates neither input, and never broadens
+# VENUE_INSTRUMENT_STATE_ACTIVE into a tradable / executable / actionable / ready claim.
+# ---------------------------------------------------------------------------
+
+GATE_SOURCE_CONTRACT = "phase5_venue_instrument_readiness_implementation_planning.md"
+
+# Pinned reason vocabulary (planning-fixed; no aliases).
+VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_MISSING_READINESS_STATE = "VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_MISSING_READINESS_STATE"
+VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_MALFORMED_READINESS_STATE = "VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_MALFORMED_READINESS_STATE"
+VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_IDENTITY_MISMATCH = "VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_IDENTITY_MISMATCH"
+VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_UNRECOGNIZED_STATE_VOCABULARY = "VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_UNRECOGNIZED_STATE_VOCABULARY"
+VENUE_INSTRUMENT_READINESS_GATE_NO_ELIGIBLE_STATE_NOT_ACTIVE = "VENUE_INSTRUMENT_READINESS_GATE_NO_ELIGIBLE_STATE_NOT_ACTIVE"
+
+# NoEligible packet literals (a valid explicit non-active state is the only V1 no-eligible fact here).
+_NO_ELIGIBLE_STATUS = "NO_ELIGIBLE"
+_NO_ELIGIBLE_NEXT_ACTION = "HALT_BYPASS_NO_ELIGIBLE"
+
+# The four explicit identity fields compared by exact, case-sensitive equality (no normalization).
+_IDENTITY_FIELDS = ("venue", "instrument_id", "base_asset", "quote_asset")
+
+# Distinct from None: lets the gate tell a truly-absent attribute apart from an explicit None value.
+_MISSING = object()
+
+
+class VenueInstrumentReadinessGateTypeError(TypeError):
+    """Raised for a programmatic wrong-path / wrong-type input to the readiness gate."""
+
+
+class MisroutedHaltCarrierError(TypeError):
+    """Raised when a halt carrier is misrouted into the venue/instrument readiness gate boundary."""
+
+
+def reject_misrouted_halt_carrier(payload):
+    """Fail closed if a halt carrier is misrouted into the readiness gate boundary.
+
+    - Exact :class:`BlockedPacket` or exact :class:`NoEligibleHaltPacket` → raise
+      :class:`MisroutedHaltCarrierError` (a routing/integration bug, not a readiness input).
+    - Anything else → return ``None``; subclasses are NOT exact halt carriers.
+
+    Exact-type checks only (no isinstance). An already-halted input is never converted into a new
+    BlockedPacket/NoEligibleHaltPacket output; only its type name is used in the message.
+    """
+    if type(payload) is BlockedPacket:
+        raise MisroutedHaltCarrierError(
+            "venue/instrument readiness gate boundary must not receive a halt carrier; got "
+            + type(payload).__name__
+        )
+    if type(payload) is NoEligibleHaltPacket:
+        raise MisroutedHaltCarrierError(
+            "venue/instrument readiness gate boundary must not receive a halt carrier; got "
+            + type(payload).__name__
+        )
+    return None
+
+
+def _gate_blocked(*, evidence_envelope, reason_code, missing_or_invalid_field):
+    """Build a gate BlockedPacket via the existing factory — provenance from the evidence envelope."""
+    return make_blocked_packet(
+        component_name=VENUE_INSTRUMENT_READINESS_BOUNDARY_COMPONENT_NAME,
+        origin_component=VENUE_INSTRUMENT_READINESS_BOUNDARY_COMPONENT_NAME,
+        origin_result_status=PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE,
+        status=PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE,
+        blocked_status=BLOCKED_NEEDS_EVIDENCE,
+        reason_code=reason_code,
+        missing_or_invalid_field=missing_or_invalid_field,
+        source_contract=evidence_envelope.source_contract,
+        source_artifact=evidence_envelope.source_artifact,
+        source_field=evidence_envelope.source_field,
+        deterministic_next_action=NEXT_ACTION_OBTAIN_EVIDENCE,
+        human_review_required=True,
+        may_retry_after_evidence=True,
+        created_from_contract=GATE_SOURCE_CONTRACT,
+        boundary_version=BOUNDARY_VERSION,
+    )
+
+
+def _gate_no_eligible(*, evidence_envelope):
+    """Build the gate NoEligibleHaltPacket via the existing factory — provenance from the envelope.
+
+    The rejected-opportunity lineage (source_contract/source_artifact/source_field) is preserved from
+    the :class:`PostProfitabilityEvidenceEnvelope`, never from the readiness-state carrier.
+    """
+    return make_no_eligible_halt_packet(
+        component_name=VENUE_INSTRUMENT_READINESS_BOUNDARY_COMPONENT_NAME,
+        origin_component=VENUE_INSTRUMENT_READINESS_BOUNDARY_COMPONENT_NAME,
+        origin_result_status=_NO_ELIGIBLE_STATUS,
+        status=_NO_ELIGIBLE_STATUS,
+        no_eligible_reason=VENUE_INSTRUMENT_READINESS_GATE_NO_ELIGIBLE_STATE_NOT_ACTIVE,
+        source_contract=evidence_envelope.source_contract,
+        source_artifact=evidence_envelope.source_artifact,
+        source_field=evidence_envelope.source_field,
+        deterministic_next_action=_NO_ELIGIBLE_NEXT_ACTION,
+        boundary_version=BOUNDARY_VERSION,
+    )
+
+
+def venue_instrument_readiness_preflight(*, evidence_envelope, readiness_state):
+    """Pure venue/instrument readiness-state gate over one evidence envelope and one state carrier.
+
+    Returns the identical ``evidence_envelope`` on pass (explicit ``VENUE_INSTRUMENT_STATE_ACTIVE``
+    with an exact, case-sensitive identity match); an existing :class:`BlockedPacket` for missing /
+    malformed / unrecognized readiness-state evidence or an identity mismatch; and an existing
+    :class:`NoEligibleHaltPacket` for a valid explicit non-active state. Programmatic wrong-path /
+    wrong-type inputs raise :class:`VenueInstrumentReadinessGateTypeError` or
+    :class:`MisroutedHaltCarrierError` and never produce a packet. See
+    ``phase5_venue_instrument_readiness_implementation_planning.md`` for the pinned contract.
+
+    The exact carrier instance is zero-trusted: defensive attribute access only distinguishes a truly
+    absent ``readiness_status`` (→ MISSING) from an unreadable/malformed one (→ MALFORMED); it never
+    becomes parsing, defaulting, coercion, or normalization.
+    """
+    # --- programmatic wrong-path / wrong-type first ---
+    reject_misrouted_halt_carrier(evidence_envelope)
+    reject_misrouted_halt_carrier(readiness_state)
+    if type(evidence_envelope) is not PostProfitabilityEvidenceEnvelope:
+        raise VenueInstrumentReadinessGateTypeError(
+            "venue_instrument_readiness_preflight requires an exact PostProfitabilityEvidenceEnvelope, not "
+            + type(evidence_envelope).__name__
+        )
+    if type(readiness_state) is not VenueInstrumentReadinessStateContext:
+        raise VenueInstrumentReadinessGateTypeError(
+            "venue_instrument_readiness_preflight requires an exact VenueInstrumentReadinessStateContext, not "
+            + type(readiness_state).__name__
+        )
+
+    # --- zero-trust the exact readiness_state instance's decision variable (no .strip/.upper/etc.) ---
+    status = getattr(readiness_state, "readiness_status", _MISSING)
+    if status is _MISSING:
+        return _gate_blocked(
+            evidence_envelope=evidence_envelope,
+            reason_code=VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_MISSING_READINESS_STATE,
+            missing_or_invalid_field="readiness_status",
+        )
+    if type(status) is not str or status == "" or status.isspace():
+        return _gate_blocked(
+            evidence_envelope=evidence_envelope,
+            reason_code=VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_MALFORMED_READINESS_STATE,
+            missing_or_invalid_field="readiness_status",
+        )
+    if status not in _ALLOWED_READINESS_STATUSES:
+        return _gate_blocked(
+            evidence_envelope=evidence_envelope,
+            reason_code=VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_UNRECOGNIZED_STATE_VOCABULARY,
+            missing_or_invalid_field="readiness_status",
+        )
+
+    # --- identity comparison: exact, case-sensitive equality on the four explicit identity fields ---
+    for name in _IDENTITY_FIELDS:
+        envelope_value = getattr(evidence_envelope, name, _MISSING)
+        state_value = getattr(readiness_state, name, _MISSING)
+        if envelope_value is _MISSING or state_value is _MISSING or envelope_value != state_value:
+            return _gate_blocked(
+                evidence_envelope=evidence_envelope,
+                reason_code=VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_IDENTITY_MISMATCH,
+                missing_or_invalid_field=name,
+            )
+
+    # --- status evaluation (status already validated to be in the closed vocabulary) ---
+    if status == VENUE_INSTRUMENT_STATE_ACTIVE:
+        # pass-through identity: the identical envelope object (no wrap, no copy, no mutate)
+        return evidence_envelope
+    # a valid explicit non-active state (suspended/maintenance/closed/unsupported)
+    return _gate_no_eligible(evidence_envelope=evidence_envelope)
+
+
+class VenueInstrumentReadinessGate:
+    """Stateless, non-carrier namespace for the venue/instrument readiness gate.
+
+    Carries no state and requires no construction; the runtime entrypoint is the pure function
+    :func:`venue_instrument_readiness_preflight`, exposed here as a static method.
+    """
+
+    __slots__ = ()
+
+    preflight = staticmethod(venue_instrument_readiness_preflight)
