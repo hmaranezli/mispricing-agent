@@ -802,7 +802,7 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
 - **No raw/JSON/exchange parser, loader, endpoint reader, order-book/venue/sizing model, aggregation,
   calculator, net-edge, trading, reporting, or paper-live work is authorized** by this batch.
 
-## Next position (after venue instrument readiness state context implementation batch closeout)
+## Next position (after venue instrument readiness gate implementation batch closeout)
 
 - Current position: **Master F → Phase 5 implementation + planning layer.**
 - `phase5_input_provenance_preflight`: implementation + recursive hardening (`e7da765`, `5afb87d`,
@@ -1169,15 +1169,68 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
   - Evidence: carrier suite **23 passed**; planning + carrier **47 passed**; scoped guard suite
     (`pytest -k phase5`) **1014 passed, 1472 deselected**; evidence verifier `result: PASS`; no full
     pytest run.
-- venue/instrument readiness **Slice 1 carrier planning and implementation are complete; the gate
-  slice (Slice 2) has not started**.
+- `phase5_venue_instrument_readiness_boundary`: **Slice 2 gate implementation (`38a6a22`)** — the
+  pure/offline/deterministic venue/instrument readiness-state **gate** is **implemented**; the
+  component is now **fully implemented as carrier + gate**.
+  - `38a6a2288dd4e7b68dc3f50756d9a35a7e5239ee` — Implement phase5 venue instrument readiness gate
+    (Slice 2: gate + preflight).
+  - Prior Slice 1 carrier implementation `6ab895fc64d21b8be99b54edd60a9ced70d6e2c8`; prior Slice 1
+    memory closeout `a071a892d7a4c7a1a873a1cf1d9d5f5058001591`.
+  - Implementation batch files (only two): `phase5/venue_instrument_readiness_boundary.py` and
+    `tests/test_phase5_venue_instrument_readiness_boundary.py`. The carrier/factory
+    (`VenueInstrumentReadinessStateContext`, `make_venue_instrument_readiness_state_context`) were
+    **not redesigned, renamed, or weakened** — the diff is the module docstring header, the
+    top-of-file imports, and the appended gate; the carrier class, factory body, exact-type checks,
+    and the closed-field-tuple assertion are untouched. The two now-obsolete Slice-1 guard tests
+    (gate-symbols-absent + carrier-only source-scan) were replaced with positive gate-present +
+    carrier-surface-intact + threshold/profitability-debris guards.
+  - Public runtime entrypoint: `venue_instrument_readiness_preflight(*, evidence_envelope,
+    readiness_state)`; `VenueInstrumentReadinessGate` is **stateless/non-carrier** with
+    `__slots__=()` and `preflight = staticmethod(...)`.
+  - It accepts an **exact `PostProfitabilityEvidenceEnvelope` + exact
+    `VenueInstrumentReadinessStateContext` only** (subclasses / raw dict/Mapping/JSON / duck-typed /
+    None / scalars rejected). Exact behavior:
+    - wrong raw input for either argument → `VenueInstrumentReadinessGateTypeError`;
+    - exact `BlockedPacket` / `NoEligibleHaltPacket` on either argument → `MisroutedHaltCarrierError`
+      (a routing bug; the already-halted input is **never converted** into a new packet);
+    - exact carrier **missing** `readiness_status` (low-level `object.__new__` bypass; distinguished
+      via a dedicated `_MISSING` sentinel, never `None`) → BlockedPacket
+      `VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_MISSING_READINESS_STATE`;
+    - exact carrier **malformed** `readiness_status` (not exact `str`, empty, or whitespace via
+      `== "" or .isspace()` — no `.strip()`) → BlockedPacket
+      `VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_MALFORMED_READINESS_STATE`;
+    - exact non-empty `str` **outside** the closed vocabulary → BlockedPacket
+      `VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_UNRECOGNIZED_STATE_VOCABULARY`;
+    - **identity mismatch** on `venue` / `instrument_id` / `base_asset` / `quote_asset` (exact,
+      case-sensitive) → BlockedPacket `VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_IDENTITY_MISMATCH`;
+    - `VENUE_INSTRUMENT_STATE_ACTIVE` + exact identity match → **the same
+      `PostProfitabilityEvidenceEnvelope` object by identity** (no wrap/copy/mutate);
+    - `VENUE_INSTRUMENT_STATE_SUSPENDED` / `MAINTENANCE` / `CLOSED` / `UNSUPPORTED` + exact identity
+      match → NoEligibleHaltPacket `VENUE_INSTRUMENT_READINESS_GATE_NO_ELIGIBLE_STATE_NOT_ACTIVE`.
+  - **Provenance rule:** both BlockedPacket and NoEligibleHaltPacket take
+    `source_contract` / `source_artifact` / `source_field` from
+    `evidence_envelope.source_*` (the rejected-evidence lineage); `readiness_state.source_*` is
+    **never** used as packet provenance and never overwrites the envelope lineage. Packets are built
+    via the existing `make_blocked_packet` / `make_no_eligible_halt_packet` factories — **no new
+    packet class/field/reason builder/provenance schema** was invented.
+  - **Purity:** no `.strip()` / `.upper()` / `.lower()` / `.casefold()`, no normalization / parsing /
+    inference / default, no clock / datetime / network / retry / fetch / polling, no
+    liquidity / balance / sizing / trading / reporting / paper-live / execution / order-routing, and
+    **no `threshold` / `malformed_threshold` / `net_edge` / Decimal / profitability arithmetic
+    debris** in the gate. An `ACTIVE` state is a state-evidence fact only — it is **not** trade-ready,
+    actionable, executable, order-ready, paper-ready, or live-ready, and the gate does not broaden it.
+  - Evidence: implementation RED was a genuine `ImportError` for the missing
+    `VenueInstrumentReadinessGate`; GREEN boundary suite **42 passed**; planning + boundary
+    **66 passed**; scoped guard suite (`pytest -k phase5`) **1033 passed, 1472 deselected**; evidence
+    verifier `result: PASS`; read-only sync + gate-purity verification at `38a6a22` PASS; no full
+    pytest run.
+- venue/instrument readiness **carrier (Slice 1) and gate (Slice 2) are complete; the component is
+  fully implemented and memory-closed after this batch**.
 - **Next required step before any new component:** VPS / GitHub / local **full sync verification** on
   the new memory-closeout commit (confirm the local working tree, `origin/master`, and the VPS
   checkout all agree on the closeout HEAD).
-- **No next component is selected beyond the planned venue/instrument readiness gate/preflight
-  (Slice 2) runtime implementation.** The gate/preflight runtime implementation, and any later
-  component, must be **separately authorized** (TDD-first, component-scoped, declared-provenance)
-  **after sync and review** — not started here.
+- **No next component is selected.** Any later component must be **separately authorized**
+  (TDD-first, component-scoped, declared-provenance) **after sync and review** — not started here.
 - Any later work **must** proceed **component-by-component with failing tests first and declared
   provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
