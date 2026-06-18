@@ -11,11 +11,77 @@ This audit **does not** authorize implementation, **does not** authorize net-edg
 readiness, and **does not** make an absolute completeness claim. It is not a mathematical proof.
 <!-- FRAMING-END -->
 
-## Inspected HEAD
+## Refreshed audit (current) — anchor `fe5fed20f9009fd99511505f68c421f2a43ba449`
 
-- Exact HEAD inspected: `f0151fcfa2f00cf8fee4cf76d82b0229a6e0d0dc`.
+This section is the **current, read-only** refresh of this audit. It supersedes the original
+`f0151fc` audit recorded further below. It remains docs/tests only and is **not implementation**.
 
-## Audit result
+- **Audit anchor (current):** `fe5fed20f9009fd99511505f68c421f2a43ba449`.
+- **Old audit anchor:** `f0151fc` — **[SUPERSEDED by fe5fed20f9009fd99511505f68c421f2a43ba449]**.
+- The old `f0151fc` audit is **stale relative to `fe5fed2`**: its checked scope covered **only the 10
+  contract/schema protocol docs**; the component-implementation boundaries did not yet exist at
+  `f0151fc`.
+- The `fe5fed2` refresh additionally covers the **17 planning-doc components / 16 runtime modules**
+  now implemented after `f0151fc`.
+
+**Refreshed read-only result (within audited scope):**
+
+- All 17 planning-doc components / 16 runtime modules carry the expected
+  planning / runtime / symbol / test / memory-closeout evidence within the audited scope.
+- Planned-only components left: **NONE**.
+- Runtime-absent components left: **NONE**.
+- Runtime modules without planning evidence: **NONE**.
+- Cross-component interface-contract gap observed: **NONE** within the lightweight read-only,
+  symbol-level scope.
+- **No deep per-component AST purity audit was performed** in this refresh.
+
+**Stale statements found (recorded, not gaps):**
+
+- The `f0151fc` audit anchor and its checked scope are stale relative to `fe5fed2`.
+- `docs/handoff/phase4c_state_pre_phase5.md` line 990 ("Runtime implementation has not started" for
+  post_profitability) is **superseded** by the later closeout lines 1032 / 1034 / 1075 and commit
+  `35c0d44`.
+
+**Scoped conclusion (current refresh):**
+
+> Phase 5 contract-set gap audit found no repo-evidenced component gap within the audited scope at
+> fe5fed20f9009fd99511505f68c421f2a43ba449.
+
+**Next component / order (current refresh):**
+
+- Explicit next component: **UNDEFINED IN DOCS**.
+- **No next component is selected.** The exact component-by-component implementation order is
+  **explicitly deferred**.
+- **Recommended next command type only:** a human-authored authorization naming a next component,
+  followed by a separately authorized read-only implementation-planning-gate entrance-criteria task
+  for that named component.
+- **No implementation, planning-doc creation, or memory closeout is authorized by this audit.**
+
+<!-- PROHIBITED-OUTPUTS-START -->
+### Refreshed-audit PROHIBITIONS / NO-CLAIMS (fe5fed2)
+
+- This audit **does not authorize** production, paper, live, trading, execution, routing, order
+  placement, wallet fetch, reservation, Telegram / process-control, public-data runtime, sizing,
+  allocation, order-intent, exposure, or balance-runtime work.
+- This audit **does not create or imply** production-ready, paper-ready, live-ready, trade-ready,
+  executable, order-ready, actionable, candidate, signal, or order semantics.
+- This audit **does not select or infer** the next component.
+- The next component remains **UNDEFINED IN DOCS** unless explicitly named by a future human
+  authorization or repo evidence.
+- Any future task must be **separately authorized, TDD-first, component-scoped, and
+  declared-provenance**.
+<!-- PROHIBITED-OUTPUTS-END -->
+
+## Inspected HEAD (original audit) — [SUPERSEDED by fe5fed20f9009fd99511505f68c421f2a43ba449]
+
+> **[SUPERSEDED by fe5fed20f9009fd99511505f68c421f2a43ba449]** — preserved below as historical
+> evidence only. Do not treat the original `f0151fc` "Inspected HEAD", checked scope, or "Audit
+> result" lines as current; the current read-only result is the **Refreshed audit (fe5fed2)** section
+> above.
+
+- Exact HEAD inspected: `f0151fcfa2f00cf8fee4cf76d82b0229a6e0d0dc`. **[SUPERSEDED by fe5fed20f9009fd99511505f68c421f2a43ba449]**
+
+## Audit result (original `f0151fc`) — [SUPERSEDED by fe5fed20f9009fd99511505f68c421f2a43ba449]
 
 **Audit result: OBSERVED_NO_GAP_WITHIN_CHECKED_SCOPE**
 
