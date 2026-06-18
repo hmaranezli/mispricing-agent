@@ -1352,10 +1352,83 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
   - Evidence: focused carrier suite **21 passed**; planning + carrier **50 passed**; scoped guard suite
     (`pytest -k phase5`) **1083 passed, 1472 deselected**; evidence verifier `result: PASS`; read-only
     sync + carrier-purity verification at `e110ac8` PASS; no full pytest run.
-- liquidity capacity evidence **planning is complete; Slice 1 carrier is implemented and
-  memory-closed after this batch**; the gate slice (Slice 2) has **not** started and requires
-  **separate authorization** (TDD-first, component-scoped, declared-provenance) before any
-  implementation.
+- `phase5_liquidity_capacity_evidence_boundary`: **Slice 2 gate implementation (`4a362df`)** — the
+  pure/offline/deterministic liquidity-capacity sufficiency **gate** is **implemented**; the component
+  is now **fully implemented as carrier + gate**.
+  - `4a362df4043d40f1c3a585aa50abbd5363b81373` — Implement phase5 liquidity capacity evidence gate
+    (Slice 2: gate + preflight).
+  - Prior Slice 1 carrier implementation `e110ac85c1ffd3d84a305ea4a72917867f2a0ff4`; prior Slice 1
+    carrier memory closeout `b9106359c5697359a292bb19f957f6883748a59d`.
+  - Implementation batch files (exactly two): `phase5/liquidity_capacity_evidence_boundary.py` and
+    `tests/test_phase5_liquidity_capacity_evidence_boundary.py`. The carrier/factory
+    (`LiquidityCapacityEvidenceContext`, `make_liquidity_capacity_evidence_context`) were **not
+    redesigned, renamed, or weakened** — the diff is the module-docstring header, the appended gate,
+    and a minimal Slice-1 guard upgrade; the closed 17-field tuple, the factory body, exact-str/
+    verbatim/passive-metadata behavior, and the field-tuple module-load assertion are intact. The
+    now-obsolete Slice-1 gate-absence source-scans were replaced with **durable carrier/gate separation
+    guards** (positive gate-present + carrier-surface-intact, carrier-region-only purity scans, and new
+    gate-scoped AST locks).
+  - **Component now implemented as carrier + gate:** `LiquidityCapacityEvidenceContext`,
+    `make_liquidity_capacity_evidence_context`, `LiquidityCapacityGate`, `liquidity_capacity_preflight`.
+  - Public runtime entrypoint: `liquidity_capacity_preflight(*, evidence_envelope,
+    liquidity_evidence)`; `LiquidityCapacityGate` is **stateless/non-carrier** with `__slots__=()` and
+    `preflight = staticmethod(...)`.
+  - It accepts an **exact `PostProfitabilityEvidenceEnvelope` + exact
+    `LiquidityCapacityEvidenceContext` only** (subclasses / raw containers / duck-typed / None / scalars
+    rejected → `LiquidityCapacityGateTypeError`). Exact `BlockedPacket` / `NoEligibleHaltPacket` on
+    either argument are **misroutes** → `MisroutedHaltCarrierError` (never converted into a new packet).
+  - **Branch priority (deterministic, overlap-tested):** misrouted packet → exact-type → missing
+    allow-listed liquidity field → malformed grammar/positivity → identity + size-magnitude → unit →
+    stale → insufficient capacity → pass-through. Blocked outcomes precede NoEligible; the only
+    NoEligible fact in V1 is insufficient positive capacity.
+  - **Six pinned reason tokens (exact, `LIQUIDITY_CAPACITY_GATE_` prefix only):**
+    `..._BLOCKED_MISSING_LIQUIDITY_EVIDENCE`, `..._BLOCKED_MALFORMED_LIQUIDITY_EVIDENCE`,
+    `..._BLOCKED_IDENTITY_MISMATCH`, `..._BLOCKED_UNIT_MISMATCH`, `..._BLOCKED_STALE_EVIDENCE`,
+    `..._NO_ELIGIBLE_INSUFFICIENT_CAPACITY`. No threshold/profitability/net-edge reason-token carry-over
+    and no malformed-threshold token.
+  - **Grammar/positivity:** liquidity `observed_size` / `available_capacity` are canonical unsigned
+    decimals and must be strictly positive (`"0"` available_capacity is **malformed → Blocked, not
+    NoEligible**); `liquidity_snapshot_epoch_ms` / `evidence_epoch_tolerance_ms` are canonical unsigned
+    integers (tolerance `"0"` is valid); sign/exponent/`NaN`/`Infinity`/underscores/commas/empty/
+    whitespace/leading-zero forms are malformed. Magnitudes/epochs are parsed into **local ephemeral
+    `Decimal`/`int` only**; neither input is mutated.
+  - **Size binding:** `Decimal(evidence_envelope.observed_size) == Decimal(liquidity_evidence.observed_size)`
+    (magnitude mismatch → IDENTITY_MISMATCH, compared as Decimal not string so `"0.50" == "0.5"`);
+    `evidence_envelope.size_unit == liquidity_evidence.observed_size_unit` and
+    `liquidity_evidence.observed_size_unit == liquidity_evidence.capacity_unit` (mismatch →
+    UNIT_MISMATCH).
+  - **Staleness (no clock):**
+    `abs(int(evidence_envelope.observed_at_epoch_ms) - int(liquidity_evidence.liquidity_snapshot_epoch_ms)) <= int(liquidity_evidence.evidence_epoch_tolerance_ms)`;
+    failure → BlockedPacket `..._BLOCKED_STALE_EVIDENCE` (not NoEligible). Inclusive at the exact
+    tolerance boundary.
+  - **Capacity (inclusive):**
+    `Decimal(evidence_envelope.observed_size) <= Decimal(liquidity_evidence.available_capacity)` — equal
+    capacity is sufficient; sufficient → the **same `evidence_envelope` by identity** (no wrap/copy/
+    mutate); positive-but-below → NoEligibleHaltPacket `..._NO_ELIGIBLE_INSUFFICIENT_CAPACITY`. An
+    **AST operator lock proves exactly two `<=`, exactly one `abs()`, exactly one subtraction, and no
+    `<` / `>` / `>=`** in the gate.
+  - **Slippage lock:** `estimated_slippage_bps` is passive — an **AST scan proves no
+    `.estimated_slippage_bps` dereference** anywhere in the module; a black-box test confirms
+    `estimated_slippage_bps="banana"` still **passes** when all else is valid and sufficient (the value
+    cannot affect the decision).
+  - **Provenance rule:** both BlockedPacket and NoEligibleHaltPacket take
+    `source_contract` / `source_artifact` / `source_field` from `evidence_envelope.source_*`; the
+    carrier's `source_*` / `liquidity_evidence_id` / `boundary_version` / `estimated_slippage_bps` are
+    **never read for decisioning or provenance**. Packets are built via the existing
+    `make_blocked_packet` / `make_no_eligible_halt_packet` factories — **no new packet
+    class/field/reason builder/provenance schema** was invented; reasons/fields are static tokens with
+    **no raw magnitude/epoch/tolerance/slippage value leakage**.
+  - **Purity:** scoped source scans confirm **no network / clock / fetch / retry / polling**, **no
+    Balance/Capital/Margin / wallet**, **no sizing / routing / allocation / order-quantity / execution /
+    paper / live / canary / actionability**, and **no net-edge / profitability-decisioning / threshold**
+    in the gate. Sufficient capacity is a capacity-evidence fact only — it is **not** trade-ready,
+    actionable, order-placement proof, or paper-ready/live-ready, and the gate does not broaden it.
+  - Evidence: implementation RED was a genuine `ImportError` for the missing `LiquidityCapacityGate`;
+    focused gate+carrier suite **58 passed**; planning + boundary **87 passed**; scoped guard suite
+    (`pytest -k phase5`) **1120 passed, 1472 deselected**; evidence verifier `result: PASS`; read-only
+    sync + gate-purity verification at `4a362df` PASS; no full pytest run.
+- liquidity capacity evidence **carrier (Slice 1) and gate (Slice 2) are complete; the component is
+  fully implemented and memory-closed after this batch**.
 - **Next required step before any new component:** VPS / GitHub / local **full sync verification** on
   the new memory-closeout commit (confirm the local working tree, `origin/master`, and the VPS
   checkout all agree on the closeout HEAD).
