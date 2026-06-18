@@ -802,7 +802,7 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
 - **No raw/JSON/exchange parser, loader, endpoint reader, order-book/venue/sizing model, aggregation,
   calculator, net-edge, trading, reporting, or paper-live work is authorized** by this batch.
 
-## Next position (after post profitability evidence envelope implementation batch closeout)
+## Next position (after venue instrument readiness planning batch closeout)
 
 - Current position: **Master F → Phase 5 implementation + planning layer.**
 - `phase5_input_provenance_preflight`: implementation + recursive hardening (`e7da765`, `5afb87d`,
@@ -1073,11 +1073,53 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
     scoped guard suite (`pytest -k phase5`) **967 passed, 1472 deselected**; evidence verifier
     `result: PASS`; no full pytest run.
 - post-profitability evidence envelope **planning and implementation are complete**.
+- `phase5_venue_instrument_readiness_boundary`: **planning only (`73b5b8b`)** — a future **dual-slice**
+  venue/instrument readiness-state boundary is **planned but not implemented**.
+  - `73b5b8b` — Add phase5 venue instrument readiness planning (**docs + tests only**:
+    `docs/handoff/phase5_venue_instrument_readiness_implementation_planning.md` +
+    `tests/test_phase5_venue_instrument_readiness_implementation_planning.py`).
+  - **Runtime implementation has not started:** `phase5/venue_instrument_readiness_boundary.py` does
+    not exist and no `VenueInstrumentReadinessStateContext` / `make_venue_instrument_readiness_state_context`
+    / `VenueInstrumentReadinessGate` / `venue_instrument_readiness_preflight` runtime symbols exist.
+  - **Dual-slice future boundary:** (1) a frozen explicit `VenueInstrumentReadinessStateContext`
+    carrier supplied from outside, and (2) a `VenueInstrumentReadinessGate` /
+    `venue_instrument_readiness_preflight(*, evidence_envelope, readiness_state)` evaluator comparing
+    the upstream `PostProfitabilityEvidenceEnvelope` to that supplied state.
+  - **Pinned carrier fields (11):** `component_name`, `venue`, `instrument_id`, `base_asset`,
+    `quote_asset`, `readiness_status`, `source_contract`, `source_artifact`, `source_field`,
+    `state_id`, `boundary_version` (all exact non-empty non-whitespace str).
+  - **Pinned status vocabulary (explicit, case-sensitive):** `VENUE_INSTRUMENT_STATE_ACTIVE`,
+    `VENUE_INSTRUMENT_STATE_SUSPENDED`, `VENUE_INSTRUMENT_STATE_MAINTENANCE`,
+    `VENUE_INSTRUMENT_STATE_CLOSED`, `VENUE_INSTRUMENT_STATE_UNSUPPORTED`.
+  - **Planned evaluation:** active + exact identity match (venue/instrument_id/base_asset/quote_asset,
+    case-sensitive) passes through the **same `PostProfitabilityEvidenceEnvelope` by identity** in the
+    future implementation; suspended/maintenance/closed/unsupported produce a **no-eligible** outcome;
+    unrecognized state vocabulary / malformed state / missing readiness state / identity mismatch
+    **fail closed** per the planned reason taxonomy
+    (`VENUE_INSTRUMENT_READINESS_GATE_BLOCKED_MISSING_READINESS_STATE`,
+    `..._BLOCKED_MALFORMED_READINESS_STATE`, `..._BLOCKED_IDENTITY_MISMATCH`,
+    `..._BLOCKED_UNRECOGNIZED_STATE_VOCABULARY`, `..._NO_ELIGIBLE_STATE_NOT_ACTIVE`).
+  - **Explicit non-actionability:** this boundary is **not** trade readiness, **not** execution
+    safety, **not** liquidity readiness, **not** balance/margin readiness, **not** order-placement
+    proof, **not** paper-ready or live-ready, and **not**
+    actionable/executable/candidate/signal/order-intent.
+  - **Explicit prohibitions:** no network/API/ping/retry/time-fetch; no clock/time/datetime/now; no
+    parser/inference/default; no case normalization; no unit normalization; no status broadening; no
+    `source_artifact` parsing; no reach-back beyond the explicit `evidence_envelope` + `readiness_state`;
+    no liquidity/orderbook/depth/slippage; no balance/capital/margin; no sizing/trading/reporting/
+    paper-live/execution.
+  - **Quarantine evidence:** read-only sync + semantic quarantine **clean** at `73b5b8b` — no
+    `threshold` / `THRESHOLD` / `MALFORMED_THRESHOLD` semantic debris in the two planning files (the
+    malformed-state reason token is correctly `..._BLOCKED_MALFORMED_READINESS_STATE`).
+  - Evidence: planning test **24 passed**; scoped guard suite (`pytest -k phase5`) **991 passed, 1472
+    deselected**; evidence verifier `result: PASS`; no full pytest run.
+- venue/instrument readiness **planning is complete; runtime implementation has not started**.
 - **Next required step before any new component:** VPS / GitHub / local **full sync verification** on
   the new memory-closeout commit (confirm the local working tree, `origin/master`, and the VPS
   checkout all agree on the closeout HEAD).
-- **No next component is selected.** The next future boundary must be **separately authorized** via
-  its own brainstorm/planning task (TDD-first, component-scoped, declared-provenance) **after sync and
+- **No next component is selected beyond the planned venue/instrument readiness runtime
+  implementation.** The envelope/gate runtime implementation, and any later component, must be
+  **separately authorized** (TDD-first, component-scoped, declared-provenance) **after sync and
   review** — not started here.
 - Any later work **must** proceed **component-by-component with failing tests first and declared
   provenance**.
