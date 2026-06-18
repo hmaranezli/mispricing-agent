@@ -802,7 +802,7 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
 - **No raw/JSON/exchange parser, loader, endpoint reader, order-book/venue/sizing model, aggregation,
   calculator, net-edge, trading, reporting, or paper-live work is authorized** by this batch.
 
-## Next position (after net-edge calculator batch closeout)
+## Next position (after net-edge profitability gate batch closeout)
 
 - Current position: **Master F → Phase 5 implementation + planning layer.**
 - `phase5_input_provenance_preflight`: implementation + recursive hardening (`e7da765`, `5afb87d`,
@@ -936,15 +936,56 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
     `result: PASS`; no full pytest run. The commit touched only the two allowed files
     (`phase5/net_edge_calculator_boundary.py`, `tests/test_phase5_net_edge_calculator_boundary.py`);
     no obsolete-guard correction was needed (no prior guard banned the calculator symbols).
-- **No profitability / readiness / actionability gate / cost-aggregator / unit-conversion / FX-oracle /
-  CostApplicabilityContext / trading / reporting / runtime / paper / live readiness is authorized.**
-- net-edge calculator planning + implementation are **complete**.
+- `phase5_net_edge_profitability_gate_boundary`: **planning (`51cc0a4`) + atomic carrier
+  implementation (`4d98623`) + gate implementation (`04632cf`)** — the **first profitability
+  threshold gate** over a net-edge result is **planned and implemented**.
+  - `51cc0a4` — Add phase5 net edge profitability gate planning (docs + tests only).
+  - `4d98623` — Implement phase5 profitability threshold policy context (carrier only).
+  - `04632cf` — Implement phase5 net edge profitability gate.
+  - `ProfitabilityThresholdPolicyContext` is a **frozen / repr-safe / anti-truthiness / anti-coercion /
+    factory-only** explicit threshold-policy carrier with **exactly 8 fields** (`component_name`,
+    `threshold_value`, `threshold_unit`, `source_contract`, `source_artifact`, `source_field`,
+    `policy_id`, `boundary_version`), **all exact `str`**. `threshold_value` is a **canonical signed
+    decimal string**; **negative, zero, and positive thresholds are all accepted** (no sign morality,
+    no non-negative rule). The carrier performs **no env/config/file/db/network/time reads**, holds
+    **no computed/default threshold**, does **no `source_artifact`/`source_field` parsing**, and does
+    **no venue/base/quote/instrument inference**.
+  - `net_edge_profitability_preflight(*, calculation_result, threshold_policy)` (with the stateless
+    `NetEdgeProfitabilityGate`, `preflight = staticmethod(...)`) accepts an **exact
+    `NetEdgeCalculationResult` + exact `ProfitabilityThresholdPolicyContext` only**. Wrong type / None /
+    subclass / duck-typed object → `NetEdgeProfitabilityGateTypeError`; an **exact halt carrier on
+    either argument** → `MisroutedHaltCarrierError`; a **malformed exact `NetEdgeCalculationResult`
+    internal state** → `TypeError` (**never a packet**).
+  - It performs **local Decimal comparison only** (`net_edge_value >= threshold_value`, **equality
+    passes**) constructed from already-canonical strings; negative/zero/positive thresholds use plain
+    Decimal algebra; **no float, no Decimal-from-float, no rounding, no quantize**, and **no net-edge
+    recalculation or cost summing**.
+  - Unit policy is **case-sensitive exact equality** (`net_edge_unit` must exactly equal
+    `threshold_unit`): **no normalization, no `.upper`/`.lower`/`.casefold`, no conversion, no
+    FX/oracle**, no source parsing, no venue/base/quote/instrument validation, no
+    clock/staleness/evaluation-time check, no order sizing / balance / margin / liquidity / depth /
+    slippage, and no readiness / actionability / trading / reporting / paper-live.
+  - Failure mapping: missing required field in the bypassed exact policy carrier → BlockedPacket
+    `NET_EDGE_PROFITABILITY_GATE_BLOCKED_MISSING_THRESHOLD_POLICY`; malformed `threshold_value` in the
+    bypassed exact policy carrier → BlockedPacket
+    `NET_EDGE_PROFITABILITY_GATE_BLOCKED_MALFORMED_THRESHOLD_POLICY`; `net_edge_unit != threshold_unit`
+    → BlockedPacket `NET_EDGE_PROFITABILITY_GATE_BLOCKED_UNIT_MISMATCH`; `net_edge_value <
+    threshold_value` → NoEligibleHaltPacket `NET_EDGE_PROFITABILITY_GATE_NO_ELIGIBLE_BELOW_THRESHOLD`;
+    `net_edge_value >= threshold_value` → **identity pass-through** (the **identical**
+    `NetEdgeCalculationResult` object, **no wrapper / new carrier**). **No new reason tokens were
+    introduced beyond the planning-pinned vocabulary.**
+  - Evidence: planning test **22 passed**; carrier suite **30 passed**; gate suite **20 passed**; full
+    scoped guard suite **485 passed**; evidence verifier `result: PASS`; no full pytest run.
+- **No readiness / actionability / cost-aggregator / unit-conversion / FX-oracle /
+  CostApplicabilityContext / order-sizing / trading / reporting / runtime / paper / live readiness is
+  authorized.** Passing the profitability gate means **only** that a net edge met an explicit
+  threshold; it is **not** actionable, ready, executable, or trade-authorized.
+- net-edge profitability gate planning + carrier + gate implementation are **complete**.
 - **Next required step before any new component:** VPS / GitHub / local **full sync verification** on
   the new memory-closeout commit (confirm the local working tree, `origin/master`, and the VPS
   checkout all agree on the closeout HEAD).
-- **Next future component (after sync):** must be **separately planned and authorized** — not selected
-  here. Likely candidates remain a future `ProfitabilityGate` / `ReadinessGate` (deferred), but no
-  next component is authorized by this closeout.
+- **No next component is selected yet.** The next future component must be **separately planned and
+  authorized** via its own brainstorm/planning task **after sync** — not selected here.
 - Any later work **must** proceed **component-by-component with failing tests first and declared
   provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
