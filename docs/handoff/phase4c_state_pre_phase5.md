@@ -1567,6 +1567,66 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
   provenance**.
 - The absence of stale hash-free pointers has been verified for this closeout.
 
+## Closeout — phase5_capital_margin_evidence_boundary Slice 2 gate/preflight batch
+
+- `phase5_capital_margin_evidence_boundary`: **Slice 2 gate/preflight implementation
+  (`5577814fb6c807e60e9380eb5d0281e47a48b7d8`)** — the pure/offline/deterministic capital-sufficiency
+  ledger-auditor gate is now implemented over one `PostProfitabilityEvidenceEnvelope`, one
+  `CapitalMarginEvidenceContext`, and the exact `expected_capital_scope_id` control scalar.
+  - `5577814fb6c807e60e9380eb5d0281e47a48b7d8` — Implement phase5 capital margin evidence gate
+    (Slice 2: gate + preflight).
+  - Prior Slice 1 carrier memory closeout `ca7fc6a6b24b825f10590d744950e39f157bcd40`; prior Slice 1
+    carrier implementation `634168dd9956d5fc42eda3388292c7eb2bf2bf1d`.
+  - Implementation batch files (**exactly two**): `phase5/capital_margin_evidence_boundary.py`
+    (gate appended after the `# ===PHASE5-SLICE2-GATE-BOUNDARY===` marker) and
+    `tests/test_phase5_capital_margin_evidence_boundary.py` (Slice-2-aware purity guards + full gate
+    suite). **No third file.** `docs/handoff/phase4c_state_pre_phase5.md` was **not** changed by the
+    implementation commit `5577814` (it is edited only by this memory-closeout entry).
+  - **Implemented:** `CapitalMarginGate` + `capital_margin_preflight(*, evidence_envelope,
+    capital_evidence, expected_capital_scope_id)`. `CapitalMarginEvidenceContext` +
+    `make_capital_margin_evidence_context` **remain implemented and were not weakened** (closed
+    21-field set with `component_name` first; `frozen=True`; slotted, no `__dict__`; factory-only;
+    direct construction blocked; exact `type(value) is str`; verbatim; safe `repr` exposes only
+    `component_name` + `boundary_version`).
+  - **Gate contract:** `CapitalMarginGate` is stateless with `__slots__ == ()` and
+    `CapitalMarginGate.preflight is capital_margin_preflight`. **Exactly six** `CAPITAL_MARGIN_GATE_*`
+    reason tokens, no extras: `..._BLOCKED_MISSING_CAPITAL_EVIDENCE`,
+    `..._BLOCKED_MALFORMED_CAPITAL_EVIDENCE`, `..._BLOCKED_IDENTITY_MISMATCH`,
+    `..._BLOCKED_UNIT_MISMATCH`, `..._BLOCKED_STALE_EVIDENCE`, `..._NO_ELIGIBLE_INSUFFICIENT_CAPITAL`.
+    Branch priority: misroute → exact-type/control-scalar → missing → malformed/positivity → identity
+    (incl. side + Decimal size magnitude + `expected_capital_scope_id` vs `capital_scope_id`) → unit →
+    stale (two axes) → zero free → inclusive sufficiency → pass-through.
+  - **Result semantics:** success returns the **exact** `evidence_envelope` by identity;
+    blocked/malformed/identity/unit/stale → `BlockedPacket`; **zero free capital and shortfall →
+    `NoEligibleHaltPacket`** (zero free capital is NoEligible, **not** malformed). **Negative free
+    capital is malformed**; `required_capital <= 0` is malformed; `observed_size <= 0` is malformed.
+    The only sufficiency pass equation is `required_capital <= available_free_capital` (inclusive).
+  - **Provenance / leakage:** packet `source_contract/source_artifact/source_field` come **only** from
+    `evidence_envelope.source_*`; the carrier's `source_*`, `capital_evidence_id`, and
+    `boundary_version` are **barred** as packet provenance; reasons/details are static tokens and
+    field names only, with **no raw value leakage** in reason/detail/`str`/`repr`/messages.
+  - **Gate-scoped AST lock (carrier/factory excluded from the operator count):** `LtE` exactly **5**,
+    `Lt` exactly **1**, `Gt`/`GtE` exactly **0**, `BinOp` exactly `[Sub, Sub]`, `abs()` exactly **2**,
+    `Add`/`Mult`/`Div`/`FloorDiv`/`Mod`/`Pow` exactly **0**.
+  - **Forbidden-behavior verification:** no clock/time/datetime/now/utcnow/monotonic/perf_counter; no
+    network/request/fetch/polling/wallet/balance; no
+    price/notional/leverage/fee/margin-requirement/capital-reservation/sizing/allocation/routing/
+    execution/PnL/profitability/net-edge/threshold calculation; no float parsing; no `isinstance` in
+    the module.
+  - Evidence: focused capital-margin suite **79 passed** (genuine RED first: `ImportError` on
+    `CapitalMarginGate`); planning test **29 passed**; combined capital-margin **108 passed**; scoped
+    guard suite (`pytest -k phase5`) **1228 passed, 1472 deselected** (exit 0); evidence verifier
+    `result: PASS`; read-only sync + gate-purity verification at `5577814` **ALL PASS**; no full
+    pytest run.
+- capital margin evidence **carrier (Slice 1) and gate (Slice 2) are complete; the component is
+  implemented and memory-closed after this batch.** No next component started.
+- **Next required step before any new component:** VPS / GitHub / local **full sync verification** on
+  this memory-closeout commit (confirm the local working tree, `origin/master`, and the VPS checkout
+  all agree on the closeout HEAD).
+- **No next component is selected.** Any later component / task must be **separately authorized**
+  (TDD-first, component-scoped, declared-provenance) **after sync and review** — not started here.
+- The absence of stale hash-free pointers has been verified for this closeout.
+
 <!-- NO-CLAIMS-START -->
 ## No-claims statement
 
