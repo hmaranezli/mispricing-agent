@@ -24,6 +24,16 @@ ORDER EXISTS at this carrier.
 """
 from dataclasses import dataclass, fields as dataclass_fields
 
+# Slice 0B references (exact input type guard + misroute halt-carrier guard). These are imported for
+# identity comparison via `type(x) is ...` only; no attribute of these types other than `source_*` is
+# read on the pass path, and no method of them is invoked.
+from phase5.post_profitability_evidence_envelope_boundary import PostProfitabilityEvidenceEnvelope
+from phase5.venue_instrument_readiness_boundary import VenueInstrumentReadinessStateContext
+from phase5.liquidity_capacity_evidence_boundary import LiquidityCapacityEvidenceContext
+from phase5.capital_margin_evidence_boundary import CapitalMarginEvidenceContext
+from phase5.blocked_result_boundary import BlockedPacket
+from phase5.no_eligible_halt_propagation_boundary import NoEligibleHaltPacket
+
 CAPACITY_CONSTRAINT_EVIDENCE_BOUNDARY_COMPONENT_NAME = "phase5_capacity_constraint_evidence_boundary"
 BOUNDARY_VERSION = "phase5.capacity_constraint_evidence_boundary.v0"
 
@@ -262,16 +272,80 @@ def capacity_constraint_preflight(
     liquidity_evidence,
     capital_evidence,
 ):
-    """Exact keyword-only preflight entrypoint — Slice 0A fail-fast stub.
+    """Exact keyword-only preflight entrypoint — Slice 0B (type guard + misroute guard + pass path).
 
-    The full signature (the four upstream-evidence slots, keyword-only, no defaults, no extra kwargs)
-    is locked here so downstream wiring can bind against the final contract. The structural
-    multi-source join, identity/unit/staleness checks, the pass path (which would build a
-    :class:`CapacityConstraintEvidenceContext`), and every blocked branch (which would emit a blocked
-    packet) are NOT implemented in this batch. The stub inspects nothing — it reads no attribute of
-    any input, builds no carrier, emits no packet, and returns nothing.
+    This slice implements ONLY: (1) an exact input type guard (``type(x) is T`` — no ``isinstance``,
+    no truthiness, no duck typing); (2) a misroute halt-carrier guard that rejects an exact
+    ``BlockedPacket`` / ``NoEligibleHaltPacket`` supplied to any slot; and (3) the all-agree pass path
+    that returns a :class:`CapacityConstraintEvidenceContext` built via
+    :func:`make_capacity_constraint_evidence_context` with VERBATIM ``source_*`` transfer.
+
+    BOUNDARY: this is NOT final boundary pass readiness. The fail-closed structural convergence checks
+    (identity / unit / staleness / size magnitude) and every blocked branch are Slice 0C and are NOT
+    implemented here; therefore this preflight is NOT live-wirable until Slice 0C lands. No blocked
+    packet is emitted, no scalar is parsed, and no clock is read. **NO ORDER EXISTS.**
+
+    Provenance transfer is strictly verbatim: each ``source_*`` value is read directly off its carrier
+    and passed unchanged to the factory — no ``str()``, no formatting, no ``join``, no defaulting, no
+    trimming, no normalization, and no synthetic provenance. ``component_name`` and ``boundary_version``
+    are never passed (the factory sets them internally).
     """
-    raise NotImplementedError("Slice 0 structural join and branch logic not yet implemented")
+    supplied_inputs = (
+        ("evidence_envelope", evidence_envelope),
+        ("venue_readiness", venue_readiness),
+        ("liquidity_evidence", liquidity_evidence),
+        ("capital_evidence", capital_evidence),
+    )
+    # Misroute guard first: an upstream halt packet in any slot is a programmatic routing error, never
+    # a blocked token and never a returned packet.
+    for slot_name, value in supplied_inputs:
+        if type(value) is BlockedPacket or type(value) is NoEligibleHaltPacket:
+            raise CapacityConstraintMisroutedHaltCarrierError(
+                "halt carrier {} misrouted into preflight slot {!r}".format(
+                    type(value).__name__, slot_name
+                )
+            )
+    # Exact input type guard (exact type only — never isinstance, never truthiness).
+    if type(evidence_envelope) is not PostProfitabilityEvidenceEnvelope:
+        raise CapacityConstraintGateTypeError(
+            "evidence_envelope must be PostProfitabilityEvidenceEnvelope, not {}".format(
+                type(evidence_envelope).__name__
+            )
+        )
+    if type(venue_readiness) is not VenueInstrumentReadinessStateContext:
+        raise CapacityConstraintGateTypeError(
+            "venue_readiness must be VenueInstrumentReadinessStateContext, not {}".format(
+                type(venue_readiness).__name__
+            )
+        )
+    if type(liquidity_evidence) is not LiquidityCapacityEvidenceContext:
+        raise CapacityConstraintGateTypeError(
+            "liquidity_evidence must be LiquidityCapacityEvidenceContext, not {}".format(
+                type(liquidity_evidence).__name__
+            )
+        )
+    if type(capital_evidence) is not CapitalMarginEvidenceContext:
+        raise CapacityConstraintGateTypeError(
+            "capital_evidence must be CapitalMarginEvidenceContext, not {}".format(
+                type(capital_evidence).__name__
+            )
+        )
+    # All-agree pass path: verbatim per-source provenance transfer into the 12-param factory. (Slice 0C
+    # will insert the fail-closed structural convergence checks before this return.)
+    return make_capacity_constraint_evidence_context(
+        post_profitability_source_contract=evidence_envelope.source_contract,
+        post_profitability_source_artifact=evidence_envelope.source_artifact,
+        post_profitability_source_field=evidence_envelope.source_field,
+        venue_readiness_source_contract=venue_readiness.source_contract,
+        venue_readiness_source_artifact=venue_readiness.source_artifact,
+        venue_readiness_source_field=venue_readiness.source_field,
+        liquidity_capacity_source_contract=liquidity_evidence.source_contract,
+        liquidity_capacity_source_artifact=liquidity_evidence.source_artifact,
+        liquidity_capacity_source_field=liquidity_evidence.source_field,
+        capital_margin_source_contract=capital_evidence.source_contract,
+        capital_margin_source_artifact=capital_evidence.source_artifact,
+        capital_margin_source_field=capital_evidence.source_field,
+    )
 
 
 class CapacityConstraintGate:

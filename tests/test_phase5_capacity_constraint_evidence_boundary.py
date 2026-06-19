@@ -74,18 +74,12 @@ FORBIDDEN_FIELD_TOKENS = (
     "route", "reservation", "wallet", "batch_id", "run_id", "observation_id", "provenance_status",
 )
 
-# Symbols / imports that must NOT appear even after Slice 0A. The full structural-join boundary
-# (`CapacityConstraintEvidenceBoundary`) and any upstream carrier / halt-packet types remain out of
-# scope for Slice 0A — only the gate namespace + fail-fast preflight stub are added in this batch.
-# ("preflight" is deliberately NOT here: it becomes a required Slice 0A symbol.)
+# Symbols that must STILL not appear after Slice 0B. The full structural-join boundary class
+# (`CapacityConstraintEvidenceBoundary`) remains out of scope. NOTE: the four upstream carrier types
+# and the two halt-packet types (`BlockedPacket`, `NoEligibleHaltPacket`) are now legitimately
+# referenced by Slice 0B (exact type guard + misroute guard), so they are deliberately NOT forbidden.
 FORBIDDEN_RUNTIME_SYMBOLS = (
     "CapacityConstraintEvidenceBoundary",
-    "BlockedPacket",
-    "NoEligibleHaltPacket",
-    "PostProfitabilityEvidenceEnvelope",
-    "VenueInstrumentReadinessStateContext",
-    "LiquidityCapacityEvidenceContext",
-    "CapitalMarginEvidenceContext",
 )
 
 
@@ -497,59 +491,10 @@ def test_preflight_requires_all_four_kwargs():
             capacity_constraint_preflight(**partial)
 
 
-# --- preflight stub: NotImplementedError-only, inspects nothing ---
-
-def test_preflight_raises_notimplemented_only_with_exact_message():
-    with pytest.raises(NotImplementedError) as exc:
-        capacity_constraint_preflight(
-            evidence_envelope=object(),
-            venue_readiness=object(),
-            liquidity_evidence=object(),
-            capital_evidence=object(),
-        )
-    assert str(exc.value) == STUB_MESSAGE
-
-
-def test_gate_preflight_call_raises_notimplemented():
-    with pytest.raises(NotImplementedError) as exc:
-        CapacityConstraintGate.preflight(
-            evidence_envelope=object(),
-            venue_readiness=object(),
-            liquidity_evidence=object(),
-            capital_evidence=object(),
-        )
-    assert str(exc.value) == STUB_MESSAGE
-
-
-def test_preflight_stub_does_not_read_inputs():
-    # The stub must fail fast WITHOUT inspecting/attribute-reading any input. Objects whose every
-    # attribute access explodes must still produce a clean NotImplementedError.
-    class _Boom:
-        def __getattribute__(self, name):
-            raise AssertionError("preflight stub must not read inputs")
-
-    with pytest.raises(NotImplementedError):
-        capacity_constraint_preflight(
-            evidence_envelope=_Boom(),
-            venue_readiness=_Boom(),
-            liquidity_evidence=_Boom(),
-            capital_evidence=_Boom(),
-        )
-
-
-def test_preflight_stub_does_not_construct_carrier_or_packet():
-    # NotImplementedError-only means no carrier is built and no packet is emitted on the stub path.
-    try:
-        capacity_constraint_preflight(
-            evidence_envelope=object(),
-            venue_readiness=object(),
-            liquidity_evidence=object(),
-            capital_evidence=object(),
-        )
-    except NotImplementedError:
-        pass
-    else:
-        pytest.fail("stub must raise NotImplementedError, returning nothing")
+# NOTE: the Slice 0A `NotImplementedError`-only stub assertions (preflight raised the stub message,
+# inspected no inputs, built no carrier) were intentionally SUPERSEDED by Slice 0B. The live contract
+# — exact type guard, misroute guard, and all-agree verbatim pass path — is pinned by the Slice 0B
+# test section near the end of this file. `STUB_MESSAGE` is retained only as historical documentation.
 
 
 # --- AST / operator / import lock (inspects AST nodes, not raw text) ---
@@ -614,3 +559,358 @@ def test_ast_lock_does_not_flag_dunder_methods_or_docstrings():
 def test_capacity_constraint_evidence_boundary_remains_unimplemented():
     import phase5.capacity_constraint_evidence_boundary as mod
     assert not hasattr(mod, "CapacityConstraintEvidenceBoundary")
+
+
+# ===================================================================================================
+# Slice 0B: capacity_constraint_preflight gains (1) an EXACT input type guard, (2) a misroute
+# halt-carrier guard, and (3) the all-agree pass path that returns a CapacityConstraintEvidenceContext
+# built via the existing 12-param factory with VERBATIM source_* transfer.
+#
+# BOUNDARY (named per spec): Slice 0B is NOT final boundary pass readiness. It is NOT live-wirable
+# until Slice 0C adds fail-closed structural convergence checks (identity / unit / stale / size). This
+# batch deliberately implements and tests NEITHER pass NOR block behavior for structurally divergent
+# carriers — that is exclusively Slice 0C. No blocked packet, no Decimal parsing, no epoch/tolerance
+# parsing, no make_blocked_packet here.
+# ===================================================================================================
+
+from phase5.post_profitability_evidence_envelope_boundary import (
+    make_post_profitability_evidence_envelope,
+    BOUNDARY_VERSION as _PPE_BV,
+)
+from phase5.venue_instrument_readiness_boundary import (
+    make_venue_instrument_readiness_state_context,
+    BOUNDARY_VERSION as _VEN_BV,
+)
+from phase5.liquidity_capacity_evidence_boundary import (
+    make_liquidity_capacity_evidence_context,
+    BOUNDARY_VERSION as _LIQ_BV,
+)
+from phase5.capital_margin_evidence_boundary import (
+    make_capital_margin_evidence_context,
+    BOUNDARY_VERSION as _CAP_BV,
+)
+from phase5.blocked_result_boundary import make_blocked_packet
+from phase5.no_eligible_halt_propagation_boundary import make_no_eligible_halt_packet
+from phase5.net_edge_calculator_boundary import NetEdgeCalculationResult
+
+
+# Shared structurally all-agree identity for the four carriers (real, valid values).
+_AGREE = dict(
+    venue="HYPERLIQUID",
+    instrument_id="BTC-PERP",
+    base_asset="BTC",
+    quote_asset="USD",
+)
+
+
+def _net_edge_calculated():
+    # The post-profitability envelope requires a real NetEdgeCalculationResult. There is no public
+    # factory (it is produced by the calculator), so we build it exactly as the post-profitability
+    # boundary test does: object.__new__ + object.__setattr__ with the canonical valid field set.
+    r = object.__new__(NetEdgeCalculationResult)
+    fields = dict(
+        component_name="phase5_net_edge_calculator_boundary",
+        origin_component="phase5_net_edge_calculator_boundary",
+        origin_result_status="PRE_NET_EDGE_CALCULATION_INPUT_ACCEPTED",
+        status="NET_EDGE_CALCULATED",
+        gross_edge_value="10",
+        gross_edge_unit="bps",
+        total_cost_value="2",
+        total_cost_unit="bps",
+        net_edge_value="8",
+        net_edge_unit="bps",
+        cost_component_count="1",
+        source_contract="phase5_net_edge_calculator_boundary_implementation_planning.md",
+        source_artifact="docs/handoff/phase5_net_edge_calculator_boundary_implementation_planning.md",
+        source_field="net_edge.calculated_value",
+        calculation_method="NET_EDGE_V1_GROSS_MINUS_SUM_COSTS_SAME_UNIT",
+        boundary_version="phase5.net_edge_calculator_boundary.v0",
+    )
+    for k, v in fields.items():
+        object.__setattr__(r, k, v)
+    return r
+
+
+def _make_ppe():
+    return make_post_profitability_evidence_envelope(
+        calculation_result=_net_edge_calculated(),
+        side="LONG",
+        observed_size="1.5",
+        size_unit="BTC",
+        observed_at_epoch_ms="1781637248000",
+        staleness_threshold_ms="60000",
+        source_contract="phase5_post_profitability_evidence_envelope_implementation_planning.md",
+        source_artifact="docs/handoff/phase5_post_profitability_evidence_envelope_implementation_planning.md",
+        source_field="evidence_envelope.market_topology",
+        boundary_version=_PPE_BV,
+        **_AGREE,
+    )
+
+
+def _make_ven():
+    return make_venue_instrument_readiness_state_context(
+        readiness_status="VENUE_INSTRUMENT_STATE_ACTIVE",
+        source_contract="phase5_venue_instrument_readiness_implementation_planning.md",
+        source_artifact="docs/handoff/phase5_venue_instrument_readiness_implementation_planning.md",
+        source_field="venue_instrument.readiness_state",
+        state_id="STATE-001",
+        boundary_version=_VEN_BV,
+        **_AGREE,
+    )
+
+
+def _make_liq():
+    return make_liquidity_capacity_evidence_context(
+        observed_size="1.5",
+        observed_size_unit="BTC",
+        available_capacity="10",
+        capacity_unit="BTC",
+        liquidity_snapshot_epoch_ms="1781637248000",
+        evidence_epoch_tolerance_ms="60000",
+        source_contract="phase5_liquidity_capacity_evidence_boundary_implementation_planning.md",
+        source_artifact="docs/handoff/phase5_liquidity_capacity_evidence_boundary_implementation_planning.md",
+        source_field="liquidity_evidence.capacity",
+        liquidity_evidence_id="LIQ-001",
+        boundary_version=_LIQ_BV,
+        estimated_slippage_bps="2.5",
+        **_AGREE,
+    )
+
+
+def _make_cap():
+    return make_capital_margin_evidence_context(
+        side="LONG",
+        observed_size="1.5",
+        observed_size_unit="BTC",
+        required_capital="1500",
+        required_capital_unit="USD",
+        available_free_capital="5000",
+        available_free_capital_unit="USD",
+        required_capital_epoch_ms="1781637248000",
+        available_free_capital_snapshot_epoch_ms="1781637248000",
+        evidence_epoch_tolerance_ms="60000",
+        capital_scope_id="ACCOUNT-MAIN",
+        source_contract="phase5_capital_margin_evidence_boundary_implementation_planning.md",
+        source_artifact="docs/handoff/phase5_capital_margin_evidence_boundary_implementation_planning.md",
+        source_field="capital_evidence.free_capital",
+        capital_evidence_id="CAP-001",
+        boundary_version=_CAP_BV,
+        **_AGREE,
+    )
+
+
+def _all_agree_inputs():
+    return dict(
+        evidence_envelope=_make_ppe(),
+        venue_readiness=_make_ven(),
+        liquidity_evidence=_make_liq(),
+        capital_evidence=_make_cap(),
+    )
+
+
+def _blocked_packet():
+    return make_blocked_packet(
+        component_name="x",
+        origin_component="x",
+        origin_result_status="s",
+        status="s",
+        blocked_status=None,
+        reason_code="r",
+        missing_or_invalid_field=None,
+        source_contract="c",
+        source_artifact="a",
+        source_field="f",
+        deterministic_next_action="HALT_FAIL_CLOSED",
+        human_review_required=True,
+        may_retry_after_evidence=True,
+        created_from_contract="c",
+        boundary_version="v",
+    )
+
+
+def _no_eligible_packet():
+    return make_no_eligible_halt_packet(
+        component_name="x",
+        origin_component="x",
+        origin_result_status="NO_ELIGIBLE",
+        status="NO_ELIGIBLE",
+        no_eligible_reason="R",
+        source_contract="c",
+        source_artifact="a",
+        source_field="f",
+        deterministic_next_action="HALT_BYPASS_NO_ELIGIBLE",
+        boundary_version="v",
+    )
+
+
+# The exact 12 (factory_param -> (input_slot, carrier_attr)) verbatim mapping the pass path must honor.
+_PASS_MAPPING = {
+    "post_profitability_source_contract": ("evidence_envelope", "source_contract"),
+    "post_profitability_source_artifact": ("evidence_envelope", "source_artifact"),
+    "post_profitability_source_field": ("evidence_envelope", "source_field"),
+    "venue_readiness_source_contract": ("venue_readiness", "source_contract"),
+    "venue_readiness_source_artifact": ("venue_readiness", "source_artifact"),
+    "venue_readiness_source_field": ("venue_readiness", "source_field"),
+    "liquidity_capacity_source_contract": ("liquidity_evidence", "source_contract"),
+    "liquidity_capacity_source_artifact": ("liquidity_evidence", "source_artifact"),
+    "liquidity_capacity_source_field": ("liquidity_evidence", "source_field"),
+    "capital_margin_source_contract": ("capital_evidence", "source_contract"),
+    "capital_margin_source_artifact": ("capital_evidence", "source_artifact"),
+    "capital_margin_source_field": ("capital_evidence", "source_field"),
+}
+
+
+# --- Slice 0B happy / pass path (all-agree fixture only) ---
+
+def test_pass_returns_capacity_constraint_evidence_context():
+    inputs = _all_agree_inputs()
+    ctx = capacity_constraint_preflight(**inputs)
+    assert type(ctx) is CapacityConstraintEvidenceContext
+
+
+def test_pass_via_gate_namespace_staticmethod():
+    inputs = _all_agree_inputs()
+    ctx = CapacityConstraintGate.preflight(**inputs)
+    assert type(ctx) is CapacityConstraintEvidenceContext
+
+
+def test_pass_transfers_all_twelve_source_fields_verbatim():
+    inputs = _all_agree_inputs()
+    ctx = capacity_constraint_preflight(**inputs)
+    for factory_param, (slot, attr) in _PASS_MAPPING.items():
+        expected = getattr(inputs[slot], attr)
+        assert getattr(ctx, factory_param) == expected, f"{factory_param} not verbatim from {slot}.{attr}"
+
+
+def test_pass_sets_identity_fields_internally_not_from_inputs():
+    inputs = _all_agree_inputs()
+    ctx = capacity_constraint_preflight(**inputs)
+    assert ctx.component_name == EXPECTED_COMPONENT
+    assert ctx.boundary_version == BOUNDARY_VERSION
+
+
+def test_pass_provenance_distinct_per_carrier_not_cross_wired():
+    # Each carrier carries a distinct source_contract; verify the pass path routes each carrier's
+    # provenance into its OWN factory slot (no cross-wiring between carriers).
+    inputs = _all_agree_inputs()
+    ctx = capacity_constraint_preflight(**inputs)
+    assert ctx.post_profitability_source_contract == inputs["evidence_envelope"].source_contract
+    assert ctx.venue_readiness_source_contract == inputs["venue_readiness"].source_contract
+    assert ctx.liquidity_capacity_source_contract == inputs["liquidity_evidence"].source_contract
+    assert ctx.capital_margin_source_contract == inputs["capital_evidence"].source_contract
+    # cross-check: they are genuinely different strings (otherwise the verbatim test is vacuous)
+    contracts = {
+        ctx.post_profitability_source_contract,
+        ctx.venue_readiness_source_contract,
+        ctx.liquidity_capacity_source_contract,
+        ctx.capital_margin_source_contract,
+    }
+    assert len(contracts) == 4
+
+
+# --- Slice 0B exact type guard (any wrong type -> CapacityConstraintGateTypeError, never a result) ---
+
+def test_each_slot_rejects_plain_wrong_type_with_gate_type_error():
+    base = _all_agree_inputs()
+    for slot in ("evidence_envelope", "venue_readiness", "liquidity_evidence", "capital_evidence"):
+        bad = dict(base)
+        bad[slot] = object()
+        with pytest.raises(CapacityConstraintGateTypeError):
+            capacity_constraint_preflight(**bad)
+
+
+def test_type_guard_rejects_carrier_in_wrong_slot():
+    # A real-but-wrong carrier placed in the wrong slot must be rejected by exact type(x) is T.
+    base = _all_agree_inputs()
+    swapped = dict(base)
+    swapped["evidence_envelope"] = base["venue_readiness"]  # VEN where PPE is required
+    with pytest.raises(CapacityConstraintGateTypeError):
+        capacity_constraint_preflight(**swapped)
+
+
+def test_type_guard_rejects_string_and_none():
+    base = _all_agree_inputs()
+    for bad_value in (None, "PostProfitabilityEvidenceEnvelope", 0):
+        bad = dict(base)
+        bad["capital_evidence"] = bad_value
+        with pytest.raises(CapacityConstraintGateTypeError):
+            capacity_constraint_preflight(**bad)
+
+
+def test_gate_type_error_path_returns_no_context():
+    base = _all_agree_inputs()
+    base["liquidity_evidence"] = object()
+    try:
+        capacity_constraint_preflight(**base)
+    except CapacityConstraintGateTypeError:
+        pass
+    else:
+        pytest.fail("wrong type must raise CapacityConstraintGateTypeError, not return")
+
+
+# --- Slice 0B misroute guard (exact halt packet in any slot -> MisroutedHaltCarrierError) ---
+
+def test_blocked_packet_in_any_slot_raises_misroute():
+    base = _all_agree_inputs()
+    for slot in ("evidence_envelope", "venue_readiness", "liquidity_evidence", "capital_evidence"):
+        bad = dict(base)
+        bad[slot] = _blocked_packet()
+        with pytest.raises(CapacityConstraintMisroutedHaltCarrierError):
+            capacity_constraint_preflight(**bad)
+
+
+def test_no_eligible_packet_in_any_slot_raises_misroute():
+    base = _all_agree_inputs()
+    for slot in ("evidence_envelope", "venue_readiness", "liquidity_evidence", "capital_evidence"):
+        bad = dict(base)
+        bad[slot] = _no_eligible_packet()
+        with pytest.raises(CapacityConstraintMisroutedHaltCarrierError):
+            capacity_constraint_preflight(**bad)
+
+
+def test_misroute_takes_precedence_over_generic_type_error():
+    # A halt packet is a wrong type, but it must surface as the SPECIFIC misroute error, never the
+    # generic gate type error.
+    base = _all_agree_inputs()
+    base["venue_readiness"] = _blocked_packet()
+    with pytest.raises(CapacityConstraintMisroutedHaltCarrierError):
+        capacity_constraint_preflight(**base)
+
+
+def test_misroute_path_returns_no_context_or_packet():
+    base = _all_agree_inputs()
+    base["evidence_envelope"] = _no_eligible_packet()
+    result = None
+    try:
+        result = capacity_constraint_preflight(**base)
+    except CapacityConstraintMisroutedHaltCarrierError:
+        pass
+    else:
+        pytest.fail("misroute must raise, not return a context/packet")
+    assert result is None
+
+
+# --- Slice 0B boundary: divergent behavior deferred to 0C; 0C machinery must remain absent ---
+
+def test_slice0b_is_not_final_pass_readiness_no_0c_machinery():
+    # NAMED BOUNDARY: Slice 0B is NOT final pass readiness and is NOT live-wirable before Slice 0C.
+    # Enforce that no structural-convergence / blocked-packet machinery has leaked in early. Tokens
+    # are chosen to detect actual usage (call form / type name), not prose mentions in comments:
+    # `make_blocked_packet(` is a call, `Decimal(` is a parse, `.compare(` is a size comparison.
+    src = _src()
+    for absent in ("make_blocked_packet(", "Decimal(", ".compare(", "_epoch_ms", "tolerance_ms"):
+        assert absent not in src, f"0C-only machinery leaked into Slice 0B runtime: {absent!r}"
+
+
+def test_no_isinstance_used_in_runtime():
+    # The contract requires exact type(x) is T; isinstance (subclass-permissive) is forbidden as an
+    # actual CALL. AST-based so prose mentions of "isinstance" in docstrings/comments don't trip it.
+    tree = _ast_tree()
+    offenders = [
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "isinstance"
+    ]
+    assert offenders == [], "isinstance call(s) present in runtime"
