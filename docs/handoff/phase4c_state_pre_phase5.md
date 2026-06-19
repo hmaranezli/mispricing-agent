@@ -1627,6 +1627,39 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
   (TDD-first, component-scoped, declared-provenance) **after sync and review** — not started here.
 - The absence of stale hash-free pointers has been verified for this closeout.
 
+## Closeout — phase5_capacity_constraint_evidence_boundary planning-doc batch
+
+- `phase5_capacity_constraint_evidence_boundary`: **planning-doc batch only
+  (`d7e6818900b947cfe30e213a6059e296e2bb6aa9` — "Add phase5 capacity constraint evidence planning")**.
+  This is an implementation-**planning** artifact batch; **no implementation is authorized** and no
+  runtime module was created.
+- Batch files (**exactly two**, both new):
+  1. `docs/handoff/phase5_capacity_constraint_evidence_boundary_implementation_planning.md`
+  2. `tests/test_phase5_capacity_constraint_evidence_boundary_implementation_planning.py`
+  - **No third file.** `docs/handoff/phase4c_state_pre_phase5.md` was **not** changed by the planning
+    commit `d7e6818` (it is edited only by this memory-closeout entry).
+  - **Runtime file `phase5/capacity_constraint_evidence_boundary.py` is ABSENT and remains absent.**
+- **Targeted test:** `tests/test_phase5_capacity_constraint_evidence_boundary_implementation_planning.py`
+  → **21 passed** (genuine RED first: 20 failed / 1 passed with the doc absent; GREEN 21 passed after
+  authoring the doc). No full pytest run; no `pytest -k phase5` run for this batch.
+- **Planning framing (doc-only, designs a future separately-authorized component):** a passive
+  **constitutional safety barrier / airgap**, **not an actionable decision engine**, **no Phase 6
+  bridge**. **NO ORDER EXISTS** at this boundary. Slice 0 is a **structural multi-source join auditor
+  only**.
+- **Source carriers consumed by Slice 0 (exactly four already-implemented Phase 5 carriers):**
+  `PostProfitabilityEvidenceEnvelope`, `VenueInstrumentReadinessStateContext`,
+  `LiquidityCapacityEvidenceContext`, `CapitalMarginEvidenceContext`. The future passive carrier is
+  pinned as `CapacityConstraintEvidenceContext`; the future boundary as
+  `CapacityConstraintEvidenceBoundary` (planning pins only — not implemented).
+- **Scope guards pinned in the doc:** **no min()**, **no final capacity**, no order size, no
+  allocation, no routing, no execution preparation, no sizing, no exposure runtime, no balance runtime,
+  no wallet reservation, no paper/live readiness. Six doc-only `CAPACITY_CONSTRAINT_BLOCKED_*` reason
+  token names; reuses existing `BlockedPacket` / `BLOCKED_NEEDS_EVIDENCE` semantics with **no new
+  packet** schema.
+- **No next component is selected.** Any later implementation (carrier/boundary) must be **separately
+  authorized** (TDD-first, component-scoped, declared-provenance) — not started here.
+- The absence of stale hash-free pointers has been verified for this closeout.
+
 <!-- NO-CLAIMS-START -->
 ## No-claims statement
 
