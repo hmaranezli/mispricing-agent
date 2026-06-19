@@ -256,13 +256,214 @@ blocked status conceptually; this boundary introduces **no new packet** schema, 
 builder. Packet provenance must come only from the upstream `PostProfitabilityEvidenceEnvelope`
 `source_*` fields.
 
+## 7.2 Slice 0 structural-auditor interface (charter amendment — gate / preflight)
+
+<!-- GATE-CONTRACT-START -->
+This section pins the future Slice 0 structural multi-source join auditor's contract. It is a
+separate, separately authorized implementation slice; this amendment pins the contract but implements
+nothing. **NO ORDER EXISTS** at this boundary.
+
+### Names and interface shape
+
+The future Slice 0 runtime pins these names: `CapacityConstraintGate`,
+`capacity_constraint_preflight`, `CapacityConstraintGateTypeError`,
+`CapacityConstraintMisroutedHaltCarrierError`.
+
+`CapacityConstraintGate` is a **stateless**, non-carrier namespace (matching the CapitalMargin /
+Liquidity precedent): it carries no state and requires no construction state.
+
+```
+__slots__ = ()
+preflight = staticmethod(capacity_constraint_preflight)
+```
+
+The exact preflight signature is **keyword-only**, with **no positional parameters**, **no defaults**,
+and **no extra keyword parameters**:
+
+```
+capacity_constraint_preflight(
+    *,
+    evidence_envelope,
+    venue_readiness,
+    liquidity_evidence,
+    capital_evidence,
+)
+```
+
+`CapacityConstraintEvidenceContext is NOT an input` to the preflight; it is only the pass output.
+
+Exact required input types (exact-type only):
+
+```
+type(evidence_envelope) is PostProfitabilityEvidenceEnvelope
+type(venue_readiness) is VenueInstrumentReadinessStateContext
+type(liquidity_evidence) is LiquidityCapacityEvidenceContext
+type(capital_evidence) is CapitalMarginEvidenceContext
+```
+
+An exact `BlockedPacket` or exact `NoEligibleHaltPacket` supplied to any input slot must raise
+`CapacityConstraintMisroutedHaltCarrierError` and must **never produce a packet**. Any other wrong
+input type must raise `CapacityConstraintGateTypeError` and must **never produce a packet**.
+
+### Pass return contract
+
+On pass, `capacity_constraint_preflight` **pass returns** a `CapacityConstraintEvidenceContext`,
+produced only by the factory `make_capacity_constraint_evidence_context`, which receives exactly the
+**12 caller-supplied provenance parameters**; `component_name` and `boundary_version` are never passed
+because the factory sets them internally.
+`CapacityConstraintEvidenceContext` is the **output certificate**, **never an input carrier**.
+
+Exact source mapping on pass:
+
+```
+post_profitability_source_contract = evidence_envelope.source_contract
+post_profitability_source_artifact = evidence_envelope.source_artifact
+post_profitability_source_field = evidence_envelope.source_field
+venue_readiness_source_contract = venue_readiness.source_contract
+venue_readiness_source_artifact = venue_readiness.source_artifact
+venue_readiness_source_field = venue_readiness.source_field
+liquidity_capacity_source_contract = liquidity_evidence.source_contract
+liquidity_capacity_source_artifact = liquidity_evidence.source_artifact
+liquidity_capacity_source_field = liquidity_evidence.source_field
+capital_margin_source_contract = capital_evidence.source_contract
+capital_margin_source_artifact = capital_evidence.source_artifact
+capital_margin_source_field = capital_evidence.source_field
+```
+
+### Canonical identity and blocked provenance
+
+`PostProfitabilityEvidenceEnvelope` is the **canonical** identity / provenance source once all four
+upstream carriers structurally agree. Every blocked packet uses provenance from `evidence_envelope`
+only:
+
+```
+evidence_envelope.source_contract
+evidence_envelope.source_artifact
+evidence_envelope.source_field
+```
+
+**No blocked packet may use** `venue_readiness` / `liquidity_evidence` / `capital_evidence`
+provenance.
+
+### BlockedPacket contract
+
+Every blocked branch returns an existing `BlockedPacket` built with `make_blocked_packet` using
+exactly this field mapping:
+
+```
+component_name = CAPACITY_CONSTRAINT_EVIDENCE_BOUNDARY_COMPONENT_NAME
+origin_component = CAPACITY_CONSTRAINT_EVIDENCE_BOUNDARY_COMPONENT_NAME
+origin_result_status = PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE
+status = PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE
+blocked_status = BLOCKED_NEEDS_EVIDENCE
+reason_code = the exact branch token from the branch-to-token table
+missing_or_invalid_field = the exact offending field name when branch-specific and known, otherwise None
+source_contract = evidence_envelope.source_contract
+source_artifact = evidence_envelope.source_artifact
+source_field = evidence_envelope.source_field
+deterministic_next_action = NEXT_ACTION_OBTAIN_EVIDENCE
+human_review_required = True
+may_retry_after_evidence = True
+created_from_contract = GATE_SOURCE_CONTRACT
+boundary_version = BOUNDARY_VERSION
+```
+
+with:
+
+```
+GATE_SOURCE_CONTRACT = "phase5_capacity_constraint_evidence_boundary_implementation_planning.md"
+```
+
+### Branch-to-token constants and mapping
+
+The future Slice 0 runtime pins these exact constant names and exact string values:
+
+```
+CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE = "CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE"
+CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE = "CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE"
+CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE = "CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE"
+CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH = "CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH"
+CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH = "CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH"
+CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE = "CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE"
+```
+
+Exact branch-to-token mapping:
+
+- missing carrier or missing required field/attribute -> `CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE`
+- malformed scalar grammar or invalid scalar value -> `CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE`
+- 4-way identity mismatch, side mismatch, or size-magnitude mismatch -> `CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH`
+- unit mismatch -> `CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH`
+- stale epoch comparison -> `CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE`
+- value/reference present and well-formed but not resolvable within the checked scope -> `CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE`
+
+Wrong-type / misrouted halt carriers are programmatic errors, **not** blocked tokens.
+
+### Missing vs malformed vs undefined classification
+
+**MISSING:** one of the four required upstream carrier arguments is absent; or a required
+field/attribute is absent from an otherwise correct carrier.
+
+**MALFORMED:** required scalar value is present but is None; required scalar value is **not exact str**
+where exact str is required; empty string; whitespace-only; leading/trailing whitespace; Decimal scalar
+with invalid grammar; Decimal scalar parsing to NaN or Infinity; epoch/tolerance scalar that is not a
+base-10 integer string; bool/int/float/complex/Decimal objects supplied instead of exact str are
+malformed, not coerced.
+
+**UNDEFINED:** the required value/reference is present and grammatically well-formed but cannot be
+resolved within the four supplied carriers' checked scope. Do not use undefined for missing fields. Do
+not use undefined for None / empty / whitespace / malformed scalar grammar.
+
+### Decimal size parsing and comparison
+
+Size fields must be exact str and are parsed with `Decimal` only: **no float coercion**, no int
+coercion, no bool coercion, no implicit conversion from non-str types, no rounding, no quantization,
+and no normalization for equality other than Decimal value comparison. Reject NaN and Infinity.
+Reject scientific notation such as `"1E+3"`. Reject signs, commas, underscores, leading/trailing
+whitespace,
+and locale formats. Allowed grammar is non-negative base-10 decimal notation with digits before the
+decimal point and optional fractional digits after one decimal point, e.g. `"0"`, `"1"`, `"1.0"`,
+`"123.45"`.
+
+Exact size comparison (structural convergence only — not sizing, not min(), not final capacity, not
+tradable size, not allocation/exposure/balance/order preparation):
+
+```
+Decimal(size_a).compare(Decimal(size_b)) == Decimal("0")
+```
+
+### Epoch and tolerance parsing and comparison
+
+Epoch and tolerance fields must be exact str and are parsed as base-10 non-negative integers only: no
+float coercion, no int coercion from non-str, no bool coercion, no Decimal coercion, and
+**no default tolerance**.
+Missing tolerance is missing evidence; malformed tolerance is malformed evidence.
+**No clock reads**: no time.now / datetime.now / system time.
+
+Exact staleness formula:
+
+```
+abs(int(epoch_a) - int(epoch_b)) <= int(tolerance)
+```
+
+The only arithmetic allowed in Slice 0 is this integer subtraction inside `abs(...)` for epoch
+tolerance comparison; size comparison uses Decimal compare/equality only.
+
+### Forbidden logic guard (Slice 0)
+
+Slice 0 performs and produces none of: no min(), no max(), no final capacity, no computed capacity
+value, no tradable size, no order size, no allocation, no exposure value, no exposure runtime, no
+balance runtime, no wallet reservation, no routing, no execution preparation, no paper/live readiness,
+no PnL, no net edge, no alpha/edge claim, and no economic actionability. **NO ORDER EXISTS.** Slice 0
+uses no float in parsing or comparison.
+<!-- GATE-CONTRACT-END -->
+
 ## 8. Deferred decisions
 
 The following are **deferred** and require separate, explicitly authorized work:
 
-- the boundary's exact gate/preflight function shape (the carrier's exact closed field set is now
-  pinned in §6A and is no longer deferred);
-- exact canonical-identity selection when all four carriers agree;
+- the boundary's gate/preflight function shape and canonical-identity selection are now pinned in
+  §7.2 (Slice 0 structural-auditor interface) and are **no longer deferred**; the carrier's exact
+  closed field set remains pinned in §6A;
 - any later slice beyond the Slice 0 structural join (none authorized here).
 
 ## 9. Task boundary

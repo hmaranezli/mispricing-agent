@@ -146,6 +146,80 @@ FORBIDDEN_WORDING = [
     "is complete", "is perfect", "is now safe", "fully complete", "the last piece",
 ]
 
+# ---- Slice 0 structural-auditor hardening (charter amendment) ----
+
+GATE_CONTRACT_START = "<!-- GATE-CONTRACT-START -->"
+GATE_CONTRACT_END = "<!-- GATE-CONTRACT-END -->"
+
+SLICE0_RUNTIME_NAMES = [
+    "CapacityConstraintGate",
+    "capacity_constraint_preflight",
+    "CapacityConstraintGateTypeError",
+    "CapacityConstraintMisroutedHaltCarrierError",
+]
+
+GATE_PREFLIGHT_PARAMS = [
+    "evidence_envelope",
+    "venue_readiness",
+    "liquidity_evidence",
+    "capital_evidence",
+]
+
+PREFLIGHT_INPUT_TYPE_LINES = [
+    "type(evidence_envelope) is PostProfitabilityEvidenceEnvelope",
+    "type(venue_readiness) is VenueInstrumentReadinessStateContext",
+    "type(liquidity_evidence) is LiquidityCapacityEvidenceContext",
+    "type(capital_evidence) is CapitalMarginEvidenceContext",
+]
+
+PASS_SOURCE_MAPPING_LINES = [
+    "post_profitability_source_contract = evidence_envelope.source_contract",
+    "post_profitability_source_artifact = evidence_envelope.source_artifact",
+    "post_profitability_source_field = evidence_envelope.source_field",
+    "venue_readiness_source_contract = venue_readiness.source_contract",
+    "venue_readiness_source_artifact = venue_readiness.source_artifact",
+    "venue_readiness_source_field = venue_readiness.source_field",
+    "liquidity_capacity_source_contract = liquidity_evidence.source_contract",
+    "liquidity_capacity_source_artifact = liquidity_evidence.source_artifact",
+    "liquidity_capacity_source_field = liquidity_evidence.source_field",
+    "capital_margin_source_contract = capital_evidence.source_contract",
+    "capital_margin_source_artifact = capital_evidence.source_artifact",
+    "capital_margin_source_field = capital_evidence.source_field",
+]
+
+BLOCKED_PACKET_FIELD_LINES = [
+    "component_name = CAPACITY_CONSTRAINT_EVIDENCE_BOUNDARY_COMPONENT_NAME",
+    "origin_component = CAPACITY_CONSTRAINT_EVIDENCE_BOUNDARY_COMPONENT_NAME",
+    "origin_result_status = PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE",
+    "status = PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE",
+    "blocked_status = BLOCKED_NEEDS_EVIDENCE",
+    "source_contract = evidence_envelope.source_contract",
+    "source_artifact = evidence_envelope.source_artifact",
+    "source_field = evidence_envelope.source_field",
+    "deterministic_next_action = NEXT_ACTION_OBTAIN_EVIDENCE",
+    "human_review_required = True",
+    "may_retry_after_evidence = True",
+    "created_from_contract = GATE_SOURCE_CONTRACT",
+    "boundary_version = BOUNDARY_VERSION",
+]
+
+SLICE0_BLOCKED_CONSTANT_LINES = [
+    'CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE = "CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE"',
+    'CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE = "CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE"',
+    'CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE = "CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE"',
+    'CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH = "CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH"',
+    'CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH = "CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH"',
+    'CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE = "CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE"',
+]
+
+SLICE0_FORBIDDEN_LOGIC = [
+    "no min()", "no max()", "no final capacity", "no computed capacity value",
+    "no tradable size", "no order size", "no allocation", "no exposure value",
+    "no exposure runtime", "no balance runtime", "no wallet reservation", "no routing",
+    "no execution preparation", "no paper/live readiness", "no PnL", "no net edge",
+    "no alpha/edge claim", "no economic actionability", "NO ORDER EXISTS",
+]
+
 
 def _read():
     assert os.path.isfile(DOC), f"capacity-constraint planning doc missing: {DOC}"
@@ -454,3 +528,143 @@ def test_planning_doc_contains_no_runtime_implementation():
     assert "class CapacityConstraintGate" not in src
     assert "def make_capacity_constraint_evidence_context" not in src
     assert "def capacity_constraint_preflight" not in src
+
+
+# ---- Slice 0 structural-auditor hardening (charter amendment) ----
+
+def test_gate_contract_block_present_and_balanced():
+    text = _read()
+    assert text.count(GATE_CONTRACT_START) == text.count(GATE_CONTRACT_END) == 1
+
+
+def test_slice0_runtime_names_pinned():
+    text = _read()
+    for n in SLICE0_RUNTIME_NAMES:
+        assert n in text, f"Slice 0 runtime name not pinned: {n}"
+
+
+def test_gate_is_stateless_namespace():
+    text = _read()
+    low = text.lower()
+    assert "stateless" in low
+    assert "__slots__ = ()" in text
+    assert "preflight = staticmethod(capacity_constraint_preflight)" in text
+
+
+def test_preflight_signature_pinned_keyword_only():
+    text = _read()
+    low = text.lower()
+    assert "capacity_constraint_preflight(" in text
+    for p in GATE_PREFLIGHT_PARAMS:
+        assert p in text, f"preflight param missing: {p}"
+    assert "keyword-only" in low
+    assert "no positional parameters" in low
+    assert "no defaults" in low
+    assert "no extra keyword parameters" in low
+    assert "CapacityConstraintEvidenceContext is NOT an input" in text
+
+
+def test_preflight_required_input_types_pinned():
+    text = _read()
+    for line in PREFLIGHT_INPUT_TYPE_LINES:
+        assert line in text, f"preflight input-type line missing: {line}"
+
+
+def test_misroute_and_typeerror_pinned():
+    text = _read()
+    low = text.lower()
+    assert "CapacityConstraintMisroutedHaltCarrierError" in text
+    assert "CapacityConstraintGateTypeError" in text
+    assert "BlockedPacket" in text and "NoEligibleHaltPacket" in text
+    assert "never produce a packet" in low
+
+
+def test_pass_return_contract_pinned():
+    text = _read()
+    low = text.lower()
+    assert "pass returns" in low and "CapacityConstraintEvidenceContext" in text
+    assert "make_capacity_constraint_evidence_context" in text
+    assert "output certificate" in low
+    assert "never an input carrier" in low
+    assert "12 caller-supplied provenance parameters" in text or \
+        "twelve caller-supplied provenance parameters" in low
+
+
+def test_pass_source_mapping_pinned():
+    text = _read()
+    for line in PASS_SOURCE_MAPPING_LINES:
+        assert line in text, f"pass source mapping line missing: {line}"
+
+
+def test_canonical_identity_is_post_profitability():
+    text = _read()
+    low = text.lower()
+    assert "canonical" in low
+    assert "PostProfitabilityEvidenceEnvelope" in text
+    assert "evidence_envelope.source_contract" in text
+    assert "evidence_envelope.source_artifact" in text
+    assert "evidence_envelope.source_field" in text
+    assert "no blocked packet may use" in low
+
+
+def test_blocked_packet_contract_pinned():
+    text = _read()
+    assert "make_blocked_packet" in text
+    for line in BLOCKED_PACKET_FIELD_LINES:
+        assert line in text, f"blocked packet field mapping missing: {line}"
+    assert "reason_code" in text
+    assert "missing_or_invalid_field" in text
+    assert 'GATE_SOURCE_CONTRACT = "phase5_capacity_constraint_evidence_boundary_implementation_planning.md"' \
+        in text
+
+
+def test_slice0_blocked_constant_values_pinned():
+    text = _read()
+    for line in SLICE0_BLOCKED_CONSTANT_LINES:
+        assert line in text, f"blocked constant value line missing: {line}"
+
+
+def test_branch_to_token_mapping_pinned():
+    low = _read().lower()
+    assert "missing carrier or missing required field" in low
+    assert "malformed scalar grammar" in low
+    assert "identity mismatch" in low
+    assert "unit mismatch" in low
+    assert "stale epoch comparison" in low
+    assert "not resolvable within the checked scope" in low
+
+
+def test_missing_malformed_undefined_classification_pinned():
+    low = _read().lower()
+    assert "not exact str" in low
+    assert "nan or infinity" in low
+    assert "base-10 integer string" in low
+    assert "do not use undefined for missing fields" in low
+
+
+def test_decimal_size_rules_pinned():
+    text = _read()
+    low = text.lower()
+    assert "Decimal" in text
+    assert "no float coercion" in low
+    assert "reject nan and infinity" in low
+    assert "reject scientific notation" in low
+    assert '"1E+3"' in text
+    assert 'Decimal(size_a).compare(Decimal(size_b)) == Decimal("0")' in text
+
+
+def test_epoch_tolerance_rules_and_formula_pinned():
+    text = _read()
+    low = text.lower()
+    assert "abs(int(epoch_a) - int(epoch_b)) <= int(tolerance)" in text
+    assert "missing tolerance is missing evidence" in low
+    assert "malformed tolerance is malformed evidence" in low
+    assert "no default tolerance" in low
+    assert "no clock reads" in low
+
+
+def test_slice0_forbidden_logic_pinned():
+    text = _read()
+    for phrase in SLICE0_FORBIDDEN_LOGIC:
+        assert phrase in text, f"forbidden-logic phrase missing: {phrase}"
+    assert "no float" in _read().lower()
