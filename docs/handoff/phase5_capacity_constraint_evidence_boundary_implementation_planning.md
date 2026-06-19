@@ -120,6 +120,74 @@ pass, default, baseline, assumed, eligible, or admissible.
 - It derives, computes, and infers nothing; it stores only explicit, supplied, verbatim evidence
   references plus provenance from the upstream envelope.
 
+## 6A. Carrier-only implementation slice and closed contract (charter amendment)
+
+<!-- CARRIER-CONTRACT-START -->
+This section pins a discrete **carrier-only implementation slice** for
+`CapacityConstraintEvidenceContext`. This slice is purely a **TDD sequencing unit**: it scopes a
+future, separately authorized passive-carrier implementation and nothing else.
+It is **not a downstream component**, it is **no Phase 6 bridge**, and it is
+**not authorization for the Slice 0** structural multi-source join auditor, its gate, or its
+preflight. Implementing this carrier authorizes
+no audit, no gate, no preflight, and no join logic. **NO ORDER EXISTS** at this carrier.
+
+### Factory (exact)
+
+- The only construction entry point is the factory `make_capacity_constraint_evidence_context`.
+- The factory signature is **keyword-only** and accepts **exactly** the closed field set below — no
+  positional parameters, no extra keywords, and no defaults.
+- **Direct construction is blocked**: the carrier may not be built by calling its type directly; only
+  the factory may build it.
+- Every supplied field value must be **exact str** (`type(value) is str`), **non-empty**, and
+  **non-whitespace**, and is stored **verbatim**. There is **no implicit coercion** of any value.
+
+### Closed field set (exactly fourteen, and no others)
+
+`CapacityConstraintEvidenceContext` stores **exactly** these **fourteen** fields and **no others**:
+
+1. `component_name`
+2. `boundary_version`
+3. `post_profitability_source_contract`
+4. `post_profitability_source_artifact`
+5. `post_profitability_source_field`
+6. `venue_readiness_source_contract`
+7. `venue_readiness_source_artifact`
+8. `venue_readiness_source_field`
+9. `liquidity_capacity_source_contract`
+10. `liquidity_capacity_source_artifact`
+11. `liquidity_capacity_source_field`
+12. `capital_margin_source_contract`
+13. `capital_margin_source_artifact`
+14. `capital_margin_source_field`
+
+The **exactly-four source-carrier rule** stays a **doc/test invariant**, **not stored data**: the
+carrier stores only the four per-source provenance triplets above; it stores no count of audited
+carriers. `audited_evidence_count` is **never** a carrier field.
+
+### Excluded — the carrier must NOT store any of
+
+The carrier stores **none** of the following, and declares no field for any of them:
+
+- any status verdict: `join_status`, `binding_status`, `identity_status`, `freshness_status`,
+  `unit_status`, or **any `*_status` field**;
+- `audited_evidence_count`;
+- any computed / economic value: `observed_size`, `available_capacity`, `required_capital`,
+  `final_capacity`, `computed_min`, `order_size`, `allocation`, `exposure`, `balance`;
+- any execution / runtime token: `route`, `reservation`, `wallet`, and no paper/live readiness;
+- any external record-identity / provenance token: `batch_id`, `run_id`, `observation_id`,
+  `provenance_status`.
+
+### Repr and safety (exact)
+
+- Safe `repr` exposes **only** `component_name` and `boundary_version`; it leaks no provenance value
+  and no raw evidence.
+- The carrier is **frozen** (immutable), **repr-safe**, **anti-truthiness**, **anti-coercion**, and
+  **factory-only**.
+- It reads **no env**, no `config`, no `files`, no `db`, no `network`, and no `time` (no clock).
+- It **derives, computes, compares, audits, validates, infers, and decides nothing**; it stores only
+  the explicit, supplied, verbatim provenance references above.
+<!-- CARRIER-CONTRACT-END -->
+
 ## 7. Fail-closed branch priority and blocked taxonomy
 
 The future boundary evaluates in a fixed, fail-closed branch priority; the first matching outcome
@@ -159,7 +227,8 @@ builder. Packet provenance must come only from the upstream `PostProfitabilityEv
 
 The following are **deferred** and require separate, explicitly authorized work:
 
-- the carrier's exact closed field set and the boundary's exact gate/preflight function shape;
+- the boundary's exact gate/preflight function shape (the carrier's exact closed field set is now
+  pinned in §6A and is no longer deferred);
 - exact canonical-identity selection when all four carriers agree;
 - any later slice beyond the Slice 0 structural join (none authorized here).
 

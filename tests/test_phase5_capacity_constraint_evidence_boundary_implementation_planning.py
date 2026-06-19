@@ -21,8 +21,39 @@ NO_CLAIMS_START = "<!-- NO-CLAIMS-START -->"
 NO_CLAIMS_END = "<!-- NO-CLAIMS-END -->"
 PROHIBITED_OUT_START = "<!-- PROHIBITED-OUTPUTS-START -->"
 PROHIBITED_OUT_END = "<!-- PROHIBITED-OUTPUTS-END -->"
+CARRIER_CONTRACT_START = "<!-- CARRIER-CONTRACT-START -->"
+CARRIER_CONTRACT_END = "<!-- CARRIER-CONTRACT-END -->"
 
 EXPECTED_COMPONENT = "phase5_capacity_constraint_evidence_boundary"
+
+# The exact pinned factory name for the future carrier-only slice.
+FACTORY_NAME = "make_capacity_constraint_evidence_context"
+
+# The exact closed field set for CapacityConstraintEvidenceContext (exactly these, no others).
+CARRIER_FIELD_SET = [
+    "component_name",
+    "boundary_version",
+    "post_profitability_source_contract",
+    "post_profitability_source_artifact",
+    "post_profitability_source_field",
+    "venue_readiness_source_contract",
+    "venue_readiness_source_artifact",
+    "venue_readiness_source_field",
+    "liquidity_capacity_source_contract",
+    "liquidity_capacity_source_artifact",
+    "liquidity_capacity_source_field",
+    "capital_margin_source_contract",
+    "capital_margin_source_artifact",
+    "capital_margin_source_field",
+]
+
+# Fields/tokens the carrier must explicitly NOT store (computed / status / runtime tokens).
+CARRIER_EXCLUDED_FIELDS = [
+    "join_status", "binding_status", "identity_status", "freshness_status", "unit_status",
+    "audited_evidence_count", "observed_size", "available_capacity", "required_capital",
+    "final_capacity", "computed_min", "order_size", "allocation", "exposure", "balance",
+    "route", "reservation", "wallet",
+]
 
 # The exactly-four source carriers Slice 0 consumes (already implemented Phase 5 carriers).
 SOURCE_CARRIERS = [
@@ -144,9 +175,13 @@ def test_exactly_four_source_carriers_named():
 
 
 def test_forbidden_invented_carrier_fields_absent():
+    # The four external record-identity / provenance tokens must never be DECLARED as carrier
+    # fields. They may appear only inside the explicit carrier-contract exclusions block, which
+    # pins them as never-stored. Anywhere outside that block they remain forbidden.
     text = _read()
+    body = _strip_block(text, CARRIER_CONTRACT_START, CARRIER_CONTRACT_END)
     for f in FORBIDDEN_CARRIER_FIELDS:
-        assert f not in text, f"forbidden invented carrier field declared: {f}"
+        assert f not in body, f"forbidden invented carrier field declared outside exclusions: {f}"
 
 
 # ---- slice 0 structural-join scope ----
@@ -258,6 +293,82 @@ def test_forbidden_claims_only_in_framing_no_claims_or_prohibited_outputs():
     body = _strip_block(body, PROHIBITED_OUT_START, PROHIBITED_OUT_END).lower()
     hits = [p for p in FORBIDDEN_CLAIM_PHRASES if p in body]
     assert not hits, f"forbidden positive claim(s) outside allowed sections: {hits}"
+
+
+# ---- charter amendment: carrier-only slice, factory, closed field set ----
+
+def test_carrier_contract_block_present_and_balanced():
+    text = _read()
+    assert text.count(CARRIER_CONTRACT_START) == text.count(CARRIER_CONTRACT_END) == 1
+
+
+def test_carrier_only_implementation_slice_pinned():
+    low = _read().lower()
+    assert "carrier-only implementation slice" in low
+    assert "tdd sequencing unit" in low
+    # the carrier-only slice does not authorize the Slice 0 join auditor / gate / preflight
+    assert "not authorization for the slice 0" in low
+    assert "gate" in low and "preflight" in low
+    # not a bridge, not a downstream component
+    assert "no phase 6 bridge" in low
+    assert "not a downstream component" in low
+
+
+def test_factory_name_and_signature_pinned():
+    text = _read()
+    low = text.lower()
+    assert FACTORY_NAME in text, f"factory name not pinned: {FACTORY_NAME}"
+    assert "keyword-only" in low
+    assert "direct construction" in low and "blocked" in low
+    assert "verbatim" in low
+    assert "non-empty" in low and "non-whitespace" in low
+    assert "exact str" in low or "exactly str" in low
+    assert "no implicit coercion" in low or "no coercion" in low
+
+
+def test_carrier_closed_field_set_pinned_exactly():
+    text = _read()
+    for f in CARRIER_FIELD_SET:
+        assert f in text, f"closed carrier field missing: {f}"
+    low = text.lower()
+    assert "exactly" in low
+    assert "fourteen" in low or "14" in text
+    assert "and no others" in low
+    # audited_evidence_count must NOT be a stored carrier field (allowed only in exclusions block)
+    body = _strip_block(text, CARRIER_CONTRACT_START, CARRIER_CONTRACT_END)
+    assert "audited_evidence_count" not in body
+
+
+def test_exactly_four_rule_is_invariant_not_stored_data():
+    low = _read().lower()
+    assert "doc/test invariant" in low
+    assert "not stored data" in low
+
+
+def test_carrier_excludes_status_and_computed_fields():
+    text = _read()
+    for f in CARRIER_EXCLUDED_FIELDS:
+        assert f in text, f"carrier exclusion not documented: {f}"
+    assert "*_status" in text
+
+
+def test_repr_exposure_pinned_to_two_fields_only():
+    text = _read()
+    low = text.lower()
+    assert "component_name" in text and "boundary_version" in text
+    assert "repr" in low
+    assert "only" in low
+
+
+def test_carrier_safety_properties_pinned():
+    low = _read().lower()
+    for prop in ["frozen", "repr-safe", "anti-truthiness", "anti-coercion", "factory-only"]:
+        assert prop in low, f"carrier safety property missing: {prop}"
+    assert "no env" in low
+    for src in ["config", "files", "db", "network", "time"]:
+        assert src in low, f"missing no-IO source: {src}"
+    for verb in ["derives", "computes", "compares", "audits", "validates", "infers", "decides"]:
+        assert verb in low, f"missing nothing-verb: {verb}"
 
 
 # ---- runtime must remain absent (planning batch only) ----
