@@ -1660,6 +1660,50 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
   authorized** (TDD-first, component-scoped, declared-provenance) — not started here.
 - The absence of stale hash-free pointers has been verified for this closeout.
 
+## Closeout — phase5_capacity_constraint_evidence_boundary Slice 1 carrier-only implementation
+
+- `phase5_capacity_constraint_evidence_boundary`: **Slice 1 carrier-only implementation
+  (`84e4e8e5b13dddd50aa184648fe731468072f88d` — "Implement capacity constraint evidence carrier")** is
+  **complete**. After the charter-amendment / anti-spoofing planning batches
+  (`e4aa34b...`, `23755ad...`), the passive carrier `CapacityConstraintEvidenceContext` is now
+  implemented over the four upstream Phase 5 carriers' provenance references only.
+- **Runtime carrier file exists:** `phase5/capacity_constraint_evidence_boundary.py` (created this
+  batch; previously ABSENT — the obsolete runtime-absence guard was retired, see below).
+- **Runtime carrier test exists:** `tests/test_phase5_capacity_constraint_evidence_boundary.py`
+  (created this batch).
+- **Planning lifecycle guard updated:**
+  `tests/test_phase5_capacity_constraint_evidence_boundary_implementation_planning.py` — the obsolete
+  `test_runtime_module_absent` (os.path.isfile absence guard) was replaced by the durable docs-only
+  `test_planning_doc_contains_no_runtime_implementation` (matches the CapitalMargin / Liquidity
+  planning-test precedent); the now-unused `RUNTIME` constant and the "no runtime module exists"
+  docstring line were removed/reworded. **No planning-doc edit.**
+- **Tests passed before commit:**
+  `tests/test_phase5_capacity_constraint_evidence_boundary.py` → **30 passed**;
+  `tests/test_phase5_capacity_constraint_evidence_boundary_implementation_planning.py` → **34 passed**.
+  No full pytest; no `pytest -k phase5`.
+- **Commit scope (exactly three files):** the runtime carrier, its runtime test, and the amended
+  planning test. 3 files changed, 577 insertions(+), 6 deletions(-).
+- **Carrier contract (as implemented):** `@dataclass(frozen=True, repr=False, init=False,
+  slots=True, eq=False)`; closed **14-field** stored set; `_EXPECTED_FIELD_NAMES` guard asserts the
+  dataclass field order. Factory `make_capacity_constraint_evidence_context` is **keyword-only**,
+  accepts **exactly 12** caller params (the four `*_source_contract/artifact/field` triplets);
+  `component_name` and `boundary_version` are **not** parameters (passing either raises `TypeError`)
+  and are set internally from `CAPACITY_CONSTRAINT_EVIDENCE_BOUNDARY_COMPONENT_NAME =
+  "phase5_capacity_constraint_evidence_boundary"` and `BOUNDARY_VERSION =
+  "phase5.capacity_constraint_evidence_boundary.v0"`. Every caller field is exact `str`, non-empty,
+  non-whitespace, verbatim; str subclasses / duck strings / non-str rejected. Direct construction
+  blocked (no-arg/positional/keyword); slotted (no `__dict__`); dynamic attribute injection blocked;
+  anti-truthiness (`bool`/`len`); anti-coercion (`int`/`float`/`complex`/`index`/`str`/`bytes`); safe
+  `repr` exposes only `component_name` + `boundary_version`; error messages leak no raw values.
+- **`CapacityConstraintEvidenceContext` is a passive carrier only.** It has **no
+  `CapacityConstraintEvidenceBoundary`, no gate, no preflight, and no join/audit implementation** —
+  the module imports only `dataclasses` and reads no env/config/files/db/network/time. The forbidden
+  field/cross-carrier/packet tokens are absent (pre-commit audit verified).
+- **Next work is NOT selected by this memory update.** Any gate / preflight / join / audit (Slice 0
+  structural multi-source join auditor) work requires **separate review and explicit authorization**
+  (TDD-first, component-scoped, declared-provenance) — not started here.
+- The absence of stale hash-free pointers has been verified for this closeout.
+
 <!-- NO-CLAIMS-START -->
 ## No-claims statement
 
