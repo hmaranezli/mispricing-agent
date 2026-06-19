@@ -1704,6 +1704,38 @@ This batch covers four committed slices: `6337921`, `6a2fbfe`, `4f6c28d`, `d77b1
   (TDD-first, component-scoped, declared-provenance) — not started here.
 - The absence of stale hash-free pointers has been verified for this closeout.
 
+## Closeout — phase5_capacity_constraint_evidence_boundary structural completion
+
+- **Final closeout verdict: `PHASE5_CAPACITY_CONSTRAINT_STRUCTURALLY_COMPLETE`**, at exact
+  `f23e7e7f71de3610001129eed413c974065a596c` ("test: Lock Boundary cancellation satisfied-by Gate
+  contract").
+- **All runtime branches through STALE are realized** in `phase5/capacity_constraint_evidence_boundary.py`:
+  the `capacity_constraint_preflight` sequence is misroute guard → exact type guard →
+  `MISSING` → `MALFORMED` → `IDENTITY_MISMATCH` → `UNIT_MISMATCH` → `STALE_EVIDENCE` → structural pass.
+  Misroute/type errors (`CapacityConstraintMisroutedHaltCarrierError`, `CapacityConstraintGateTypeError`)
+  **raise fail-fast** and never produce a `BlockedPacket`; `MISSING` / `MALFORMED` / `IDENTITY_MISMATCH`
+  / `UNIT_MISMATCH` / `STALE_EVIDENCE` return a graceful `BlockedPacket`.
+- **`CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE` remains defined / reserved / deferred with 0 emit
+  sites** (accepted charter §7.4). It may only be revived by a future, separately committed finite
+  vocabulary / identity registry / source-triplet resolvability rule.
+- **The `CapacityConstraintEvidenceBoundary` class is cancelled / satisfied-by
+  `CapacityConstraintGate.preflight`** (accepted charter §7.5, Route A): the boundary concept is fully
+  expressed by `CapacityConstraintGate` + `capacity_constraint_preflight` + `CapacityConstraintEvidenceContext`
+  + the `BlockedPacket` return path; `CapacityConstraintGate.preflight is capacity_constraint_preflight`.
+  No separate `*Boundary` class exists or is required, consistent with the sibling Phase 5 pattern.
+- **Lineage (all committed/pushed):** carrier `84e4e8e` → Slice 0A `6db3eed` → 0B `8d24498` →
+  0C1 `7a93a18` → 0C2 `ea8bd8f` → 0C3 amend/ratify/lock (`c7aa617` / `639c559` / `553e32b`) →
+  0C4 amend/lock (`24df428` / `f23e7e7`).
+- **Targeted test:** `tests/test_phase5_capacity_constraint_evidence_boundary.py` → **124 passed**.
+  No full pytest; no `pytest -k phase5`.
+- **This completion implies NO Phase-6, paper, live, production, routing, sizing, allocation,
+  wallet/balance runtime, execution, or actionability readiness.** The component reads no
+  config/env/wallet/db/network/clock/registry; all evidence is supplied only through the four upstream
+  carriers. It remains a passive constitutional safety barrier / airgap and **no Phase 6 bridge**.
+- **No next component is selected by this closeout.** Any further Phase 5 component or Phase 6 work
+  requires separate review and explicit authorization.
+- The absence of stale hash-free pointers has been verified for this closeout.
+
 <!-- NO-CLAIMS-START -->
 ## No-claims statement
 
