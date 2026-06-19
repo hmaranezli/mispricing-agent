@@ -34,6 +34,18 @@ from phase5.capital_margin_evidence_boundary import CapitalMarginEvidenceContext
 from phase5.blocked_result_boundary import BlockedPacket
 from phase5.no_eligible_halt_propagation_boundary import NoEligibleHaltPacket
 
+# Slice 0C1 references: fail-closed MISSING / MALFORMED blocked-packet emission. `Decimal` is used
+# ONLY to confirm size-scalar grammar (never `.compare`, never magnitude arithmetic — those are
+# Slice 0C2). `make_blocked_packet` is the existing packet factory; the canonical status / next-action
+# constants come from the shared phase5 constants module.
+from decimal import Decimal, InvalidOperation
+from phase5.blocked_result_boundary import make_blocked_packet
+from phase5.const import (
+    PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE,
+    BLOCKED_NEEDS_EVIDENCE,
+    NEXT_ACTION_OBTAIN_EVIDENCE,
+)
+
 CAPACITY_CONSTRAINT_EVIDENCE_BOUNDARY_COMPONENT_NAME = "phase5_capacity_constraint_evidence_boundary"
 BOUNDARY_VERSION = "phase5.capacity_constraint_evidence_boundary.v0"
 
@@ -265,6 +277,129 @@ class CapacityConstraintMisroutedHaltCarrierError(TypeError):
     """Raised when an upstream halt packet is misrouted into a preflight evidence slot. No behavior yet."""
 
 
+# The planning artifact that authors this gate's contract; stamped onto every blocked packet.
+GATE_SOURCE_CONTRACT = "phase5_capacity_constraint_evidence_boundary_implementation_planning.md"
+
+# Grammar kinds for the Slice 0C1 MISSING / MALFORMED scan.
+_LABEL = "LABEL"      # exact non-empty, non-surrounding-whitespace str (identity / unit labels)
+_DECIMAL = "DECIMAL"  # non-negative base-10 decimal string (size magnitude scalars)
+_INT = "INT"          # non-negative base-10 integer string (epoch / tolerance scalars)
+
+# Ordered convergence-relevant scalar field spec: (field_name, grammar_kind, (carrier_slot, ...)).
+# Order = identity sub-order, then unit sub-order, then stale sub-order (anchor, snapshots, tolerance),
+# matching the charter's pinned sub-orders and the fail-closed branch priority. The reported
+# `missing_or_invalid_field` is always the field NAME (carrier-independent), so the per-field carrier
+# order does not affect determinism. The provenance triplet (source_*) is deliberately EXCLUDED so
+# that evidence_envelope.source_* remains available to stamp every blocked packet canonically.
+_CONVERGENCE_FIELD_SPEC = (
+    ("venue", _LABEL, ("evidence_envelope", "venue_readiness", "liquidity_evidence", "capital_evidence")),
+    ("instrument_id", _LABEL, ("evidence_envelope", "venue_readiness", "liquidity_evidence", "capital_evidence")),
+    ("base_asset", _LABEL, ("evidence_envelope", "venue_readiness", "liquidity_evidence", "capital_evidence")),
+    ("quote_asset", _LABEL, ("evidence_envelope", "venue_readiness", "liquidity_evidence", "capital_evidence")),
+    ("side", _LABEL, ("evidence_envelope", "capital_evidence")),
+    ("observed_size", _DECIMAL, ("evidence_envelope", "liquidity_evidence", "capital_evidence")),
+    ("size_unit", _LABEL, ("evidence_envelope",)),
+    ("observed_size_unit", _LABEL, ("liquidity_evidence", "capital_evidence")),
+    ("capacity_unit", _LABEL, ("liquidity_evidence",)),
+    ("required_capital_unit", _LABEL, ("capital_evidence",)),
+    ("available_free_capital_unit", _LABEL, ("capital_evidence",)),
+    ("observed_at_epoch_ms", _INT, ("evidence_envelope",)),
+    ("liquidity_snapshot_epoch_ms", _INT, ("liquidity_evidence",)),
+    ("required_capital_epoch_ms", _INT, ("capital_evidence",)),
+    ("available_free_capital_snapshot_epoch_ms", _INT, ("capital_evidence",)),
+    ("evidence_epoch_tolerance_ms", _INT, ("liquidity_evidence", "capital_evidence")),
+)
+
+
+def _is_valid_label(value):
+    """Exact non-empty ``str`` with no leading/trailing/only whitespace. No coercion, no mutation."""
+    if type(value) is not str:
+        return False
+    if value == "":
+        return False
+    if value != value.strip():
+        return False
+    return True
+
+
+def _is_valid_decimal_grammar(value):
+    """Non-negative base-10 decimal string: digits, optional single interior decimal point.
+
+    Rejects non-str, empty, surrounding whitespace, signs, commas, underscores, scientific notation,
+    NaN/Infinity, bare/leading/trailing dot. Validation only — no magnitude comparison, no arithmetic.
+    """
+    if type(value) is not str:
+        return False
+    if value == "":
+        return False
+    if value != value.strip():
+        return False
+    for ch in value:
+        if ch not in "0123456789.":
+            return False
+    if value.count(".") not in (0, 1):
+        return False
+    if "." in value:
+        int_part, frac_part = value.split(".")
+        if int_part == "" or frac_part == "":
+            return False
+        if not (int_part.isascii() and int_part.isdigit()):
+            return False
+        if not (frac_part.isascii() and frac_part.isdigit()):
+            return False
+    else:
+        if not (value.isascii() and value.isdigit()):
+            return False
+    # Final defensive confirmation; the charset already excludes NaN/Infinity/sign/scientific tokens.
+    try:
+        Decimal(value)
+    except InvalidOperation:
+        return False
+    return True
+
+
+def _is_valid_epoch_grammar(value):
+    """Non-negative base-10 integer string only (ASCII digits). No sign, point, whitespace, or unicode.
+
+    Grammar validation only — no clock read, no subtraction, no tolerance comparison (Slice 0C2).
+    """
+    if type(value) is not str:
+        return False
+    if value == "":
+        return False
+    if not (value.isascii() and value.isdigit()):
+        return False
+    return True
+
+
+_GRAMMAR_VALIDATORS = {
+    _LABEL: _is_valid_label,
+    _DECIMAL: _is_valid_decimal_grammar,
+    _INT: _is_valid_epoch_grammar,
+}
+
+
+def _capacity_constraint_blocked(reason_code, missing_or_invalid_field, evidence_envelope):
+    """Build a canonical BlockedPacket. Provenance comes ONLY from evidence_envelope.source_*."""
+    return make_blocked_packet(
+        component_name=CAPACITY_CONSTRAINT_EVIDENCE_BOUNDARY_COMPONENT_NAME,
+        origin_component=CAPACITY_CONSTRAINT_EVIDENCE_BOUNDARY_COMPONENT_NAME,
+        origin_result_status=PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE,
+        status=PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE,
+        blocked_status=BLOCKED_NEEDS_EVIDENCE,
+        reason_code=reason_code,
+        missing_or_invalid_field=missing_or_invalid_field,
+        source_contract=evidence_envelope.source_contract,
+        source_artifact=evidence_envelope.source_artifact,
+        source_field=evidence_envelope.source_field,
+        deterministic_next_action=NEXT_ACTION_OBTAIN_EVIDENCE,
+        human_review_required=True,
+        may_retry_after_evidence=True,
+        created_from_contract=GATE_SOURCE_CONTRACT,
+        boundary_version=BOUNDARY_VERSION,
+    )
+
+
 def capacity_constraint_preflight(
     *,
     evidence_envelope,
@@ -330,8 +465,31 @@ def capacity_constraint_preflight(
                 type(capital_evidence).__name__
             )
         )
-    # All-agree pass path: verbatim per-source provenance transfer into the 12-param factory. (Slice 0C
-    # will insert the fail-closed structural convergence checks before this return.)
+    carriers = {
+        "evidence_envelope": evidence_envelope,
+        "venue_readiness": venue_readiness,
+        "liquidity_evidence": liquidity_evidence,
+        "capital_evidence": capital_evidence,
+    }
+    # MISSING branch (runs before MALFORMED): a required convergence attribute absent on an exact-typed
+    # carrier. First failing field in the pinned spec order; the reported field is the attribute name.
+    for field_name, _kind, slot_names in _CONVERGENCE_FIELD_SPEC:
+        for slot in slot_names:
+            if not hasattr(carriers[slot], field_name):
+                return _capacity_constraint_blocked(
+                    CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE, field_name, evidence_envelope
+                )
+    # MALFORMED branch (runs after MISSING, before any identity/unit/stale/undefined logic): scalar
+    # grammar validation only. First failing field in the pinned spec order.
+    for field_name, kind, slot_names in _CONVERGENCE_FIELD_SPEC:
+        validator = _GRAMMAR_VALIDATORS[kind]
+        for slot in slot_names:
+            if not validator(getattr(carriers[slot], field_name)):
+                return _capacity_constraint_blocked(
+                    CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE, field_name, evidence_envelope
+                )
+    # All-agree pass path: verbatim per-source provenance transfer into the 12-param factory. (Slice 0C2
+    # will insert the fail-closed identity/unit/stale/undefined convergence checks before this return.)
     return make_capacity_constraint_evidence_context(
         post_profitability_source_contract=evidence_envelope.source_contract,
         post_profitability_source_artifact=evidence_envelope.source_artifact,

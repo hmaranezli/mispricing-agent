@@ -333,18 +333,19 @@ def test_no_slice0_boundary_or_gate_symbols():
 
 
 def test_no_forbidden_field_tokens_present():
-    # Precise tripwire: a forbidden concept token is a violation only when it appears as a whole
-    # underscore-delimited identifier word (e.g. a field/variable named `route` or `final_capacity`),
-    # NOT as a CamelCase substring of an unrelated required symbol such as the spec-mandated
-    # `CapacityConstraintMisroutedHaltCarrierError` (which contains "route" inside "Misrouted").
-    # Identifier-word granularity matches this snake_case codebase.
-    src = _src()
-    identifiers = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", src))
-    for tok in FORBIDDEN_FIELD_TOKENS:
-        needle = "_" + tok + "_"
-        for ident in identifiers:
-            assert needle not in ("_" + ident + "_"), \
-                f"forbidden field token used as identifier word: {tok!r} (in {ident!r})"
+    # Intent (per the FORBIDDEN_FIELD_TOKENS comment): the CARRIER must never DECLARE or STORE these
+    # status/computed/runtime tokens as its own fields. Scoped to the carrier's declared dataclass
+    # fields. NOTE: from Slice 0C1 the gate legitimately references UPSTREAM carriers' field names
+    # (e.g. "observed_size", "required_capital_unit") as string literals to validate their grammar —
+    # those are inputs being audited, not fields the carrier declares/stores, so a whole-source scan
+    # would false-positive on them. The carrier's own 14 fields must remain free of forbidden tokens.
+    from dataclasses import fields as dataclass_fields
+    declared = tuple(f.name for f in dataclass_fields(CapacityConstraintEvidenceContext))
+    for name in declared:
+        padded = "_" + name + "_"
+        for tok in FORBIDDEN_FIELD_TOKENS:
+            assert ("_" + tok + "_") not in padded, \
+                f"forbidden field token {tok!r} declared/stored as carrier field {name!r}"
 
 
 def test_no_io_or_time_imports():
@@ -379,10 +380,11 @@ PREFLIGHT_PARAM_ORDER = (
 
 STUB_MESSAGE = "Slice 0 structural join and branch logic not yet implemented"
 
-# AST lock vocabularies (Slice 0A).
+# AST lock vocabularies (Slice 0A, extended for 0C1). `ast.Sub` and `ast.LtE` stay forbidden in 0C1
+# (they are reserved for the Slice 0C2 epoch-tolerance comparison `abs(int(a) - int(b)) <= int(tol)`).
 FORBIDDEN_CALL_NAMES = ("float", "min", "max", "sum", "round", "sorted")
 FORBIDDEN_OPERATOR_NODES = (
-    ast.Add, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow, ast.MatMult, ast.USub,
+    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow, ast.MatMult, ast.USub,
 )
 FORBIDDEN_IMPORT_ROOTS = (
     "math", "statistics", "numpy", "pandas", "datetime", "time", "os", "socket",
@@ -519,6 +521,19 @@ def test_ast_forbids_arithmetic_operator_nodes():
         if isinstance(node, FORBIDDEN_OPERATOR_NODES)
     ]
     assert offenders == [], f"forbidden operator node(s) present: {offenders}"
+
+
+def test_ast_forbids_lte_comparison_in_0c1():
+    # `ast.LtE` is reserved for the Slice 0C2 epoch-tolerance comparison and must not appear yet.
+    tree = _ast_tree()
+    offenders = [
+        type(op).__name__
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Compare)
+        for op in node.ops
+        if isinstance(op, ast.LtE)
+    ]
+    assert offenders == [], "ast.LtE present in runtime (reserved for Slice 0C2 epoch tolerance)"
 
 
 def test_ast_forbids_forbidden_imports():
@@ -892,14 +907,15 @@ def test_misroute_path_returns_no_context_or_packet():
 
 # --- Slice 0B boundary: divergent behavior deferred to 0C; 0C machinery must remain absent ---
 
-def test_slice0b_is_not_final_pass_readiness_no_0c_machinery():
-    # NAMED BOUNDARY: Slice 0B is NOT final pass readiness and is NOT live-wirable before Slice 0C.
-    # Enforce that no structural-convergence / blocked-packet machinery has leaked in early. Tokens
-    # are chosen to detect actual usage (call form / type name), not prose mentions in comments:
-    # `make_blocked_packet(` is a call, `Decimal(` is a parse, `.compare(` is a size comparison.
+def test_slice0c1_is_not_final_pass_readiness_no_0c2_machinery():
+    # NAMED BOUNDARY: Slice 0C1 (MISSING + MALFORMED only) is NOT final pass readiness and is NOT
+    # live-wirable before Slice 0C2 adds identity/unit/stale/undefined fail-closed convergence. 0C1
+    # legitimately uses `make_blocked_packet(` and `Decimal(` (grammar validation only). The Slice 0C2
+    # machinery — Decimal magnitude comparison (`.compare(`) and epoch tolerance — must remain absent.
     src = _src()
-    for absent in ("make_blocked_packet(", "Decimal(", ".compare(", "_epoch_ms", "tolerance_ms"):
-        assert absent not in src, f"0C-only machinery leaked into Slice 0B runtime: {absent!r}"
+    for absent in (".compare(",):
+        assert absent not in src, f"0C2-only machinery leaked into Slice 0C1 runtime: {absent!r}"
+    # ast.Sub / ast.LtE absence is enforced by the dedicated AST tests above.
 
 
 def test_no_isinstance_used_in_runtime():
@@ -914,3 +930,233 @@ def test_no_isinstance_used_in_runtime():
         and node.func.id == "isinstance"
     ]
     assert offenders == [], "isinstance call(s) present in runtime"
+
+
+# ===================================================================================================
+# Slice 0C1: capacity_constraint_preflight gains a MISSING branch (required convergence attribute
+# absent on an exact-typed carrier) and a MALFORMED branch (scalar grammar invalid), both emitting an
+# existing BlockedPacket via make_blocked_packet with canonical evidence_envelope.source_* provenance.
+#
+# BOUNDARY (named per spec): Slice 0C1 is NOT final pass readiness and is NOT live-wirable before
+# Slice 0C2 adds identity / unit / stale / undefined fail-closed convergence. 0C1 implements ONLY
+# presence + scalar-grammar fail-closed checks; it asserts NO pass/block behavior for structurally
+# divergent-but-well-formed carriers (deferred to 0C2). MISSING runs after the 0B type/misroute guards
+# and before MALFORMED; both run before any (future) convergence logic.
+#
+# Reachability: the four carriers are frozen/slotted and built only by validating factories, so a
+# factory-built carrier is always complete and well-formed. MISSING/MALFORMED are exercised on EXACT-
+# typed carriers reconstructed via object.__new__ + object.__setattr__ (the established codebase
+# pattern — NOT mocks, NOT subclasses; type(x) is T still holds), with one slot dropped (MISSING) or
+# overwritten with a bad scalar (MALFORMED). Only non-source_* convergence fields are broken, so
+# evidence_envelope.source_* stays available for canonical packet provenance.
+# ===================================================================================================
+
+from dataclasses import fields as _dc_fields
+
+from phase5.capacity_constraint_evidence_boundary import GATE_SOURCE_CONTRACT
+from phase5.post_profitability_evidence_envelope_boundary import PostProfitabilityEvidenceEnvelope
+from phase5.venue_instrument_readiness_boundary import VenueInstrumentReadinessStateContext
+from phase5.liquidity_capacity_evidence_boundary import LiquidityCapacityEvidenceContext
+from phase5.capital_margin_evidence_boundary import CapitalMarginEvidenceContext
+from phase5.blocked_result_boundary import BlockedPacket
+from phase5.const import (
+    PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE,
+    BLOCKED_NEEDS_EVIDENCE,
+    NEXT_ACTION_OBTAIN_EVIDENCE,
+)
+
+_SLOT_TO_CLASS = {
+    "evidence_envelope": PostProfitabilityEvidenceEnvelope,
+    "venue_readiness": VenueInstrumentReadinessStateContext,
+    "liquidity_evidence": LiquidityCapacityEvidenceContext,
+    "capital_evidence": CapitalMarginEvidenceContext,
+}
+
+
+def _field_map(carrier):
+    # Read every PRESENT declared dataclass slot verbatim into a dict. Slots already dropped by a prior
+    # _rebuild stay absent (so repeated drops accumulate rather than crashing on the missing slot).
+    return {
+        f.name: getattr(carrier, f.name)
+        for f in _dc_fields(type(carrier))
+        if hasattr(carrier, f.name)
+    }
+
+
+def _rebuild(carrier, *, drop=None, override=None):
+    # Reconstruct an EXACT-typed carrier (object.__new__ + object.__setattr__) with one slot dropped
+    # (MISSING) or overwritten (MALFORMED). type(result) is type(carrier) is preserved.
+    cls = type(carrier)
+    fm = _field_map(carrier)
+    if override is not None:
+        fm.update(override)
+    if drop is not None:
+        fm.pop(drop, None)
+    obj = object.__new__(cls)
+    for k, v in fm.items():
+        object.__setattr__(obj, k, v)
+    return obj
+
+
+def _inputs_with(slot, *, drop=None, override=None):
+    base = _all_agree_inputs()
+    base[slot] = _rebuild(base[slot], drop=drop, override=override)
+    return base
+
+
+# --- MISSING branch ---
+
+def test_missing_required_attribute_returns_blocked_missing():
+    cases = [
+        ("evidence_envelope", "venue"),
+        ("liquidity_evidence", "observed_size"),
+        ("capital_evidence", "required_capital_unit"),
+        ("liquidity_evidence", "liquidity_snapshot_epoch_ms"),
+        ("evidence_envelope", "side"),
+        ("capital_evidence", "available_free_capital_unit"),
+    ]
+    for slot, field in cases:
+        result = capacity_constraint_preflight(**_inputs_with(slot, drop=field))
+        assert type(result) is BlockedPacket, f"{slot}.{field}: expected BlockedPacket"
+        assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE
+        assert result.missing_or_invalid_field == field
+
+
+def test_missing_packet_uses_canonical_evidence_envelope_provenance():
+    inputs = _inputs_with("liquidity_evidence", drop="observed_size")
+    ee = inputs["evidence_envelope"]
+    result = capacity_constraint_preflight(**inputs)
+    assert result.source_contract == ee.source_contract
+    assert result.source_artifact == ee.source_artifact
+    assert result.source_field == ee.source_field
+
+
+def test_missing_first_failing_field_follows_pinned_order():
+    # venue (identity, earliest) missing AND size_unit (unit group, later) missing -> reports "venue".
+    base = _all_agree_inputs()
+    base["evidence_envelope"] = _rebuild(base["evidence_envelope"], drop="venue")
+    base["evidence_envelope"] = _rebuild(base["evidence_envelope"], drop="size_unit")
+    result = capacity_constraint_preflight(**base)
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE
+    assert result.missing_or_invalid_field == "venue"
+
+
+# --- MALFORMED branch ---
+
+def test_malformed_label_field_returns_blocked_malformed():
+    for bad in ["", "   ", "\t", " BTC", "BTC ", None, 1, 1.0, True, b"BTC"]:
+        inputs = _inputs_with("evidence_envelope", override={"size_unit": bad})
+        result = capacity_constraint_preflight(**inputs)
+        assert type(result) is BlockedPacket, f"size_unit={bad!r}"
+        assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE
+        assert result.missing_or_invalid_field == "size_unit"
+
+
+def test_malformed_decimal_size_field_returns_blocked_malformed():
+    for bad in ["1E+3", "+1", "-1", "1,000", "1_000", "NaN", "Infinity", "", " 1.5", "1.5 ",
+                ".5", "1.", "abc", "1.2.3", 1.5, None, True]:
+        inputs = _inputs_with("liquidity_evidence", override={"observed_size": bad})
+        result = capacity_constraint_preflight(**inputs)
+        assert type(result) is BlockedPacket, f"observed_size={bad!r}"
+        assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE
+        assert result.missing_or_invalid_field == "observed_size"
+
+
+def test_valid_decimal_grammars_do_not_trigger_malformed():
+    for good in ["0", "1", "1.0", "123.45"]:
+        # Apply the same value to all three observed_size carriers so identity-size is irrelevant
+        # (identity convergence is Slice 0C2; here we only assert grammar does not block).
+        base = _all_agree_inputs()
+        base["evidence_envelope"] = _rebuild(base["evidence_envelope"], override={"observed_size": good})
+        base["liquidity_evidence"] = _rebuild(base["liquidity_evidence"], override={"observed_size": good})
+        base["capital_evidence"] = _rebuild(base["capital_evidence"], override={"observed_size": good})
+        result = capacity_constraint_preflight(**base)
+        assert type(result) is CapacityConstraintEvidenceContext, f"observed_size={good!r} should not block"
+
+
+def test_malformed_epoch_field_returns_blocked_malformed():
+    for bad in ["+1", "-1", "1.0", " 1", "1e3", "1E3", "", "abc", "12 34", 1, 1.0, True, None]:
+        inputs = _inputs_with("liquidity_evidence", override={"liquidity_snapshot_epoch_ms": bad})
+        result = capacity_constraint_preflight(**inputs)
+        assert type(result) is BlockedPacket, f"epoch={bad!r}"
+        assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE
+        assert result.missing_or_invalid_field == "liquidity_snapshot_epoch_ms"
+
+
+def test_valid_epoch_grammars_do_not_trigger_malformed():
+    for good in ["0", "1", "1781637248000"]:
+        base = _all_agree_inputs()
+        base["liquidity_evidence"] = _rebuild(
+            base["liquidity_evidence"], override={"liquidity_snapshot_epoch_ms": good}
+        )
+        result = capacity_constraint_preflight(**base)
+        assert type(result) is CapacityConstraintEvidenceContext, f"epoch={good!r} should not block"
+
+
+def test_malformed_packet_uses_canonical_evidence_envelope_provenance():
+    inputs = _inputs_with("capital_evidence", override={"observed_size_unit": "  "})
+    ee = inputs["evidence_envelope"]
+    result = capacity_constraint_preflight(**inputs)
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE
+    assert result.source_contract == ee.source_contract
+    assert result.source_artifact == ee.source_artifact
+    assert result.source_field == ee.source_field
+
+
+# --- branch precedence: MISSING precedes MALFORMED ---
+
+def test_missing_precedes_malformed():
+    # venue missing on evidence_envelope (MISSING) AND observed_size malformed on capital_evidence.
+    base = _all_agree_inputs()
+    base["evidence_envelope"] = _rebuild(base["evidence_envelope"], drop="venue")
+    base["capital_evidence"] = _rebuild(base["capital_evidence"], override={"observed_size": "1E+3"})
+    result = capacity_constraint_preflight(**base)
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE
+    assert result.missing_or_invalid_field == "venue"
+
+
+# --- blocked-packet wiring: full canonical field mapping ---
+
+def test_blocked_packet_full_canonical_field_mapping():
+    inputs = _inputs_with("liquidity_evidence", drop="observed_size")
+    ee = inputs["evidence_envelope"]
+    p = capacity_constraint_preflight(**inputs)
+    assert type(p) is BlockedPacket
+    assert p.component_name == EXPECTED_COMPONENT
+    assert p.origin_component == EXPECTED_COMPONENT
+    assert p.origin_result_status == PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE
+    assert p.status == PLANNING_GATE_BLOCKED_NEEDS_EVIDENCE
+    assert p.blocked_status == BLOCKED_NEEDS_EVIDENCE
+    assert p.reason_code == CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE
+    assert p.missing_or_invalid_field == "observed_size"
+    assert p.source_contract == ee.source_contract
+    assert p.source_artifact == ee.source_artifact
+    assert p.source_field == ee.source_field
+    assert p.deterministic_next_action == NEXT_ACTION_OBTAIN_EVIDENCE
+    assert p.human_review_required is True
+    assert p.may_retry_after_evidence is True
+    assert p.created_from_contract == GATE_SOURCE_CONTRACT
+    assert p.boundary_version == BOUNDARY_VERSION
+
+
+def test_gate_source_contract_value():
+    assert GATE_SOURCE_CONTRACT == "phase5_capacity_constraint_evidence_boundary_implementation_planning.md"
+
+
+# --- preserve 0B: all-agree valid fixture still passes (returns context, not a packet) ---
+
+def test_0b_all_agree_still_returns_context_after_0c1():
+    result = capacity_constraint_preflight(**_all_agree_inputs())
+    assert type(result) is CapacityConstraintEvidenceContext
+
+
+# --- 0C2 convergence remains absent ---
+
+def test_identity_unit_stale_undefined_remain_unimplemented_0c1():
+    src = _src()
+    assert ".compare(" not in src           # no Decimal magnitude comparison (size equality is 0C2)
+    assert "IDENTITY_MISMATCH" not in src.replace("CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH", "")
+    # the IDENTITY/UNIT/STALE/UNDEFINED reason tokens may be DEFINED (0A constants) but must not be
+    # EMITTED yet: only MISSING and MALFORMED tokens may appear as reason_code arguments in 0C1.
+    import phase5.capacity_constraint_evidence_boundary as mod
+    assert not hasattr(mod, "CapacityConstraintEvidenceBoundary")
