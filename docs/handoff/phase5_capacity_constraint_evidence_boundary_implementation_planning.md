@@ -547,6 +547,115 @@ size/capacity/economic/order/allocation/exposure logic.
 comparison is allowed.
 <!-- GATE-HARDENING-END -->
 
+## 7.4 Slice 0C3 charter amendment — UNDEFINED branch closed-scope resolution (HUMAN REVIEW DRAFT)
+
+<!-- 0C3-UNDEFINED-RESOLUTION-START -->
+
+> **Status: PROPOSED — awaiting human approval. Not yet in force.** This amendment refines §7 / §7.3
+> for the `CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE` branch only. It supersedes only the §7.3
+> UNDEFINED trigger-family interpretation for Slice 0C3; all non-UNDEFINED §7.3 rules remain unchanged;
+> §7.2 GATE-CONTRACT remains unchanged. **NO TRADE ORDER / EXECUTION ORDER EXISTS** at this boundary.
+> This amendment confers **no** production readiness, live readiness, actionability, routing, sizing,
+> allocation, exposure, balance, wallet, paper-live readiness, Phase-6 readiness, or
+> `CapacityConstraintEvidenceBoundary` readiness, none of which is implemented or authorized here.
+
+### 7.4.0 Motivation
+
+§7.3 lines 504–514 describe three concrete UNDEFINED trigger families — out-of-vocabulary **unit**
+labels, out-of-vocabulary **identity** values, and unresolvable **source-triplet** references — but
+each family's trigger predicate depends on a finite vocabulary, identity registry, or resolvability
+rule that is **not pinned in any committed artifact** at this commit. The contributing carrier schemas
+(`PostProfitabilityEvidenceEnvelope`, `VenueInstrumentReadinessStateContext`,
+`LiquidityCapacityEvidenceContext`, `CapitalMarginEvidenceContext`) validate the convergence-relevant
+unit, identity, and `source_*` fields as exact, non-empty, non-whitespace `str` labels only; none pins
+a closed vocabulary, registry, or cross-carrier resolvability predicate for those fields. This
+amendment resolves the resulting ambiguity by pinning UNDEFINED's three families **out of Slice 0C3
+runtime scope** for the current closed four-carrier contract, with explicit future-revival conditions.
+
+### 7.4.1 Identity-UNDEFINED — OUT OF SLICE 0C3 RUNTIME SCOPE
+
+- Identity-UNDEFINED is **out of Slice 0C3 runtime scope**.
+- Unknown-but-consistent identity values **cannot be detected** inside the current closed four-carrier
+  scope, because **no finite identity vocabulary or registry is pinned** for `venue`, `instrument_id`,
+  `base_asset`, `quote_asset`, or `side` in any committed artifact.
+- If identity values **disagree** across the carriers, this remains `CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH`
+  (the 4-way / side / size-magnitude convergence already pinned in §7.3 and implemented in Slice 0C2).
+- If identity values **agree** across the carriers, identity convergence **passes**.
+- Therefore identity-UNDEFINED is **fully subsumed by IDENTITY_MISMATCH** and remains out of scope
+  **until a future, separately committed identity registry/vocabulary** is introduced and explicitly
+  bound to `capacity_constraint_preflight`. No local identity table, sample identity, or external
+  database/API lookup may be invented in runtime or tests.
+
+### 7.4.2 Unit-UNDEFINED — OUT OF SLICE 0C3 RUNTIME SCOPE
+
+- Unit-UNDEFINED is **out of Slice 0C3 runtime scope**.
+- The current carrier schemas treat `size_unit`, `observed_size_unit`, `capacity_unit`,
+  `required_capital_unit`, and `available_free_capital_unit` as **exact-str / non-empty labels, not
+  finite-vocabulary members**; no committed artifact pins an allowed unit set or binds one to this gate.
+- Unit **disagreement** across the carriers remains `CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH` (the
+  canonical group-field unit convergence pinned in §7.3 and implemented in Slice 0C2).
+- Unit **agreement** across the carriers **passes** unit convergence.
+- **No unit vocabulary may be invented** in runtime or tests (no currency/asset tokens, no external
+  standard reference, no hardcoded allowed set).
+- Unit-UNDEFINED may be **revived only by a future, separately committed finite unit
+  vocabulary/schema component** that pins the allowed set and its carrier-schema binding.
+
+### 7.4.3 Source-Triplet-UNDEFINED — OUT OF SLICE 0C3 RUNTIME SCOPE
+
+- Source-triplet-UNDEFINED is **out of Slice 0C3 runtime scope** unless and until a **deterministic,
+  closed-scope resolvability predicate** is pinned in a committed artifact.
+- The current charter pins only **output-packet provenance** (every blocked/pass packet's
+  `source_contract`/`source_artifact`/`source_field` is taken from the upstream
+  `PostProfitabilityEvidenceEnvelope`, per §7.2) and **verbatim `source_*` transfer** on the pass path.
+  It pins **no source-triplet resolvability check**.
+- Different carriers **may legitimately carry different** `source_contract` / `source_artifact` /
+  `source_field` values. This amendment does **not** define equality across the four carriers'
+  `source_*` triplets, and runtime/tests **must not** define such equality unless a future charter
+  amendment explicitly pins it.
+- **No external lookup, no provenance registry, no `ALLOWED_SOURCE_CONTRACTS` binding, and no synthetic
+  or default/fallback provenance** may be invented for this check.
+- Source-triplet-UNDEFINED may be **revived only by a future, separately committed provenance
+  registry or resolvability rule** that deterministically defines the predicate and the exact
+  field/carrier set it ranges over.
+
+### 7.4.4 Slice 0C3 branch resolution (closed four-carrier contract)
+
+- `CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE` **remains a defined reason token, reserved for
+  future defensive use**, but has **no runtime predicate in Slice 0C3** because all three concrete
+  trigger families (§7.4.1–§7.4.3) are out of scope for the current closed four-carrier contract.
+- For the current closed four-carrier contract, the Slice 0 runtime convergence sequence
+  **terminates at STALE before the structural-convergence pass path**:
+  `misroute → exact type guard → MISSING → MALFORMED → IDENTITY_MISMATCH → UNIT_MISMATCH → STALE → pass`.
+  The UNDEFINED position documented in §7 (after STALE, before pass) is **retained in documentation**
+  as the reserved slot for a future predicate, but emits nothing in this slice.
+- `capacity_constraint_preflight` may be considered **complete only for the current closed four-carrier
+  fail-closed taxonomy through STALE**, **if and only if** the charter accepts this amendment. This is
+  narrowly a **preflight/gate-contract** completeness statement for the checked scope.
+- This explicitly **does NOT imply** production readiness, live readiness, actionability, routing,
+  sizing, allocation, exposure, balance, wallet, paper-live readiness, Phase-6 readiness, or
+  `CapacityConstraintEvidenceBoundary` readiness. None of those is implemented or authorized here.
+
+### 7.4.5 Planning-test implications (to be applied under TDD when this amendment is accepted)
+
+These are expected planning-test updates only; **no test code is written by this amendment**:
+
+- **Remove or amend** any assertion that requires a *reachable runtime UNDEFINED predicate* in Slice
+  0C3 (no UNDEFINED blocked packet is emitted in this slice).
+- **Add** assertions that identity-UNDEFINED, unit-UNDEFINED, and source-triplet-UNDEFINED are
+  **explicitly out of Slice 0C3 runtime scope** (a present, well-formed, internally consistent,
+  non-stale fixture does not produce an UNDEFINED packet).
+- **Add** assertions (AST/token locks) that **no vocabulary or resolvability set may be invented** in
+  runtime — no identity table, no unit allowed-set, no source-triplet equality/registry/external lookup,
+  no `ALLOWED_SOURCE_CONTRACTS` binding.
+- **Add** an assertion that `CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE` **remains defined and
+  reserved** (token present, value equals its own name) but **never emitted** in this slice.
+- **Preserve** the branch-order documentation by asserting that UNDEFINED is **deferred / has no runtime
+  predicate** for this closed-scope slice while the documented sequence still records its reserved
+  position after STALE.
+- **Preserve** all existing Slice 0B / 0C1 / 0C2 assertions unchanged.
+
+<!-- 0C3-UNDEFINED-RESOLUTION-END -->
+
 ## 8. Deferred decisions
 
 The following are **deferred** and require separate, explicitly authorized work:
