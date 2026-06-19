@@ -656,6 +656,95 @@ These are expected planning-test updates only; **no test code is written by this
 
 <!-- 0C3-UNDEFINED-RESOLUTION-END -->
 
+<!-- BOUNDARY-CLASS-CANCELLATION-START -->
+
+## 7.5 Charter amendment — CapacityConstraintEvidenceBoundary class cancellation (Route A: satisfied-by Gate)
+
+> **Status: ACCEPTED — human-approved and in force for CapacityConstraintEvidenceBoundary class cancellation / satisfied-by-Gate interpretation. Runtime implementation remains separately authorized only for tests or locks; no Boundary class runtime is authorized.** This amendment
+> supersedes only the framing-line expectation (§ Status and framing) that a distinct
+> `CapacityConstraintEvidenceBoundary` Python class is a future deliverable; it changes no §7.2
+> GATE-CONTRACT rule, no §7.3 rule, and no §7.4 UNDEFINED resolution. **NO TRADE ORDER / EXECUTION
+> ORDER EXISTS** at this boundary. This amendment authorizes no Boundary-class runtime implementation
+> and confers no production / paper / live / actionability / Phase-6 readiness.
+
+### 7.5.1 Class cancellation
+
+- A distinct `CapacityConstraintEvidenceBoundary` Python class is **not required** for this component.
+- It **will not be implemented** in the current architecture.
+- Implementing it now would **invent an unpinned API** (constructor, call/evaluate method, return and
+  exception policy are nowhere pinned in committed artifacts) and would add **redundant wrapper /
+  vestigial code** over an interface that is already complete. The committed planning artifact only
+  *names* the symbol (§ Status and framing) and never pins its interface; §8 authorizes "none … beyond
+  the Slice 0 structural join," and §10 states the document "does not authorize … the boundary class."
+
+### 7.5.2 Architectural satisfaction
+
+- The boundary concept is **fully satisfied** by the already-implemented Slice 0 runtime:
+  - `CapacityConstraintGate` — the stateless (`__slots__ = ()`) namespace;
+  - `capacity_constraint_preflight` — the keyword-only callable over the four carriers;
+  - `CapacityConstraintEvidenceContext` — the pass-path return certificate;
+  - `BlockedPacket` — the fail-closed return path from `capacity_constraint_preflight`.
+- `CapacityConstraintGate.preflight` (i.e. `staticmethod(capacity_constraint_preflight)`) **is the
+  callable boundary interface** for this component. No additional object is needed to express it.
+
+### 7.5.3 Sibling consistency
+
+- This aligns with the committed sibling Phase 5 pattern: **zero separate `*Boundary` classes** exist.
+  Every sibling boundary module is realized as `*Gate` + `*_preflight` + `*Context`
+  (e.g. `LiquidityCapacityGate`, `CapitalMarginGate`, `VenueInstrumentReadinessGate`,
+  `NetEdgeProfitabilityGate`, `PreNetEdgeCalculationInputGate`).
+- **No new Boundary class should be introduced merely for naming symmetry** with the component name.
+
+### 7.5.4 Runtime completeness (narrow)
+
+- With Slice 0C3 locked and this amendment accepted, the `capacity_constraint_preflight` /
+  `CapacityConstraintGate` runtime is **structurally complete for the current closed four-carrier
+  capacity-constraint evidence boundary contract**.
+- Precisely: complete **only** for the current closed four-carrier **fail-closed taxonomy through
+  STALE**, with `CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE` **reserved/deferred** (per §7.4) and
+  the runtime sequence terminating `STALE → structural-convergence pass`.
+- This is **not a claim of production, paper, live, actionability, or Phase-6 readiness**, and
+  authorizes no additional component or Phase-6 work by itself.
+
+### 7.5.5 Exception policy preservation
+
+- Type and misroute exceptions remain governed solely by `capacity_constraint_preflight`:
+  `CapacityConstraintGateTypeError` and `CapacityConstraintMisroutedHaltCarrierError` **raise
+  fail-fast** and must **never** be converted into a `BlockedPacket` by any wrapper (there is no
+  wrapper).
+- MISSING / MALFORMED / IDENTITY_MISMATCH / UNIT_MISMATCH / STALE_EVIDENCE remain **graceful
+  `BlockedPacket` returns** from `capacity_constraint_preflight`.
+
+### 7.5.6 External isolation
+
+- This decision introduces **no** config / environment / wallet / balance / database / network / clock
+  / external-registry access.
+- All evidence remains supplied **only** through the four carriers
+  (`PostProfitabilityEvidenceEnvelope`, `VenueInstrumentReadinessStateContext`,
+  `LiquidityCapacityEvidenceContext`, `CapitalMarginEvidenceContext`) into
+  `capacity_constraint_preflight`.
+
+### 7.5.7 Phase 6 barrier
+
+- This amendment authorizes **no** routing, sizing, allocation, wallet reservation, order intent,
+  `TradeCandidate`, `Signal`, `Order`, paper-trade, live-trade, execution, or actionability semantics.
+- **No production / paper / live / actionability / Phase-6 readiness is implied.** Completion of the
+  closed four-carrier contract remains a passive structural-convergence audit and **no Phase 6 bridge**.
+
+### 7.5.8 Planning-test implications (to be applied under TDD when this amendment is accepted)
+
+These are expected test expectations only; **no test code is written by this amendment**:
+
+- Assert `CapacityConstraintEvidenceBoundary` **remains absent** from the runtime module.
+- Assert `CapacityConstraintGate.preflight` **remains the callable boundary interface** (a
+  `staticmethod` resolving to `capacity_constraint_preflight`).
+- Assert **no separate Boundary wrapper** is introduced and **no exception swallowing** occurs
+  (`CapacityConstraintGateTypeError` / `CapacityConstraintMisroutedHaltCarrierError` propagate).
+- Assert **no Phase-6 / actionability semantics** (no routing/sizing/allocation/wallet/order/
+  candidate/signal/execution identifiers) appear in the runtime.
+
+<!-- BOUNDARY-CLASS-CANCELLATION-END -->
+
 ## 8. Deferred decisions
 
 The following are **deferred** and require separate, explicitly authorized work:
