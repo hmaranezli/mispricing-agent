@@ -8,7 +8,7 @@ factory's validation. Authored under `docs/handoff/phase6_1_shadow_input_wrapper
     recomputes, coerces, or reinterprets it);
   - carries minimal market provenance — venue, pair, and one explicit UTC epoch-millisecond integer;
   - carries `capacity_pass_reference`, whose Slice 0A meaning is exactly `None` / deferred. The
-    capacity gate is structurally complete but non-live-wirable (0 emit sites), so no capacity pass
+    capacity gate is structurally complete but non-activatable (0 emit sites), so no capacity pass
     token exists yet; any non-deferred value fails fast and this field must never be read as
     "capacity validated."
 

@@ -6,7 +6,7 @@ factory's validation. Authored under `docs/handoff/phase6_1_shadow_scoring_tdd_p
 
 `ShadowObservation` is a frozen, slotted, anti-coercion carrier that:
   - references exactly ONE `PassiveShadowInput` BY IDENTITY (its only admissible source; no dict,
-    JSON, raw Phase 5 object, or halt carrier may bypass it);
+    external mapping, raw Phase 5 object, or halt carrier may bypass it);
   - carries immutable replay-identity fields (artifact id + sequence index) sufficient for later
     replay reference;
   - carries a required `diagnostic_recorded_at_ms` — one explicit non-negative UTC epoch-millisecond
@@ -15,7 +15,7 @@ factory's validation. Authored under `docs/handoff/phase6_1_shadow_scoring_tdd_p
     rejected). It is a value supplied from elsewhere, never derived here.
 
 It is passive and replay-first. It performs NO calculation, NO scoring, NO readiness/actionability
-verdict, and has NO serialization/ledger/persistence methods (those belong to a later, separately
+verdict, and has NO external-output-sink or persistence methods (those belong to a later, separately
 authorized slice). The factory validates only. No IO, no network, no clock, no env, no randomness.
 """
 import math
@@ -143,7 +143,7 @@ def make_shadow_observation(
 
     ``component_name`` and ``boundary_version`` are NOT parameters — set internally from the module
     constants. ``source`` must be an exact :class:`PassiveShadowInput` (referenced by identity; no
-    dict/JSON/raw Phase 5 object/halt carrier may bypass it). ``diagnostic_recorded_at_ms`` is one
+    dict, external mapping, or raw Phase 5 object/halt carrier may bypass it). ``diagnostic_recorded_at_ms`` is one
     explicit non-negative UTC millisecond integer. ``diagnostic_passive_value`` is optional; when
     supplied it must be a finite float (NaN/Infinity rejected). Nothing is copied or derived.
     """
