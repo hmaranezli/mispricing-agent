@@ -1663,3 +1663,169 @@ def test_0c3_no_economic_or_actionability_identifiers_in_runtime():
             idents.add(n.arg.lower())
     bad = sorted({t for t in _FORBIDDEN_ECONOMIC_TOKENS if any(t in i for i in idents)})
     assert bad == [], f"economic/actionability identifiers present in runtime: {bad}"
+
+
+# ===================================================================================================
+# Slice 0C4: Boundary-cancellation / satisfied-by-Gate locks under the ACCEPTED §7.5 (Route A) charter
+# amendment. A distinct CapacityConstraintEvidenceBoundary Python class is NOT required and will NOT be
+# implemented: the boundary concept is fully satisfied by CapacityConstraintGate +
+# capacity_constraint_preflight + CapacityConstraintEvidenceContext + the BlockedPacket return path.
+# These tests lock that decision. No runtime change is authorized; every AST/source lock targets ONLY
+# the runtime module via _src()/_ast_tree(), never this test file.
+# ===================================================================================================
+
+# The frozen, exact runtime ClassDef set after §7.5. Any new *Boundary / wrapper class would change it.
+_KNOWN_RUNTIME_CLASSES = {
+    "CapacityConstraintEvidenceContextTruthinessError",
+    "CapacityConstraintEvidenceContextCoercionError",
+    "CapacityConstraintEvidenceContextTypeError",
+    "CapacityConstraintEvidenceContext",
+    "CapacityConstraintGateTypeError",
+    "CapacityConstraintMisroutedHaltCarrierError",
+    "CapacityConstraintGate",
+}
+
+# Fail-fast exception types that must never be swallowed/converted by any wrapper.
+_FAIL_FAST_EXCEPTIONS = {
+    "CapacityConstraintGateTypeError",
+    "CapacityConstraintMisroutedHaltCarrierError",
+}
+
+# Phase-6 / actionability identifiers that must never appear as runtime identifiers (extends the 0C3
+# lock). "route" is deliberately EXCLUDED as a bare token because the legitimate misroute guard class
+# `CapacityConstraintMisroutedHaltCarrierError` contains the substring "routed"; "routing" is used.
+_PHASE6_FORBIDDEN_TOKENS = (
+    "routing", "sizing", "allocation", "wallet", "reservation", "exposure", "balance",
+    "order", "candidate", "signal", "execution", "actionab", "trade", "paper", "live", "pnl",
+)
+
+
+def _runtime_classdefs():
+    return [n for n in ast.walk(_ast_tree()) if isinstance(n, ast.ClassDef)]
+
+
+def _runtime_identifiers():
+    idents = set()
+    for n in ast.walk(_ast_tree()):
+        if isinstance(n, ast.Name):
+            idents.add(n.id.lower())
+        elif isinstance(n, ast.Attribute):
+            idents.add(n.attr.lower())
+        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            idents.add(n.name.lower())
+        elif isinstance(n, ast.arg):
+            idents.add(n.arg.lower())
+    return idents
+
+
+# --- (1) Boundary absence lock ---
+
+def test_0c4_boundary_class_absent_reflection_ast_and_source():
+    import phase5.capacity_constraint_evidence_boundary as mod
+    assert not hasattr(mod, "CapacityConstraintEvidenceBoundary")
+    classdef_names = {c.name for c in _runtime_classdefs()}
+    assert "CapacityConstraintEvidenceBoundary" not in classdef_names
+    assert "class CapacityConstraintEvidenceBoundary" not in _src()
+
+
+# --- (2) Gate satisfaction lock ---
+
+def test_0c4_gate_preflight_is_the_callable_boundary_interface():
+    static_attr = inspect.getattr_static(CapacityConstraintGate, "preflight")
+    assert isinstance(static_attr, staticmethod), "Gate.preflight must be a staticmethod"
+    assert CapacityConstraintGate.preflight is capacity_constraint_preflight, \
+        "Gate.preflight must resolve directly to capacity_constraint_preflight"
+    # the Gate is callable as the boundary interface (same object, no wrapping layer)
+    assert callable(CapacityConstraintGate.preflight)
+
+
+# --- (3) No-wrapper lock ---
+
+def test_0c4_runtime_classdef_set_is_exactly_the_known_set_no_boundary_or_wrapper():
+    classdef_names = {c.name for c in _runtime_classdefs()}
+    assert classdef_names == _KNOWN_RUNTIME_CLASSES, \
+        f"unexpected runtime class set (a Boundary/wrapper may have been added): {classdef_names ^ _KNOWN_RUNTIME_CLASSES}"
+    # no class name implies a boundary/wrapper layer
+    assert not any(("boundary" in n.lower() or "wrapper" in n.lower()) for n in classdef_names)
+
+
+def test_0c4_no_class_method_delegates_to_preflight_as_redundant_wrapper():
+    # capacity_constraint_preflight may be bound by CapacityConstraintGate ONLY as a class-body
+    # `preflight = staticmethod(capacity_constraint_preflight)` assignment — never called inside a
+    # method body (which would be a redundant delegating wrapper).
+    tree = _ast_tree()
+    offenders = []
+    for cls in ast.walk(tree):
+        if isinstance(cls, ast.ClassDef):
+            for method in ast.walk(cls):
+                if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    for ref in ast.walk(method):
+                        if isinstance(ref, ast.Name) and ref.id == "capacity_constraint_preflight":
+                            offenders.append((cls.name, method.name))
+    assert offenders == [], f"redundant wrapper method(s) delegating to preflight: {offenders}"
+
+
+# --- (4) Exception policy lock (fail-fast; no swallowing) ---
+
+def _excepthandler_caught_names(handler):
+    names = set()
+    t = handler.type
+    if t is None:
+        return names
+    targets = t.elts if isinstance(t, ast.Tuple) else [t]
+    for node in targets:
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Name):
+                names.add(sub.id)
+            elif isinstance(sub, ast.Attribute):
+                names.add(sub.attr)
+    return names
+
+
+def test_0c4_fail_fast_exceptions_are_never_caught_in_runtime():
+    tree = _ast_tree()
+    for handler in ast.walk(tree):
+        if isinstance(handler, ast.ExceptHandler):
+            caught = _excepthandler_caught_names(handler)
+            assert not (caught & _FAIL_FAST_EXCEPTIONS), \
+                f"fail-fast exception(s) must never be caught/swallowed: {caught & _FAIL_FAST_EXCEPTIONS}"
+
+
+def test_0c4_preflight_body_has_no_try_wrapping_type_or_misroute_guard():
+    tree = _ast_tree()
+    pf = [
+        n for n in ast.walk(tree)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "capacity_constraint_preflight"
+    ]
+    assert len(pf) == 1, "exactly one capacity_constraint_preflight definition expected"
+    assert not any(isinstance(x, ast.Try) for x in ast.walk(pf[0])), \
+        "capacity_constraint_preflight must contain no try/except wrapping the guard path"
+
+
+def test_0c4_only_benign_invalid_operation_handler_preserved():
+    # The single legitimate handler (Decimal grammar validation) must remain; no new handlers added.
+    tree = _ast_tree()
+    caught = [
+        name
+        for h in ast.walk(tree) if isinstance(h, ast.ExceptHandler)
+        for name in _excepthandler_caught_names(h)
+    ]
+    assert caught == ["InvalidOperation"], f"runtime exception handlers changed unexpectedly: {caught}"
+
+
+# --- (5) Graceful blocked returns: already covered by 0C1/0C2 — reference lock only, NOT duplicated ---
+
+def test_0c4_graceful_blocked_returns_already_covered_reference_only():
+    # The five graceful BlockedPacket branches (MISSING/MALFORMED/IDENTITY/UNIT/STALE) are exercised by
+    # the existing 0C1/0C2 behavior tests; §7.5 adds NO new behavior here. This reference lock only
+    # confirms the runtime still emits exactly those five reason tokens (re-using the 0C3 helper),
+    # without re-running any behavior assertion.
+    assert _emitted_reason_tokens() == _FIVE_NON_UNDEFINED_TOKENS
+
+
+# --- (6) Phase-6 barrier lock (extended; does not weaken the 0C3 actionability lock) ---
+
+def test_0c4_no_phase6_or_actionability_identifiers_in_runtime():
+    idents = _runtime_identifiers()
+    bad = sorted({t for t in _PHASE6_FORBIDDEN_TOKENS if any(t in i for i in idents)})
+    assert bad == [], f"Phase-6/actionability identifiers present in runtime: {bad}"
