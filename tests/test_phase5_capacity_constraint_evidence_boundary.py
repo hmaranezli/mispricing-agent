@@ -1421,3 +1421,245 @@ def test_malformed_precedes_identity():
 def test_all_agree_still_passes_after_0c2():
     result = capacity_constraint_preflight(**_all_agree_inputs())
     assert type(result) is CapacityConstraintEvidenceContext
+
+
+# ===================================================================================================
+# Slice 0C3: characterization / lock coverage under the ACCEPTED §7.4 charter amendment. The amendment
+# pins all three UNDEFINED trigger families (identity / unit / source-triplet) OUT of Slice 0C3 runtime
+# scope: no finite vocabulary, identity registry, or source-triplet resolvability predicate is pinned
+# in any committed artifact, so none may be invented in runtime. UNDEFINED stays a DEFINED, RESERVED
+# reason token with ZERO emit sites; the closed four-carrier runtime sequence terminates at STALE ->
+# pass. These tests lock that contract. NO runtime change is authorized (the runtime is locked); every
+# AST/source lock targets ONLY the runtime module via _src()/_ast_tree(), never this test file.
+# ===================================================================================================
+
+# Deliberately out-of-vocabulary BUT internally consistent, grammar-valid exact-string values. Each
+# unit group stays self-consistent (size group vs capital group), identity agrees 4-way, size magnitude
+# and epochs are unchanged from the all-agree fixture, so the fixture is non-stale and must PASS.
+_OOV_IDENTITY = {
+    "venue": "UNKNOWN_EXCHANGE",
+    "instrument_id": "UNKNOWN_PAIR",
+    "base_asset": "MYSTERY_BASE",
+    "quote_asset": "MYSTERY_QUOTE",
+}
+_OOV_SIZE_UNIT = "GALACTIC_CREDITS"
+_OOV_CAPITAL_UNIT = "NEBULA_MARGIN"
+
+_SOURCE_TRIPLET_ATTRS = {"source_contract", "source_artifact", "source_field"}
+
+_FIVE_NON_UNDEFINED_TOKENS = {
+    "CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE",
+    "CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE",
+    "CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH",
+    "CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH",
+    "CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE",
+}
+
+# Economic / actionability identifiers that must never appear as runtime identifiers at this boundary.
+# Chosen so none is a substring of any legitimate convergence identifier (venue/instrument_id/
+# observed_size/capacity_unit/required_capital/source_*/epoch_ms/tolerance/etc.).
+_FORBIDDEN_ECONOMIC_TOKENS = (
+    "sizing", "allocation", "exposure", "wallet", "reservation",
+    "routing", "candidate", "actionab", "pnl", "paper_live", "order_size",
+)
+
+
+def _emitted_reason_tokens():
+    # Every reason token passed as the first positional arg to _capacity_constraint_blocked(...) in the
+    # RUNTIME module (AST-based; targets the runtime file only, never this test file).
+    tree = _ast_tree()
+    emitted = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_capacity_constraint_blocked"
+            and node.args
+            and isinstance(node.args[0], ast.Name)
+        ):
+            emitted.add(node.args[0].id)
+    return emitted
+
+
+def _oov_inputs():
+    base = _all_agree_inputs()
+    base["evidence_envelope"] = _rebuild(
+        base["evidence_envelope"], override={**_OOV_IDENTITY, "size_unit": _OOV_SIZE_UNIT}
+    )
+    base["venue_readiness"] = _rebuild(base["venue_readiness"], override={**_OOV_IDENTITY})
+    base["liquidity_evidence"] = _rebuild(
+        base["liquidity_evidence"],
+        override={**_OOV_IDENTITY, "observed_size_unit": _OOV_SIZE_UNIT, "capacity_unit": _OOV_SIZE_UNIT},
+    )
+    base["capital_evidence"] = _rebuild(
+        base["capital_evidence"],
+        override={
+            **_OOV_IDENTITY,
+            "observed_size_unit": _OOV_SIZE_UNIT,
+            "required_capital_unit": _OOV_CAPITAL_UNIT,
+            "available_free_capital_unit": _OOV_CAPITAL_UNIT,
+        },
+    )
+    return base
+
+
+# --- (1) UNDEFINED token remains defined / reserved and value equals its own name ---
+
+def test_0c3_undefined_token_remains_defined_and_reserved():
+    assert CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE == "CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE"
+    import phase5.capacity_constraint_evidence_boundary as mod
+    assert hasattr(mod, "CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE")
+    assert mod.CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE == CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE
+
+
+# --- (2) zero emit sites for UNDEFINED in the runtime ---
+
+def test_0c3_undefined_has_zero_emit_sites_in_runtime():
+    assert "CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE" not in _emitted_reason_tokens(), \
+        "UNDEFINED must have zero emit sites in Slice 0C3"
+
+
+# --- (3) no runtime UNDEFINED predicate / helper / branch reference is introduced ---
+
+def test_0c3_undefined_token_only_defined_never_referenced_in_runtime():
+    # The token identifier must appear exactly once in the runtime AST — its constant definition
+    # (a Store) — and never be loaded by any branch/predicate.
+    tree = _ast_tree()
+    names = [
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.Name) and n.id == "CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE"
+    ]
+    assert len(names) == 1, f"UNDEFINED token must appear exactly once (its definition); found {len(names)}"
+    assert isinstance(names[0].ctx, ast.Store), "the sole UNDEFINED occurrence must be its constant definition"
+
+
+def test_0c3_no_undefined_predicate_or_helper_defined_in_runtime():
+    tree = _ast_tree()
+    undefined_defs = [
+        n.name for n in ast.walk(tree)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and "undefined" in n.name.lower()
+    ]
+    assert undefined_defs == [], f"no UNDEFINED predicate/helper may be defined in runtime: {undefined_defs}"
+
+
+# --- (4) no finite vocabulary / registry / resolvability set invented ---
+
+def test_0c3_no_invented_vocabulary_or_registry_in_runtime():
+    src = _src()
+    assert "ALLOWED_SOURCE_CONTRACTS" not in src, "no ALLOWED_SOURCE_CONTRACTS binding allowed in runtime"
+    assert "frozenset" not in src, "no finite-vocabulary frozenset may be invented in runtime"
+    tree = _ast_tree()
+    set_nodes = [n for n in ast.walk(tree) if isinstance(n, (ast.Set, ast.SetComp))]
+    assert set_nodes == [], "no set/vocabulary literal may be introduced in runtime"
+
+
+def test_0c3_no_source_triplet_resolvability_predicate_in_runtime():
+    # No conditional may branch on any source_* attribute (no provenance resolvability predicate).
+    tree = _ast_tree()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If):
+            attrs = {a.attr for a in ast.walk(node.test) if isinstance(a, ast.Attribute)}
+            assert not (attrs & _SOURCE_TRIPLET_ATTRS), \
+                "runtime must not branch on source_* (no source-triplet resolvability predicate)"
+
+
+def test_0c3_no_source_triplet_equality_comparison_in_runtime():
+    # No comparison may have a source_* attribute as an operand (no equality/registry rule invented).
+    tree = _ast_tree()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Compare):
+            operands = [node.left, *node.comparators]
+            triplet_ops = [
+                o for o in operands if isinstance(o, ast.Attribute) and o.attr in _SOURCE_TRIPLET_ATTRS
+            ]
+            assert triplet_ops == [], "no source-triplet equality/resolvability comparison allowed in runtime"
+
+
+# --- (5) OOV-but-consistent fixture reaches the pass path, NOT UNDEFINED ---
+
+def test_0c3_oov_fixture_is_genuinely_out_of_vocabulary():
+    # Guard against vacuity: the OOV fixture must actually differ from the all-agree fixture.
+    oov, agree = _oov_inputs(), _all_agree_inputs()
+    assert oov["evidence_envelope"].venue != agree["evidence_envelope"].venue
+    assert oov["evidence_envelope"].size_unit != agree["evidence_envelope"].size_unit
+    assert oov["liquidity_evidence"].observed_size_unit != agree["liquidity_evidence"].observed_size_unit
+    assert oov["capital_evidence"].required_capital_unit != agree["capital_evidence"].required_capital_unit
+
+
+def test_0c3_oov_but_consistent_fixture_reaches_pass_not_undefined():
+    result = capacity_constraint_preflight(**_oov_inputs())
+    assert type(result) is CapacityConstraintEvidenceContext, \
+        "OOV-but-consistent, non-stale fixture must reach the structural pass path"
+    assert type(result) is not BlockedPacket
+    assert not hasattr(result, "reason_code"), "pass path must not emit any blocked reason_code (incl. UNDEFINED)"
+
+
+def test_0c3_oov_fixture_identity_and_units_internally_consistent_still_passes_via_gate():
+    # Same OOV fixture through the stateless gate namespace.
+    result = CapacityConstraintGate.preflight(**_oov_inputs())
+    assert type(result) is CapacityConstraintEvidenceContext
+
+
+# --- (6) existing 0B/0C1/0C2 emission set preserved (exactly the five non-UNDEFINED tokens) ---
+
+def test_0c3_runtime_emits_only_the_five_non_undefined_tokens():
+    assert _emitted_reason_tokens() == _FIVE_NON_UNDEFINED_TOKENS, \
+        "runtime must emit exactly MISSING/MALFORMED/IDENTITY/UNIT/STALE (UNDEFINED reserved, never emitted)"
+
+
+def test_0c3_missing_malformed_identity_unit_stale_precedence_preserved():
+    # Re-pin the full fail-closed precedence chain in one place after 0C3.
+    # MALFORMED precedes IDENTITY:
+    base = _all_agree_inputs()
+    base["evidence_envelope"] = _rebuild(base["evidence_envelope"], override={"observed_size": "1E+3"})
+    base["venue_readiness"] = _rebuild(base["venue_readiness"], override={"venue": "OTHER"})
+    assert capacity_constraint_preflight(**base).reason_code == CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE
+    # IDENTITY precedes UNIT + STALE:
+    base = _all_agree_inputs()
+    base["venue_readiness"] = _rebuild(base["venue_readiness"], override={"venue": "OTHER"})
+    base["liquidity_evidence"] = _rebuild(
+        base["liquidity_evidence"],
+        override={"observed_size_unit": "ETH", "liquidity_snapshot_epoch_ms": "1781637187999"},
+    )
+    assert capacity_constraint_preflight(**base).reason_code == CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH
+    # UNIT precedes STALE:
+    base = _all_agree_inputs()
+    base["liquidity_evidence"] = _rebuild(
+        base["liquidity_evidence"],
+        override={"capacity_unit": "ETH", "liquidity_snapshot_epoch_ms": "1781637187999"},
+    )
+    assert capacity_constraint_preflight(**base).reason_code == CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH
+    # MISSING still blocks:
+    assert capacity_constraint_preflight(
+        **_inputs_with("liquidity_evidence", drop="observed_size")
+    ).reason_code == CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE
+    # STALE still blocks:
+    assert capacity_constraint_preflight(
+        **_inputs_with("capital_evidence", override={"required_capital_epoch_ms": "1781637187999"})
+    ).reason_code == CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE
+
+
+# --- (7) CapacityConstraintEvidenceBoundary remains absent ---
+
+def test_0c3_boundary_class_remains_absent():
+    import phase5.capacity_constraint_evidence_boundary as mod
+    assert not hasattr(mod, "CapacityConstraintEvidenceBoundary")
+    assert "class CapacityConstraintEvidenceBoundary" not in _src()
+
+
+# --- (8) no routing / sizing / allocation / actionability / trade / order semantics in runtime ---
+
+def test_0c3_no_economic_or_actionability_identifiers_in_runtime():
+    tree = _ast_tree()
+    idents = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Name):
+            idents.add(n.id.lower())
+        elif isinstance(n, ast.Attribute):
+            idents.add(n.attr.lower())
+        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            idents.add(n.name.lower())
+        elif isinstance(n, ast.arg):
+            idents.add(n.arg.lower())
+    bad = sorted({t for t in _FORBIDDEN_ECONOMIC_TOKENS if any(t in i for i in idents)})
+    assert bad == [], f"economic/actionability identifiers present in runtime: {bad}"
