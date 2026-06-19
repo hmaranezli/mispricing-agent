@@ -457,6 +457,96 @@ no PnL, no net edge, no alpha/edge claim, and no economic actionability. **NO OR
 uses no float in parsing or comparison.
 <!-- GATE-CONTRACT-END -->
 
+## 7.3 Slice 0 final micro-hardening (charter amendment)
+
+<!-- GATE-HARDENING-START -->
+This section finalises four Slice 0 soft spots and preserves every §7.2 GATE-CONTRACT rule. It
+implements nothing. **NO ORDER EXISTS** at this boundary.
+
+### Deterministic missing_or_invalid_field mapping
+
+`missing_or_invalid_field` must be **deterministic**, **branch-specific**, and **never chosen dynamically**.
+When multiple fields fail in the same branch, the pinned branch-local order determines the first
+reported `missing_or_invalid_field`.
+
+- **Missing carrier:** the exact missing input parameter name, one of `evidence_envelope`,
+  `venue_readiness`, `liquidity_evidence`, `capital_evidence`.
+- **Missing required field/attribute:** the exact missing attribute name as written in the
+  charter/schema.
+- **Malformed scalar:** the exact malformed scalar field name.
+- **Identity mismatch:** follows the pinned identity sub-check order below; the first failing sub-check
+  determines it.
+- **Unit mismatch:** follows this pinned order (first failing sub-check determines it): `size_unit`,
+  `observed_size_unit`, `capacity_unit`, `required_capital_unit`, `available_free_capital_unit`.
+- **Stale evidence:** follows this pinned order (first failing epoch comparison determines it):
+  `liquidity_snapshot_epoch_ms`, `required_capital_epoch_ms`,
+  `available_free_capital_snapshot_epoch_ms`.
+- **Undefined evidence:** the exact field whose present, well-formed value is not resolvable within the
+  checked scope.
+
+### Identity sub-check order
+
+The exact **identity sub-check order** is, with the **first failing sub-check** determining
+`missing_or_invalid_field` and all six failures mapping to
+`CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH`:
+
+1. `venue` 4-way convergence
+2. `instrument_id` 4-way convergence
+3. `base_asset` 4-way convergence
+4. `quote_asset` 4-way convergence
+5. side convergence: `evidence_envelope.side == capital_evidence.side`
+6. size magnitude convergence of `observed_size`:
+
+```
+evidence_envelope.observed_size == liquidity_evidence.observed_size == capital_evidence.observed_size as Decimal magnitudes
+```
+
+### UNDEFINED branch trigger
+
+`UNDEFINED` is a **defensive but reachable** branch, **not dead code**. UNDEFINED means a required
+value/reference is present, exact-str, non-empty, non-whitespace, scalar-grammar-valid, and not
+missing/malformed, but it cannot be resolved inside the closed four-carrier checked scope.
+
+Concrete reachable examples:
+
+- a unit label is grammatically valid but outside the **finite allowed unit vocabulary** pinned by the contributing carrier schemas;
+- a venue/instrument/base/quote identifier is grammatically valid but outside the **finite identity vocabulary** available within the four supplied carriers' checked scope;
+- a `source_contract`/`source_artifact`/`source_field` reference is present and well-formed but is **not resolvable** among the four supplied carriers' provenance triplets.
+
+Exclusions (these never use UNDEFINED):
+
+- None is MALFORMED, not UNDEFINED;
+- empty string is MALFORMED, not UNDEFINED;
+- whitespace-only string is MALFORMED, not UNDEFINED;
+- missing attribute is MISSING, not UNDEFINED;
+- invalid Decimal grammar is MALFORMED, not UNDEFINED;
+- invalid epoch/tolerance grammar is MALFORMED, not UNDEFINED;
+- a mismatch among resolvable values remains IDENTITY_MISMATCH / UNIT_MISMATCH / STALE as applicable, not UNDEFINED.
+
+### AST / operator lock (future runtime test requirement)
+
+The Slice 0 runtime tests must include an AST / **operator lock** scoped to
+`phase5/capacity_constraint_evidence_boundary.py` after implementation. This is a
+**future runtime test requirement**; the planning doc carries no runtime class/def implementation.
+
+The only arithmetic/comparison the lock allows is Decimal size equality via
+`Decimal(...).compare(...) == Decimal("0")` and integer epoch tolerance via
+`abs(int(epoch_a) - int(epoch_b)) <= int(tolerance)`.
+
+Forbidden AST constructs for Slice 0 runtime: `ast.Add`, `ast.Mult`, `ast.Div`, `ast.FloorDiv`,
+`ast.Mod`, `ast.Pow`, `ast.MatMult`, and `ast.USub` for negative numeric construction.
+
+Forbidden calls: calls to float, calls to min, calls to max, calls to sum, calls to round, and calls to sorted for branch ordering.
+
+Forbidden imports: any import of math, statistics, numpy, pandas, datetime, time, os, socket, requests, urllib, subprocess, json.
+
+`ast.Sub is allowed only` inside the epoch tolerance expression equivalent to
+`abs(int(epoch_a) - int(epoch_b)) <= int(tolerance)`; `ast.Sub` must not appear in
+size/capacity/economic/order/allocation/exposure logic.
+`ast.LtE is allowed only` for the epoch tolerance comparison; no economic/capacity sufficiency
+comparison is allowed.
+<!-- GATE-HARDENING-END -->
+
 ## 8. Deferred decisions
 
 The following are **deferred** and require separate, explicitly authorized work:

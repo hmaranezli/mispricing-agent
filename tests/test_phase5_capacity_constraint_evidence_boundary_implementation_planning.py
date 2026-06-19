@@ -220,6 +220,38 @@ SLICE0_FORBIDDEN_LOGIC = [
     "no alpha/edge claim", "no economic actionability", "NO ORDER EXISTS",
 ]
 
+# ---- Slice 0 final micro-hardening (charter amendment) ----
+
+MISSING_CARRIER_PARAMS = [
+    "evidence_envelope", "venue_readiness", "liquidity_evidence", "capital_evidence",
+]
+
+IDENTITY_SUBCHECK_ORDER = [
+    "venue", "instrument_id", "base_asset", "quote_asset", "side", "observed_size",
+]
+
+UNIT_SUBCHECK_ORDER = [
+    "size_unit", "observed_size_unit", "capacity_unit",
+    "required_capital_unit", "available_free_capital_unit",
+]
+
+STALE_SUBCHECK_ORDER = [
+    "liquidity_snapshot_epoch_ms", "required_capital_epoch_ms",
+    "available_free_capital_snapshot_epoch_ms",
+]
+
+SLICE0_FORBIDDEN_AST = [
+    "ast.Add", "ast.Mult", "ast.Div", "ast.FloorDiv", "ast.Mod", "ast.Pow",
+    "ast.MatMult", "ast.USub",
+]
+
+SLICE0_FORBIDDEN_CALLS = ["float", "min", "max", "sum", "round", "sorted"]
+
+SLICE0_FORBIDDEN_IMPORTS = [
+    "math", "statistics", "numpy", "pandas", "datetime", "time", "os", "socket",
+    "requests", "urllib", "subprocess", "json",
+]
+
 
 def _read():
     assert os.path.isfile(DOC), f"capacity-constraint planning doc missing: {DOC}"
@@ -668,3 +700,78 @@ def test_slice0_forbidden_logic_pinned():
     for phrase in SLICE0_FORBIDDEN_LOGIC:
         assert phrase in text, f"forbidden-logic phrase missing: {phrase}"
     assert "no float" in _read().lower()
+
+
+# ---- Slice 0 final micro-hardening (charter amendment) ----
+
+def test_missing_or_invalid_field_is_deterministic_branch_specific():
+    low = _read().lower()
+    assert "deterministic" in low
+    assert "branch-specific" in low
+    assert "never chosen dynamically" in low
+
+
+def test_missing_carrier_field_policy_pinned():
+    text = _read()
+    low = text.lower()
+    assert "missing carrier" in low
+    for p in MISSING_CARRIER_PARAMS:
+        assert p in text, f"missing-carrier param name not pinned: {p}"
+
+
+def test_identity_subcheck_order_pinned():
+    text = _read()
+    low = text.lower()
+    assert "identity sub-check order" in low
+    for f in IDENTITY_SUBCHECK_ORDER:
+        assert f in text, f"identity sub-check field missing: {f}"
+    assert "evidence_envelope.side == capital_evidence.side" in text
+    assert "as Decimal magnitudes" in text
+    assert "first failing sub-check" in low
+    assert "CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH" in text
+
+
+def test_unit_subcheck_order_pinned():
+    text = _read()
+    for f in UNIT_SUBCHECK_ORDER:
+        assert f in text, f"unit sub-check field missing: {f}"
+
+
+def test_stale_subcheck_order_pinned():
+    text = _read()
+    for f in STALE_SUBCHECK_ORDER:
+        assert f in text, f"stale sub-check field missing: {f}"
+
+
+def test_undefined_branch_reachable_with_examples_and_exclusions():
+    low = _read().lower()
+    assert "defensive but reachable" in low
+    assert "not dead code" in low
+    assert "finite allowed unit vocabulary" in low
+    assert "finite identity vocabulary" in low
+    assert "not resolvable" in low
+    # exclusions
+    assert "none is malformed, not undefined" in low
+    assert "missing attribute is missing, not undefined" in low
+
+
+def test_ast_operator_lock_pinned():
+    text = _read()
+    low = text.lower()
+    assert "operator lock" in low
+    for node in SLICE0_FORBIDDEN_AST:
+        assert node in text, f"forbidden AST node not pinned: {node}"
+    for c in SLICE0_FORBIDDEN_CALLS:
+        assert f"calls to {c}" in text, f"forbidden call not pinned: {c}"
+    for m in SLICE0_FORBIDDEN_IMPORTS:
+        assert m in text, f"forbidden import not pinned: {m}"
+    assert "ast.Sub is allowed only" in text
+    assert "ast.LtE is allowed only" in text
+    assert "future runtime test requirement" in low
+
+
+def test_ast_lock_introduces_no_runtime_implementation():
+    src = _read()
+    assert "class CapacityConstraintGate" not in src
+    assert "def capacity_constraint_preflight" not in src
+    assert "class CapacityConstraintEvidenceBoundary" not in src
