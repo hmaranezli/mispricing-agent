@@ -488,8 +488,56 @@ def capacity_constraint_preflight(
                 return _capacity_constraint_blocked(
                     CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE, field_name, evidence_envelope
                 )
-    # All-agree pass path: verbatim per-source provenance transfer into the 12-param factory. (Slice 0C2
-    # will insert the fail-closed identity/unit/stale/undefined convergence checks before this return.)
+    # By this point every convergence-relevant scalar is present (MISSING) and grammar-valid (MALFORMED),
+    # so the Decimal/int parses below cannot raise. Local aliases for readability of the pinned checks.
+    ee = evidence_envelope
+    vr = venue_readiness
+    le = liquidity_evidence
+    ce = capital_evidence
+
+    # IDENTITY_MISMATCH branch (after MALFORMED, before UNIT). Pinned sub-order; first failing -> field.
+    if not (ee.venue == vr.venue == le.venue == ce.venue):
+        return _capacity_constraint_blocked(CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH, "venue", ee)
+    if not (ee.instrument_id == vr.instrument_id == le.instrument_id == ce.instrument_id):
+        return _capacity_constraint_blocked(CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH, "instrument_id", ee)
+    if not (ee.base_asset == vr.base_asset == le.base_asset == ce.base_asset):
+        return _capacity_constraint_blocked(CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH, "base_asset", ee)
+    if not (ee.quote_asset == vr.quote_asset == le.quote_asset == ce.quote_asset):
+        return _capacity_constraint_blocked(CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH, "quote_asset", ee)
+    if not (ee.side == ce.side):
+        return _capacity_constraint_blocked(CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH, "side", ee)
+    # observed_size magnitude equality: Decimal compare ONLY, anchored on evidence_envelope (so a
+    # divergent evidence_envelope size cannot slip through a LIQ-vs-CAP-only comparison).
+    if not (Decimal(ee.observed_size).compare(Decimal(le.observed_size)) == Decimal("0")
+            and Decimal(ee.observed_size).compare(Decimal(ce.observed_size)) == Decimal("0")):
+        return _capacity_constraint_blocked(CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH, "observed_size", ee)
+
+    # UNIT_MISMATCH branch (after IDENTITY, before STALE). Canonical group-field reporting.
+    if not (ee.size_unit == le.observed_size_unit == ce.observed_size_unit):
+        return _capacity_constraint_blocked(CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH, "size_unit", ee)
+    if not (le.capacity_unit == le.observed_size_unit):
+        return _capacity_constraint_blocked(CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH, "capacity_unit", ee)
+    if not (ce.required_capital_unit == ce.available_free_capital_unit):
+        return _capacity_constraint_blocked(CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH, "required_capital_unit", ee)
+
+    # STALE_EVIDENCE branch (after UNIT). Anchor = evidence_envelope.observed_at_epoch_ms; integer
+    # abs-difference within the carrier's own tolerance. `<=` boundary is NOT stale. No clock, no float.
+    anchor = ee.observed_at_epoch_ms
+    if not (abs(int(anchor) - int(le.liquidity_snapshot_epoch_ms)) <= int(le.evidence_epoch_tolerance_ms)):
+        return _capacity_constraint_blocked(
+            CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE, "liquidity_snapshot_epoch_ms", ee
+        )
+    if not (abs(int(anchor) - int(ce.required_capital_epoch_ms)) <= int(ce.evidence_epoch_tolerance_ms)):
+        return _capacity_constraint_blocked(
+            CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE, "required_capital_epoch_ms", ee
+        )
+    if not (abs(int(anchor) - int(ce.available_free_capital_snapshot_epoch_ms)) <= int(ce.evidence_epoch_tolerance_ms)):
+        return _capacity_constraint_blocked(
+            CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE, "available_free_capital_snapshot_epoch_ms", ee
+        )
+
+    # Structural-convergence pass path (NOT final pass readiness: the UNDEFINED out-of-vocabulary /
+    # unresolvable-provenance branch is Slice 0C3). Verbatim per-source provenance transfer.
     return make_capacity_constraint_evidence_context(
         post_profitability_source_contract=evidence_envelope.source_contract,
         post_profitability_source_artifact=evidence_envelope.source_artifact,

@@ -380,11 +380,14 @@ PREFLIGHT_PARAM_ORDER = (
 
 STUB_MESSAGE = "Slice 0 structural join and branch logic not yet implemented"
 
-# AST lock vocabularies (Slice 0A, extended for 0C1). `ast.Sub` and `ast.LtE` stay forbidden in 0C1
-# (they are reserved for the Slice 0C2 epoch-tolerance comparison `abs(int(a) - int(b)) <= int(tol)`).
+# AST lock vocabularies (Slice 0A, extended through 0C2). `ast.Sub` and `ast.LtE` are NO LONGER
+# globally forbidden in 0C2, but are STRICTLY scoped: `ast.Sub` may appear only as the BinOp inside
+# `abs(int(epoch_a) - int(epoch_b))` and `ast.LtE` only in the stale comparison
+# `abs(...) <= int(tolerance)` (enforced by dedicated shape tests below). All other arithmetic stays
+# forbidden.
 FORBIDDEN_CALL_NAMES = ("float", "min", "max", "sum", "round", "sorted")
 FORBIDDEN_OPERATOR_NODES = (
-    ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow, ast.MatMult, ast.USub,
+    ast.Add, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow, ast.MatMult, ast.USub,
 )
 FORBIDDEN_IMPORT_ROOTS = (
     "math", "statistics", "numpy", "pandas", "datetime", "time", "os", "socket",
@@ -523,17 +526,69 @@ def test_ast_forbids_arithmetic_operator_nodes():
     assert offenders == [], f"forbidden operator node(s) present: {offenders}"
 
 
-def test_ast_forbids_lte_comparison_in_0c1():
-    # `ast.LtE` is reserved for the Slice 0C2 epoch-tolerance comparison and must not appear yet.
+def _is_int_call(node):
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "int"
+
+
+def _is_abs_call(node):
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "abs"
+
+
+def _is_decimal_call(node):
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Decimal"
+
+
+def test_ast_sub_only_inside_abs_of_two_int_calls():
+    # Every ast.Sub must be the BinOp `int(...) - int(...)` and the SOLE argument of an abs(...) call.
     tree = _ast_tree()
-    offenders = [
-        type(op).__name__
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Compare)
-        for op in node.ops
-        if isinstance(op, ast.LtE)
+    sub_nodes = [n for n in ast.walk(tree) if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Sub)]
+    abs_arg_subs = []
+    for n in ast.walk(tree):
+        if _is_abs_call(n):
+            assert len(n.args) == 1 and not n.keywords, "abs(...) must take exactly one positional arg"
+            arg = n.args[0]
+            assert isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Sub), "abs(...) arg must be int-int Sub"
+            assert _is_int_call(arg.left) and _is_int_call(arg.right), "abs Sub operands must be int() calls"
+            abs_arg_subs.append(arg)
+    # the set of all Sub nodes is exactly the set of abs-arg Subs (no stray subtraction anywhere)
+    assert {id(s) for s in sub_nodes} == {id(s) for s in abs_arg_subs}, \
+        "ast.Sub present outside abs(int(a) - int(b))"
+
+
+def test_ast_lte_only_in_stale_tolerance_comparison():
+    # Every ast.LtE must be the comparison `abs(...) <= int(...)` (single LtE op).
+    tree = _ast_tree()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Compare) and any(isinstance(op, ast.LtE) for op in node.ops):
+            assert node.ops == [ast.LtE] or all(isinstance(op, ast.LtE) for op in node.ops)
+            assert len(node.ops) == 1 and len(node.comparators) == 1, "LtE must be a single binary compare"
+            assert _is_abs_call(node.left), "LtE left side must be abs(int(a) - int(b))"
+            assert _is_int_call(node.comparators[0]), "LtE right side must be int(tolerance)"
+
+
+def test_ast_compare_method_only_decimal_size_equality():
+    # Every `.compare(...)` call must be `Decimal(...).compare(Decimal(...))` and be compared `== Decimal("0")`.
+    tree = _ast_tree()
+    compare_calls = [
+        n for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "compare"
     ]
-    assert offenders == [], "ast.LtE present in runtime (reserved for Slice 0C2 epoch tolerance)"
+    assert compare_calls, "expected at least one Decimal.compare call in Slice 0C2"
+    for c in compare_calls:
+        assert _is_decimal_call(c.func.value), ".compare receiver must be a Decimal(...) call"
+        assert len(c.args) == 1 and _is_decimal_call(c.args[0]), ".compare arg must be a Decimal(...) call"
+    # each compare call is the left operand of an Eq comparison whose right side is Decimal("0")
+    ok_compares = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Compare) and node.ops and isinstance(node.ops[0], ast.Eq):
+            if isinstance(node.left, ast.Call) and isinstance(node.left.func, ast.Attribute) \
+                    and node.left.func.attr == "compare":
+                right = node.comparators[0]
+                assert _is_decimal_call(right), "Decimal.compare must be compared to Decimal(\"0\")"
+                assert right.args and isinstance(right.args[0], ast.Constant) and right.args[0].value == "0"
+                ok_compares.add(id(node.left))
+    assert {id(c) for c in compare_calls} == ok_compares, \
+        ".compare result must always be `== Decimal(\"0\")`"
 
 
 def test_ast_forbids_forbidden_imports():
@@ -905,17 +960,20 @@ def test_misroute_path_returns_no_context_or_packet():
     assert result is None
 
 
-# --- Slice 0B boundary: divergent behavior deferred to 0C; 0C machinery must remain absent ---
+# --- Slice 0C2 boundary: UNDEFINED + final pass remain deferred to Slice 0C3 ---
 
-def test_slice0c1_is_not_final_pass_readiness_no_0c2_machinery():
-    # NAMED BOUNDARY: Slice 0C1 (MISSING + MALFORMED only) is NOT final pass readiness and is NOT
-    # live-wirable before Slice 0C2 adds identity/unit/stale/undefined fail-closed convergence. 0C1
-    # legitimately uses `make_blocked_packet(` and `Decimal(` (grammar validation only). The Slice 0C2
-    # machinery — Decimal magnitude comparison (`.compare(`) and epoch tolerance — must remain absent.
+def test_slice0c2_is_not_final_pass_readiness_undefined_deferred():
+    # NAMED BOUNDARY: Slice 0C2 (IDENTITY + UNIT + STALE) is NOT final pass readiness and is NOT
+    # live-wirable before Slice 0C3 adds the UNDEFINED (out-of-finite-vocabulary / unresolvable
+    # provenance) branch. 0C2 must NOT emit an UNDEFINED blocked packet and must NOT introduce any
+    # domain vocabulary; a present/well-formed/internally-consistent but out-of-vocabulary fixture
+    # would still fall through to the structural pass until 0C3 lands.
     src = _src()
-    for absent in (".compare(",):
-        assert absent not in src, f"0C2-only machinery leaked into Slice 0C1 runtime: {absent!r}"
-    # ast.Sub / ast.LtE absence is enforced by the dedicated AST tests above.
+    # UNDEFINED reason token may be DEFINED (0A constant) but must not be EMITTED as a reason_code.
+    assert "CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE, " not in src, \
+        "UNDEFINED must not be emitted in Slice 0C2"
+    import phase5.capacity_constraint_evidence_boundary as mod
+    assert not hasattr(mod, "CapacityConstraintEvidenceBoundary")
 
 
 def test_no_isinstance_used_in_runtime():
@@ -1084,13 +1142,17 @@ def test_malformed_epoch_field_returns_blocked_malformed():
 
 
 def test_valid_epoch_grammars_do_not_trigger_malformed():
+    # Grammar-valid epoch strings must never be flagged MALFORMED. (Under 0C2 a grammar-valid epoch
+    # that is far from the anchor is legitimately STALE — a separate branch — so we assert only the
+    # absence of a MALFORMED verdict, not a structural pass.)
     for good in ["0", "1", "1781637248000"]:
         base = _all_agree_inputs()
         base["liquidity_evidence"] = _rebuild(
             base["liquidity_evidence"], override={"liquidity_snapshot_epoch_ms": good}
         )
         result = capacity_constraint_preflight(**base)
-        assert type(result) is CapacityConstraintEvidenceContext, f"epoch={good!r} should not block"
+        if type(result) is BlockedPacket:
+            assert result.reason_code != CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE, f"epoch={good!r}"
 
 
 def test_malformed_packet_uses_canonical_evidence_envelope_provenance():
@@ -1150,13 +1212,212 @@ def test_0b_all_agree_still_returns_context_after_0c1():
     assert type(result) is CapacityConstraintEvidenceContext
 
 
-# --- 0C2 convergence remains absent ---
+# --- only UNDEFINED convergence remains absent after 0C2 (identity/unit/stale now implemented) ---
 
-def test_identity_unit_stale_undefined_remain_unimplemented_0c1():
+def test_only_undefined_convergence_remains_unimplemented_after_0c2():
+    # After 0C2, the runtime emits MISSING, MALFORMED, IDENTITY_MISMATCH, UNIT_MISMATCH, STALE_EVIDENCE.
+    # UNDEFINED must remain unemitted (0C3) and the boundary class must remain absent.
     src = _src()
-    assert ".compare(" not in src           # no Decimal magnitude comparison (size equality is 0C2)
-    assert "IDENTITY_MISMATCH" not in src.replace("CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH", "")
-    # the IDENTITY/UNIT/STALE/UNDEFINED reason tokens may be DEFINED (0A constants) but must not be
-    # EMITTED yet: only MISSING and MALFORMED tokens may appear as reason_code arguments in 0C1.
+    assert "CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE, " not in src, \
+        "UNDEFINED must not be emitted before Slice 0C3"
     import phase5.capacity_constraint_evidence_boundary as mod
     assert not hasattr(mod, "CapacityConstraintEvidenceBoundary")
+
+
+# ===================================================================================================
+# Slice 0C2: IDENTITY_MISMATCH, UNIT_MISMATCH, STALE_EVIDENCE fail-closed convergence checks, inserted
+# after MISSING/MALFORMED and before the pass path. Decimal magnitude equality for observed_size;
+# integer abs-difference epoch tolerance for staleness. UNDEFINED remains deferred to Slice 0C3.
+# ===================================================================================================
+
+# --- IDENTITY_MISMATCH ---
+
+def test_identity_4way_mismatch_per_subcheck():
+    cases = [
+        ("venue_readiness", "venue", "venue"),
+        ("venue_readiness", "instrument_id", "instrument_id"),
+        ("liquidity_evidence", "base_asset", "base_asset"),
+        ("capital_evidence", "quote_asset", "quote_asset"),
+    ]
+    for slot, field, reported in cases:
+        result = capacity_constraint_preflight(**_inputs_with(slot, override={field: "DIVERGENT"}))
+        assert type(result) is BlockedPacket, f"{slot}.{field}"
+        assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH
+        assert result.missing_or_invalid_field == reported
+
+
+def test_identity_side_mismatch():
+    result = capacity_constraint_preflight(**_inputs_with("capital_evidence", override={"side": "SHORT"}))
+    assert type(result) is BlockedPacket
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH
+    assert result.missing_or_invalid_field == "side"
+
+
+def test_identity_observed_size_mismatch_anchored_on_evidence_envelope():
+    # ARMOR: evidence_envelope.observed_size differs while liquidity == capital. Must still block,
+    # proving the comparison is anchored on evidence_envelope (not just LIQ vs CAP).
+    base = _all_agree_inputs()
+    base["evidence_envelope"] = _rebuild(base["evidence_envelope"], override={"observed_size": "2.0"})
+    # liquidity_evidence and capital_evidence stay at "1.5"
+    result = capacity_constraint_preflight(**base)
+    assert type(result) is BlockedPacket
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH
+    assert result.missing_or_invalid_field == "observed_size"
+
+
+def test_identity_observed_size_magnitude_equality_ignores_representation():
+    # "1.5" vs "1.50" vs "1.500" are magnitude-equal under Decimal.compare; must NOT block on identity.
+    base = _all_agree_inputs()
+    base["evidence_envelope"] = _rebuild(base["evidence_envelope"], override={"observed_size": "1.5"})
+    base["liquidity_evidence"] = _rebuild(base["liquidity_evidence"], override={"observed_size": "1.50"})
+    base["capital_evidence"] = _rebuild(base["capital_evidence"], override={"observed_size": "1.500"})
+    result = capacity_constraint_preflight(**base)
+    assert type(result) is CapacityConstraintEvidenceContext
+
+
+def test_identity_subcheck_order_venue_before_instrument():
+    base = _all_agree_inputs()
+    base["venue_readiness"] = _rebuild(base["venue_readiness"], override={"venue": "X", "instrument_id": "Y"})
+    result = capacity_constraint_preflight(**base)
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH
+    assert result.missing_or_invalid_field == "venue"
+
+
+def test_identity_packet_canonical_provenance():
+    inputs = _inputs_with("liquidity_evidence", override={"venue": "OTHER"})
+    ee = inputs["evidence_envelope"]
+    p = capacity_constraint_preflight(**inputs)
+    assert p.source_contract == ee.source_contract
+    assert p.source_artifact == ee.source_artifact
+    assert p.source_field == ee.source_field
+
+
+# --- UNIT_MISMATCH (canonical group-field reporting) ---
+
+def test_unit_size_unit_group_mismatch():
+    # liquidity_evidence.observed_size_unit diverges from evidence_envelope.size_unit -> "size_unit".
+    result = capacity_constraint_preflight(**_inputs_with("liquidity_evidence", override={"observed_size_unit": "ETH"}))
+    assert type(result) is BlockedPacket
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH
+    assert result.missing_or_invalid_field == "size_unit"
+
+
+def test_unit_capacity_unit_group_mismatch():
+    # liquidity_evidence.capacity_unit diverges from its observed_size_unit -> "capacity_unit".
+    result = capacity_constraint_preflight(**_inputs_with("liquidity_evidence", override={"capacity_unit": "ETH"}))
+    assert type(result) is BlockedPacket
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH
+    assert result.missing_or_invalid_field == "capacity_unit"
+
+
+def test_unit_required_capital_unit_group_mismatch():
+    # capital_evidence.required_capital_unit diverges from available_free_capital_unit -> "required_capital_unit".
+    result = capacity_constraint_preflight(**_inputs_with("capital_evidence", override={"required_capital_unit": "EUR"}))
+    assert type(result) is BlockedPacket
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH
+    assert result.missing_or_invalid_field == "required_capital_unit"
+
+
+def test_unit_subcheck_order_size_unit_before_capacity_unit():
+    base = _all_agree_inputs()
+    # break the size-unit group (via cap.observed_size_unit) AND the capacity-unit group simultaneously.
+    base["capital_evidence"] = _rebuild(base["capital_evidence"], override={"observed_size_unit": "ETH"})
+    base["liquidity_evidence"] = _rebuild(base["liquidity_evidence"], override={"capacity_unit": "ETH"})
+    result = capacity_constraint_preflight(**base)
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH
+    assert result.missing_or_invalid_field == "size_unit"
+
+
+# --- STALE_EVIDENCE (anchor = evidence_envelope.observed_at_epoch_ms) ---
+
+def test_stale_liquidity_snapshot_over_tolerance():
+    # anchor 1781637248000, tol 60000; epoch_b diff 60001 -> stale.
+    result = capacity_constraint_preflight(
+        **_inputs_with("liquidity_evidence", override={"liquidity_snapshot_epoch_ms": "1781637187999"})
+    )
+    assert type(result) is BlockedPacket
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE
+    assert result.missing_or_invalid_field == "liquidity_snapshot_epoch_ms"
+
+
+def test_stale_required_capital_epoch_over_tolerance():
+    result = capacity_constraint_preflight(
+        **_inputs_with("capital_evidence", override={"required_capital_epoch_ms": "1781637187999"})
+    )
+    assert type(result) is BlockedPacket
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE
+    assert result.missing_or_invalid_field == "required_capital_epoch_ms"
+
+
+def test_stale_available_free_capital_snapshot_over_tolerance():
+    result = capacity_constraint_preflight(
+        **_inputs_with("capital_evidence", override={"available_free_capital_snapshot_epoch_ms": "1781637187999"})
+    )
+    assert type(result) is BlockedPacket
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE
+    assert result.missing_or_invalid_field == "available_free_capital_snapshot_epoch_ms"
+
+
+def test_stale_within_tolerance_boundary_not_stale():
+    # diff exactly == tolerance (60000) -> within (<=), not stale -> structural pass.
+    result = capacity_constraint_preflight(
+        **_inputs_with("liquidity_evidence", override={"liquidity_snapshot_epoch_ms": "1781637188000"})
+    )
+    assert type(result) is CapacityConstraintEvidenceContext
+
+
+def test_stale_subcheck_order_liquidity_before_required_capital():
+    base = _all_agree_inputs()
+    base["liquidity_evidence"] = _rebuild(base["liquidity_evidence"], override={"liquidity_snapshot_epoch_ms": "1781637187999"})
+    base["capital_evidence"] = _rebuild(base["capital_evidence"], override={"required_capital_epoch_ms": "1781637187999"})
+    result = capacity_constraint_preflight(**base)
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE
+    assert result.missing_or_invalid_field == "liquidity_snapshot_epoch_ms"
+
+
+def test_ppe_staleness_threshold_ms_not_referenced_in_runtime():
+    assert "staleness_threshold_ms" not in _src()
+
+
+def test_stale_packet_canonical_provenance():
+    inputs = _inputs_with("liquidity_evidence", override={"liquidity_snapshot_epoch_ms": "1781637187999"})
+    ee = inputs["evidence_envelope"]
+    p = capacity_constraint_preflight(**inputs)
+    assert p.reason_code == CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE
+    assert p.source_contract == ee.source_contract
+    assert p.source_artifact == ee.source_artifact
+    assert p.source_field == ee.source_field
+
+
+# --- cross-branch precedence ---
+
+def test_identity_precedes_unit_and_stale():
+    base = _all_agree_inputs()
+    base["venue_readiness"] = _rebuild(base["venue_readiness"], override={"venue": "OTHER"})       # identity
+    base["liquidity_evidence"] = _rebuild(base["liquidity_evidence"], override={"observed_size_unit": "ETH", "liquidity_snapshot_epoch_ms": "1781637187999"})  # unit + stale
+    result = capacity_constraint_preflight(**base)
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH
+    assert result.missing_or_invalid_field == "venue"
+
+
+def test_unit_precedes_stale():
+    base = _all_agree_inputs()
+    base["liquidity_evidence"] = _rebuild(base["liquidity_evidence"], override={"capacity_unit": "ETH", "liquidity_snapshot_epoch_ms": "1781637187999"})
+    result = capacity_constraint_preflight(**base)
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH
+    assert result.missing_or_invalid_field == "capacity_unit"
+
+
+def test_malformed_precedes_identity():
+    # observed_size malformed on evidence_envelope (MALFORMED) AND venue identity mismatch.
+    base = _all_agree_inputs()
+    base["evidence_envelope"] = _rebuild(base["evidence_envelope"], override={"observed_size": "1E+3"})
+    base["venue_readiness"] = _rebuild(base["venue_readiness"], override={"venue": "OTHER"})
+    result = capacity_constraint_preflight(**base)
+    assert result.reason_code == CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE
+    assert result.missing_or_invalid_field == "observed_size"
+
+
+def test_all_agree_still_passes_after_0c2():
+    result = capacity_constraint_preflight(**_all_agree_inputs())
+    assert type(result) is CapacityConstraintEvidenceContext
