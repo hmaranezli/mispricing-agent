@@ -6,14 +6,15 @@ This boundary, if ever authorized, is framed as a passive **constitutional safet
 NOT a downstream Phase 6 component and NOT an actionable decision engine. Slice 0 is a structural
 multi-source join auditor over exactly four already-implemented Phase 5 carriers; it computes no
 min(), no final capacity, no order size, no allocation, and no exposure. Runs no batch, fetches no
-endpoint, builds no engine, edits no runtime code, and asserts no runtime module exists.
+endpoint, builds no engine, edits no runtime code, and asserts the planning artifact itself contains
+no runtime implementation code. (Whether the separately authorized runtime module exists is governed
+by the implementation test suite, not this planning artifact.)
 """
 import os
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOC = os.path.join(REPO, "docs", "handoff",
                    "phase5_capacity_constraint_evidence_boundary_implementation_planning.md")
-RUNTIME = os.path.join(REPO, "phase5", "capacity_constraint_evidence_boundary.py")
 
 FRAMING_START = "<!-- FRAMING-START -->"
 FRAMING_END = "<!-- FRAMING-END -->"
@@ -441,8 +442,15 @@ def test_slotted_no_instance_dict_and_no_dynamic_attribute():
     assert "physically blocked" in low
 
 
-# ---- runtime must remain absent (planning batch only) ----
+# ---- docs-only guard: the planning artifact carries no runtime implementation code ----
 
-def test_runtime_module_absent():
-    assert not os.path.isfile(RUNTIME), \
-        "planning batch must not create phase5/capacity_constraint_evidence_boundary.py"
+def test_planning_doc_contains_no_runtime_implementation():
+    # Durable docs-only guard: the planning artifact pins names in prose but must never carry a
+    # runtime class/function definition. (Whether the separately authorized runtime module exists is
+    # governed by the implementation test suite, not this planning artifact.)
+    src = _read()
+    assert "class CapacityConstraintEvidenceContext" not in src
+    assert "class CapacityConstraintEvidenceBoundary" not in src
+    assert "class CapacityConstraintGate" not in src
+    assert "def make_capacity_constraint_evidence_context" not in src
+    assert "def capacity_constraint_preflight" not in src
