@@ -134,12 +134,45 @@ no audit, no gate, no preflight, and no join logic. **NO ORDER EXISTS** at this 
 ### Factory (exact)
 
 - The only construction entry point is the factory `make_capacity_constraint_evidence_context`.
-- The factory signature is **keyword-only** and accepts **exactly** the closed field set below — no
-  positional parameters, no extra keywords, and no defaults.
+- The factory signature is **keyword-only** and accepts **exactly twelve (12)** caller-supplied
+  parameters — the four per-source provenance triplets only (items 3–14 of the closed field set):
+  `post_profitability_source_contract`, `post_profitability_source_artifact`,
+  `post_profitability_source_field`, `venue_readiness_source_contract`,
+  `venue_readiness_source_artifact`, `venue_readiness_source_field`,
+  `liquidity_capacity_source_contract`, `liquidity_capacity_source_artifact`,
+  `liquidity_capacity_source_field`, `capital_margin_source_contract`,
+  `capital_margin_source_artifact`, `capital_margin_source_field`. No positional parameters, no extra
+  keywords, and no defaults.
+- The factory **must not accept** `component_name` or `boundary_version` as parameters; these two
+  stored fields are set **internally** from constants (see Internal constants). Passing
+  `component_name` or `boundary_version` must raise `TypeError` as unexpected keyword input.
 - **Direct construction is blocked**: the carrier may not be built by calling its type directly; only
   the factory may build it.
 - Every supplied field value must be **exact str** (`type(value) is str`), **non-empty**, and
   **non-whitespace**, and is stored **verbatim**. There is **no implicit coercion** of any value.
+
+### Internal constants (exact)
+
+The future module pins these constants **verbatim** (each on a single line):
+
+```
+CAPACITY_CONSTRAINT_EVIDENCE_BOUNDARY_COMPONENT_NAME = "phase5_capacity_constraint_evidence_boundary"
+BOUNDARY_VERSION = "phase5.capacity_constraint_evidence_boundary.v0"
+```
+
+The factory sets component_name internally to
+`CAPACITY_CONSTRAINT_EVIDENCE_BOUNDARY_COMPONENT_NAME`, and sets boundary_version internally to
+`BOUNDARY_VERSION`. Neither identity field is a caller-supplied parameter, and neither may be
+spoofed, overridden, or injected by the caller.
+
+### Slotted / no-instance-dict hardening
+
+- The carrier must be **slotted** (or use an equivalent **no-instance-dict** mechanism); instances
+  have **no `__dict__`**.
+- **Dynamic attribute injection** is **physically blocked**: no attribute may be added or rebound
+  after construction.
+- The carrier remains **frozen**, **repr-safe**, **anti-truthiness**, **anti-coercion**, and
+  **factory-only**.
 
 ### Closed field set (exactly fourteen, and no others)
 

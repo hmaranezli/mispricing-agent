@@ -55,6 +55,34 @@ CARRIER_EXCLUDED_FIELDS = [
     "route", "reservation", "wallet",
 ]
 
+# The exactly-twelve caller-supplied keyword-only factory parameters (the four provenance triplets;
+# component_name and boundary_version are NOT parameters — they are set internally from constants).
+FACTORY_PARAMS = [
+    "post_profitability_source_contract",
+    "post_profitability_source_artifact",
+    "post_profitability_source_field",
+    "venue_readiness_source_contract",
+    "venue_readiness_source_artifact",
+    "venue_readiness_source_field",
+    "liquidity_capacity_source_contract",
+    "liquidity_capacity_source_artifact",
+    "liquidity_capacity_source_field",
+    "capital_margin_source_contract",
+    "capital_margin_source_artifact",
+    "capital_margin_source_field",
+]
+# These two stored fields must NOT be factory parameters (set internally from constants).
+FACTORY_FORBIDDEN_PARAMS = ["component_name", "boundary_version"]
+
+# Exact pinned internal module constants (verbatim single-line forms).
+COMPONENT_NAME_CONST_LINE = (
+    'CAPACITY_CONSTRAINT_EVIDENCE_BOUNDARY_COMPONENT_NAME = '
+    '"phase5_capacity_constraint_evidence_boundary"'
+)
+BOUNDARY_VERSION_CONST_LINE = (
+    'BOUNDARY_VERSION = "phase5.capacity_constraint_evidence_boundary.v0"'
+)
+
 # The exactly-four source carriers Slice 0 consumes (already implemented Phase 5 carriers).
 SOURCE_CARRIERS = [
     "PostProfitabilityEvidenceEnvelope",
@@ -369,6 +397,48 @@ def test_carrier_safety_properties_pinned():
         assert src in low, f"missing no-IO source: {src}"
     for verb in ["derives", "computes", "compares", "audits", "validates", "infers", "decides"]:
         assert verb in low, f"missing nothing-verb: {verb}"
+
+
+# ---- charter amendment 2: 12-param factory, internal constants, slotted hardening ----
+
+def test_factory_accepts_exactly_twelve_caller_params():
+    text = _read()
+    low = text.lower()
+    assert "twelve" in low, "factory caller-param count not pinned as twelve"
+    for p in FACTORY_PARAMS:
+        assert p in text, f"factory caller param missing: {p}"
+
+
+def test_factory_rejects_component_name_and_boundary_version_as_params():
+    text = _read()
+    low = text.lower()
+    assert "must not accept" in low
+    assert "typeerror" in low
+    for p in FACTORY_FORBIDDEN_PARAMS:
+        assert p in text, f"forbidden factory param not named: {p}"
+
+
+def test_internal_constants_pinned_exactly():
+    text = _read()
+    assert COMPONENT_NAME_CONST_LINE in text, "component-name constant line not pinned verbatim"
+    assert BOUNDARY_VERSION_CONST_LINE in text, "boundary-version constant line not pinned verbatim"
+
+
+def test_factory_sets_identity_fields_internally_from_constants():
+    low = _read().lower()
+    assert "component_name internally" in low
+    assert "boundary_version internally" in low
+    assert "capacity_constraint_evidence_boundary_component_name" in low
+
+
+def test_slotted_no_instance_dict_and_no_dynamic_attribute():
+    text = _read()
+    low = text.lower()
+    assert "slotted" in low
+    assert "__dict__" in text
+    assert "no-instance-dict" in low or "no instance dict" in low or "no `__dict__`" in text
+    assert "dynamic attribute injection" in low
+    assert "physically blocked" in low
 
 
 # ---- runtime must remain absent (planning batch only) ----
