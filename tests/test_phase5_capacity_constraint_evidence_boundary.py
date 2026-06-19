@@ -12,7 +12,10 @@ The factory accepts exactly the twelve per-source provenance triplet parameters;
 and ``boundary_version`` are NOT caller parameters — they are set internally from module constants and
 cannot be spoofed, overridden, or injected by the caller.
 """
+import ast
+import inspect
 import operator
+import re
 
 import pytest
 
@@ -24,6 +27,17 @@ from phase5.capacity_constraint_evidence_boundary import (
     CapacityConstraintEvidenceContextCoercionError,
     CAPACITY_CONSTRAINT_EVIDENCE_BOUNDARY_COMPONENT_NAME,
     BOUNDARY_VERSION,
+    # --- Slice 0A: gate namespace, blocked-reason constants, errors, preflight stub ---
+    CapacityConstraintGate,
+    capacity_constraint_preflight,
+    CapacityConstraintGateTypeError,
+    CapacityConstraintMisroutedHaltCarrierError,
+    CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE,
+    CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE,
+    CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE,
+    CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH,
+    CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH,
+    CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE,
 )
 
 EXPECTED_COMPONENT = "phase5_capacity_constraint_evidence_boundary"
@@ -60,10 +74,12 @@ FORBIDDEN_FIELD_TOKENS = (
     "route", "reservation", "wallet", "batch_id", "run_id", "observation_id", "provenance_status",
 )
 
-# Symbols / imports that must NOT appear in the Slice 1 carrier-only module (Slice 0 boundary scope).
+# Symbols / imports that must NOT appear even after Slice 0A. The full structural-join boundary
+# (`CapacityConstraintEvidenceBoundary`) and any upstream carrier / halt-packet types remain out of
+# scope for Slice 0A — only the gate namespace + fail-fast preflight stub are added in this batch.
+# ("preflight" is deliberately NOT here: it becomes a required Slice 0A symbol.)
 FORBIDDEN_RUNTIME_SYMBOLS = (
     "CapacityConstraintEvidenceBoundary",
-    "preflight",
     "BlockedPacket",
     "NoEligibleHaltPacket",
     "PostProfitabilityEvidenceEnvelope",
@@ -323,9 +339,18 @@ def test_no_slice0_boundary_or_gate_symbols():
 
 
 def test_no_forbidden_field_tokens_present():
+    # Precise tripwire: a forbidden concept token is a violation only when it appears as a whole
+    # underscore-delimited identifier word (e.g. a field/variable named `route` or `final_capacity`),
+    # NOT as a CamelCase substring of an unrelated required symbol such as the spec-mandated
+    # `CapacityConstraintMisroutedHaltCarrierError` (which contains "route" inside "Misrouted").
+    # Identifier-word granularity matches this snake_case codebase.
     src = _src()
+    identifiers = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", src))
     for tok in FORBIDDEN_FIELD_TOKENS:
-        assert tok not in src, f"forbidden field token present in carrier module: {tok}"
+        needle = "_" + tok + "_"
+        for ident in identifiers:
+            assert needle not in ("_" + ident + "_"), \
+                f"forbidden field token used as identifier word: {tok!r} (in {ident!r})"
 
 
 def test_no_io_or_time_imports():
@@ -333,3 +358,259 @@ def test_no_io_or_time_imports():
     for banned in ("import os", "import time", "import socket", "import datetime",
                    "import requests", "urllib", "open("):
         assert banned not in src, f"carrier module must not reference {banned!r}"
+
+
+# ===================================================================================================
+# Slice 0A: stateless CapacityConstraintGate namespace + blocked-reason constants + gate error
+# classes + an EXACT keyword-only `capacity_constraint_preflight` fail-fast stub (NotImplementedError
+# only) + AST/operator/import lock. Slice 0A deliberately implements NO pass path, NO blocked-branch
+# logic, NO parsing/comparison, NO make_blocked_packet call, and NO CapacityConstraintEvidenceBoundary.
+# ===================================================================================================
+
+_BLOCKED_REASON_CONSTANTS = (
+    CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE,
+    CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE,
+    CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE,
+    CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH,
+    CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH,
+    CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE,
+)
+
+PREFLIGHT_PARAM_ORDER = (
+    "evidence_envelope",
+    "venue_readiness",
+    "liquidity_evidence",
+    "capital_evidence",
+)
+
+STUB_MESSAGE = "Slice 0 structural join and branch logic not yet implemented"
+
+# AST lock vocabularies (Slice 0A).
+FORBIDDEN_CALL_NAMES = ("float", "min", "max", "sum", "round", "sorted")
+FORBIDDEN_OPERATOR_NODES = (
+    ast.Add, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow, ast.MatMult, ast.USub,
+)
+FORBIDDEN_IMPORT_ROOTS = (
+    "math", "statistics", "numpy", "pandas", "datetime", "time", "os", "socket",
+    "requests", "urllib", "subprocess", "json",
+)
+
+
+def _ast_tree():
+    import phase5.capacity_constraint_evidence_boundary as mod
+    with open(mod.__file__, encoding="utf-8") as f:
+        return ast.parse(f.read())
+
+
+# --- blocked-reason constants (name == value, exact str) ---
+
+def test_blocked_reason_constants_name_equals_value():
+    assert CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE == "CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE"
+    assert CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE == "CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE"
+    assert CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE == "CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE"
+    assert CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH == "CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH"
+    assert CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH == "CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH"
+    assert CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE == "CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE"
+
+
+def test_blocked_reason_constants_are_exact_str():
+    for c in _BLOCKED_REASON_CONSTANTS:
+        assert type(c) is str
+
+
+def test_blocked_reason_constants_are_distinct():
+    assert len(set(_BLOCKED_REASON_CONSTANTS)) == 6
+
+
+# --- gate error classes ---
+
+def test_gate_type_error_is_typeerror_subclass():
+    assert issubclass(CapacityConstraintGateTypeError, TypeError)
+
+
+def test_misrouted_halt_carrier_error_is_typeerror_subclass():
+    assert issubclass(CapacityConstraintMisroutedHaltCarrierError, TypeError)
+
+
+def test_gate_error_classes_are_distinct():
+    assert CapacityConstraintGateTypeError is not CapacityConstraintMisroutedHaltCarrierError
+    assert not issubclass(CapacityConstraintGateTypeError, CapacityConstraintMisroutedHaltCarrierError)
+    assert not issubclass(CapacityConstraintMisroutedHaltCarrierError, CapacityConstraintGateTypeError)
+
+
+# --- stateless gate namespace ---
+
+def test_gate_is_stateless_empty_slots():
+    assert CapacityConstraintGate.__slots__ == ()
+
+
+def test_gate_instance_has_no_dict():
+    g = CapacityConstraintGate()
+    assert not hasattr(g, "__dict__")
+    with pytest.raises((AttributeError, TypeError)):
+        g.injected = "x"
+
+
+def test_gate_preflight_is_staticmethod_resolving_to_the_function():
+    assert isinstance(inspect.getattr_static(CapacityConstraintGate, "preflight"), staticmethod)
+    assert CapacityConstraintGate.preflight is capacity_constraint_preflight
+
+
+# --- preflight stub: exact keyword-only signature ---
+
+def test_preflight_signature_is_exact_keyword_only_no_defaults():
+    sig = inspect.signature(capacity_constraint_preflight)
+    params = list(sig.parameters.values())
+    assert tuple(p.name for p in params) == PREFLIGHT_PARAM_ORDER
+    for p in params:
+        assert p.kind is inspect.Parameter.KEYWORD_ONLY, f"{p.name} must be keyword-only"
+        assert p.default is inspect.Parameter.empty, f"{p.name} must have no default"
+        assert p.annotation is inspect.Parameter.empty or p.annotation is not None
+
+
+def test_preflight_rejects_positional_args():
+    with pytest.raises(TypeError):
+        capacity_constraint_preflight(object(), object(), object(), object())
+
+
+def test_preflight_rejects_extra_kwargs():
+    with pytest.raises(TypeError):
+        capacity_constraint_preflight(
+            evidence_envelope=object(),
+            venue_readiness=object(),
+            liquidity_evidence=object(),
+            capital_evidence=object(),
+            surprise_kw=object(),
+        )
+
+
+def test_preflight_requires_all_four_kwargs():
+    full = dict(
+        evidence_envelope=object(),
+        venue_readiness=object(),
+        liquidity_evidence=object(),
+        capital_evidence=object(),
+    )
+    for missing in PREFLIGHT_PARAM_ORDER:
+        partial = {k: v for k, v in full.items() if k != missing}
+        with pytest.raises(TypeError):
+            capacity_constraint_preflight(**partial)
+
+
+# --- preflight stub: NotImplementedError-only, inspects nothing ---
+
+def test_preflight_raises_notimplemented_only_with_exact_message():
+    with pytest.raises(NotImplementedError) as exc:
+        capacity_constraint_preflight(
+            evidence_envelope=object(),
+            venue_readiness=object(),
+            liquidity_evidence=object(),
+            capital_evidence=object(),
+        )
+    assert str(exc.value) == STUB_MESSAGE
+
+
+def test_gate_preflight_call_raises_notimplemented():
+    with pytest.raises(NotImplementedError) as exc:
+        CapacityConstraintGate.preflight(
+            evidence_envelope=object(),
+            venue_readiness=object(),
+            liquidity_evidence=object(),
+            capital_evidence=object(),
+        )
+    assert str(exc.value) == STUB_MESSAGE
+
+
+def test_preflight_stub_does_not_read_inputs():
+    # The stub must fail fast WITHOUT inspecting/attribute-reading any input. Objects whose every
+    # attribute access explodes must still produce a clean NotImplementedError.
+    class _Boom:
+        def __getattribute__(self, name):
+            raise AssertionError("preflight stub must not read inputs")
+
+    with pytest.raises(NotImplementedError):
+        capacity_constraint_preflight(
+            evidence_envelope=_Boom(),
+            venue_readiness=_Boom(),
+            liquidity_evidence=_Boom(),
+            capital_evidence=_Boom(),
+        )
+
+
+def test_preflight_stub_does_not_construct_carrier_or_packet():
+    # NotImplementedError-only means no carrier is built and no packet is emitted on the stub path.
+    try:
+        capacity_constraint_preflight(
+            evidence_envelope=object(),
+            venue_readiness=object(),
+            liquidity_evidence=object(),
+            capital_evidence=object(),
+        )
+    except NotImplementedError:
+        pass
+    else:
+        pytest.fail("stub must raise NotImplementedError, returning nothing")
+
+
+# --- AST / operator / import lock (inspects AST nodes, not raw text) ---
+
+def test_ast_forbids_dangerous_builtin_calls():
+    tree = _ast_tree()
+    offenders = [
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in FORBIDDEN_CALL_NAMES
+    ]
+    assert offenders == [], f"forbidden builtin call(s) present: {offenders}"
+
+
+def test_ast_forbids_arithmetic_operator_nodes():
+    tree = _ast_tree()
+    offenders = [
+        type(node).__name__
+        for node in ast.walk(tree)
+        if isinstance(node, FORBIDDEN_OPERATOR_NODES)
+    ]
+    assert offenders == [], f"forbidden operator node(s) present: {offenders}"
+
+
+def test_ast_forbids_forbidden_imports():
+    tree = _ast_tree()
+    offenders = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] in FORBIDDEN_IMPORT_ROOTS:
+                    offenders.append(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module.split(".")[0] in FORBIDDEN_IMPORT_ROOTS:
+                offenders.append(module)
+    assert offenders == [], f"forbidden import(s) present: {offenders}"
+
+
+def test_ast_lock_does_not_flag_dunder_methods_or_docstrings():
+    # The carrier defines __float__/__int__/__str__/__bytes__ and carries docstrings that mention
+    # words like "join"/"audit". The AST lock keys on Call->Name nodes and operator/import nodes, so
+    # method definitions and string literals must never be treated as forbidden calls/operators.
+    tree = _ast_tree()
+    method_names = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    assert {"__float__", "__int__", "__str__", "__bytes__"} <= method_names
+    # And the three locks above must still hold given those definitions exist:
+    offenders = [
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in FORBIDDEN_CALL_NAMES
+    ]
+    assert offenders == []
+
+
+# --- Slice 0A scope guard: the full structural-join boundary remains unimplemented ---
+
+def test_capacity_constraint_evidence_boundary_remains_unimplemented():
+    import phase5.capacity_constraint_evidence_boundary as mod
+    assert not hasattr(mod, "CapacityConstraintEvidenceBoundary")

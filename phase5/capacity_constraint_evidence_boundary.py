@@ -226,3 +226,61 @@ _EXPECTED_FIELD_NAMES = (
 )
 assert tuple(f.name for f in dataclass_fields(CapacityConstraintEvidenceContext)) == \
     _EXPECTED_FIELD_NAMES
+
+
+# ===================================================================================================
+# Slice 0A — gate scaffolding ONLY: blocked-reason constants, gate error classes, the stateless
+# `CapacityConstraintGate` namespace, and an EXACT keyword-only `capacity_constraint_preflight`
+# fail-fast stub. This batch deliberately implements NO pass path, NO blocked-branch logic, NO
+# parsing/comparison, NO `make_blocked_packet` call, and NO full structural-join boundary class.
+# The structural multi-source join (Slice 0B+) is a separate, separately authorized task. NO ORDER
+# EXISTS at this gate.
+# ===================================================================================================
+
+# Branch-to-reason tokens (each constant's value equals its own name). Slice 0A only declares them;
+# no branch emits any of them yet.
+CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE = "CAPACITY_CONSTRAINT_BLOCKED_MISSING_EVIDENCE"
+CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE = "CAPACITY_CONSTRAINT_BLOCKED_MALFORMED_EVIDENCE"
+CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE = "CAPACITY_CONSTRAINT_BLOCKED_STALE_EVIDENCE"
+CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH = "CAPACITY_CONSTRAINT_BLOCKED_IDENTITY_MISMATCH"
+CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH = "CAPACITY_CONSTRAINT_BLOCKED_UNIT_MISMATCH"
+CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE = "CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE"
+
+
+class CapacityConstraintGateTypeError(TypeError):
+    """Raised when a preflight input is of a wrong (non-halt-carrier) type. No branch behavior yet."""
+
+
+class CapacityConstraintMisroutedHaltCarrierError(TypeError):
+    """Raised when an upstream halt packet is misrouted into a preflight evidence slot. No behavior yet."""
+
+
+def capacity_constraint_preflight(
+    *,
+    evidence_envelope,
+    venue_readiness,
+    liquidity_evidence,
+    capital_evidence,
+):
+    """Exact keyword-only preflight entrypoint — Slice 0A fail-fast stub.
+
+    The full signature (the four upstream-evidence slots, keyword-only, no defaults, no extra kwargs)
+    is locked here so downstream wiring can bind against the final contract. The structural
+    multi-source join, identity/unit/staleness checks, the pass path (which would build a
+    :class:`CapacityConstraintEvidenceContext`), and every blocked branch (which would emit a blocked
+    packet) are NOT implemented in this batch. The stub inspects nothing — it reads no attribute of
+    any input, builds no carrier, emits no packet, and returns nothing.
+    """
+    raise NotImplementedError("Slice 0 structural join and branch logic not yet implemented")
+
+
+class CapacityConstraintGate:
+    """Stateless namespace exposing the capacity-constraint preflight as a static method.
+
+    Carries no state and needs no construction state (``__slots__ = ()``). ``preflight`` is the
+    module-level :func:`capacity_constraint_preflight` exposed as a static method.
+    """
+
+    __slots__ = ()
+
+    preflight = staticmethod(capacity_constraint_preflight)
