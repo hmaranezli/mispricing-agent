@@ -551,7 +551,7 @@ comparison is allowed.
 
 <!-- 0C3-UNDEFINED-RESOLUTION-START -->
 
-> **Status: PROPOSED — awaiting human approval. Not yet in force.** This amendment refines §7 / §7.3
+> **Status: ACCEPTED — human-approved and in force for Slice 0C3 planning/TDD readiness. Runtime implementation remains separately authorized.** This amendment refines §7 / §7.3
 > for the `CAPACITY_CONSTRAINT_BLOCKED_UNDEFINED_EVIDENCE` branch only. It supersedes only the §7.3
 > UNDEFINED trigger-family interpretation for Slice 0C3; all non-UNDEFINED §7.3 rules remain unchanged;
 > §7.2 GATE-CONTRACT remains unchanged. **NO TRADE ORDER / EXECUTION ORDER EXISTS** at this boundary.
