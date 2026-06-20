@@ -38,8 +38,14 @@ def _is_b3_basename(basename):
     return "b3" in basename.lower()
 
 
+# Exactly one B3 runtime basename is allowlisted: the minimal identity/provenance pass-through. Any
+# other B3 module is forbidden. The negative-lock scans below apply to whatever B3 module is present
+# (now the allowlisted one), so the boundary is enforced on the real module, not merely on its absence.
+_ALLOWED_B3_BASENAMES = {"b3_depth_evidence_mapping.py"}
+
+
 def _b3_runtime_files():
-    """Every phase6_1 runtime module marked as a B3 module by basename. Empty at this base."""
+    """Every phase6_1 runtime module marked as a B3 module by basename."""
     return [p for p in _all_runtime_files() if _is_b3_basename(os.path.basename(str(p)))]
 
 
@@ -95,16 +101,18 @@ def _defined_names(tree):
     return names
 
 
-# --- 1. no B3 depth-evidence runtime module exists yet --------------------------------------------
+# --- 1. only the single allowlisted B3 module may exist -------------------------------------------
 
-def test_no_b3_depth_runtime_module_exists_yet():
-    assert _b3_runtime_files() == [], [os.path.basename(str(p)) for p in _b3_runtime_files()]
+def test_only_allowlisted_b3_module_present():
+    present = {os.path.basename(str(p)) for p in _b3_runtime_files()}
+    assert present <= _ALLOWED_B3_BASENAMES, sorted(present - _ALLOWED_B3_BASENAMES)
 
 
-def test_representative_b3_module_import_fails():
-    # A charter-aligned candidate name must not yet resolve to anything importable.
+def test_allowlisted_b3_module_imports_and_non_allowlisted_b3_name_fails():
+    # The single allowlisted B3 module resolves; any other B3 module name must not exist.
+    importlib.import_module("phase6_1.b3_depth_evidence_mapping")
     with pytest.raises(ModuleNotFoundError):
-        importlib.import_module("phase6_1.b3_depth_evidence_mapping")
+        importlib.import_module("phase6_1.b3_depth_capacity_mapping")
 
 
 # --- 2. no phase6_1 runtime file imports a B3 depth mapping/wiring module --------------------------
@@ -362,7 +370,8 @@ def test_no_b3_module_fabricates_depth_carrier():
 
 # --- closeout: B3 runtime remains entirely absent/blocked at this base ----------------------------
 
-def test_b3_runtime_remains_blocked():
-    # Exactly the ratified replay-only chain modules exist; no B3 module is present.
-    basenames = {os.path.basename(str(p)) for p in _all_runtime_files()}
-    assert not any(_is_b3_basename(b) for b in basenames), sorted(basenames)
+def test_b3_runtime_limited_to_allowlist():
+    # Any B3-basename module present must be exactly the allowlisted single pass-through module.
+    b3_present = {b for b in (os.path.basename(str(p)) for p in _all_runtime_files())
+                  if _is_b3_basename(b)}
+    assert b3_present <= _ALLOWED_B3_BASENAMES, sorted(b3_present - _ALLOWED_B3_BASENAMES)
