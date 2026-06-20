@@ -47,7 +47,14 @@ def _raw(**overrides):
         source_field="summary.eligible_pairs",
         venue="hyperliquid",
         pair="BTC-USD",
+        base_asset="BTC",
+        quote_asset="USD",
+        instrument_id="BTC-USD-PERP",
+        venue_scope="SINGLE_VENUE",
+        venue_buy="hyperliquid",
+        venue_sell="hyperliquid",
         retrieval_epoch_ms=1_750_000_000_000,
+        observed_at_epoch_ms="1749990000000",
         raw_snapshot_identity="replay-fixture-0001",
         field_payload=(("bid", "0.50"), ("ask", "0.60")),
     )
@@ -422,6 +429,113 @@ def test_factories_accept_no_var_keyword():
         params = inspect.signature(fn).parameters.values()
         assert all(p.kind is not inspect.Parameter.VAR_KEYWORD for p in params), fn.__name__
         assert all(p.kind is not inspect.Parameter.VAR_POSITIONAL for p in params), fn.__name__
+
+
+# --- Slice 1: core market identity fields on the raw snapshot --------------------------------------
+
+_CORE_STR_IDENTITY_FIELDS = [
+    "base_asset", "quote_asset", "venue_scope", "venue_buy", "venue_sell", "instrument_id",
+]
+
+
+def test_raw_snapshot_accepts_core_market_identity_fields():
+    raw = _raw()
+    assert raw.base_asset == "BTC"
+    assert raw.quote_asset == "USD"
+    assert raw.instrument_id == "BTC-USD-PERP"
+    assert raw.venue_scope == "SINGLE_VENUE"
+    assert raw.venue_buy == "hyperliquid"
+    assert raw.venue_sell == "hyperliquid"
+    assert raw.observed_at_epoch_ms == "1749990000000"
+
+
+@pytest.mark.parametrize("field", _CORE_STR_IDENTITY_FIELDS)
+@pytest.mark.parametrize("bad", [123, None, {"a": 1}, ["x"], True, 1.0])
+def test_raw_snapshot_rejects_non_str_core_identity(field, bad):
+    with pytest.raises(B2NormalizationTypeError):
+        _raw(**{field: bad})
+
+
+@pytest.mark.parametrize("field", _CORE_STR_IDENTITY_FIELDS)
+def test_raw_snapshot_rejects_str_subclass_core_identity(field):
+    class _S(str):
+        pass
+
+    with pytest.raises(B2NormalizationTypeError):
+        _raw(**{field: _S("BTC")})
+
+
+@pytest.mark.parametrize("field", _CORE_STR_IDENTITY_FIELDS)
+@pytest.mark.parametrize("bad", ["", "   "])
+def test_raw_snapshot_rejects_empty_core_identity(field, bad):
+    with pytest.raises(B2NormalizationValueError):
+        _raw(**{field: bad})
+
+
+def test_core_identity_fields_are_not_derived_from_pair_or_venue():
+    # carrier/contract only: values are carried verbatim, never split or projected
+    raw = _raw(
+        pair="ETH-USDT", venue="binance",
+        base_asset="ETH", quote_asset="USDT", instrument_id="ETH-USDT-PERP",
+        venue_scope="CROSS_VENUE", venue_buy="binance", venue_sell="hyperliquid",
+    )
+    assert raw.pair == "ETH-USDT"
+    assert raw.venue == "binance"
+    assert raw.base_asset == "ETH"
+    assert raw.quote_asset == "USDT"
+    assert raw.venue_buy == "binance"
+    assert raw.venue_sell == "hyperliquid"
+
+
+# --- Slice 1: observed_at_epoch_ms canonical unsigned integer string + time isolation --------------
+
+def test_observed_at_epoch_ms_accepts_canonical_unsigned_int_string():
+    assert _raw(observed_at_epoch_ms="0", retrieval_epoch_ms=1).observed_at_epoch_ms == "0"
+    assert _raw(observed_at_epoch_ms="42", retrieval_epoch_ms=1).observed_at_epoch_ms == "42"
+
+
+@pytest.mark.parametrize("bad", [1749990000000, 1.0, True, None, {"t": 1}, ["1"]])
+def test_observed_at_epoch_ms_rejects_non_str(bad):
+    with pytest.raises(B2NormalizationTypeError):
+        _raw(observed_at_epoch_ms=bad)
+
+
+@pytest.mark.parametrize("bad", ["", "   ", "-1", "1.0", "1_000", "12a", "0x1f", "007", " 12", "12 "])
+def test_observed_at_epoch_ms_rejects_non_canonical(bad):
+    with pytest.raises(B2NormalizationValueError):
+        _raw(observed_at_epoch_ms=bad)
+
+
+def test_observed_at_epoch_ms_must_not_equal_str_of_retrieval_epoch_ms():
+    # anti-copy / lookahead-bias lock: observed time is not the retrieval timestamp stringified
+    with pytest.raises(B2NormalizationValueError):
+        _raw(retrieval_epoch_ms=1_750_000_000_000, observed_at_epoch_ms="1750000000000")
+
+
+def test_observed_at_epoch_ms_distinct_from_retrieval_is_accepted():
+    raw = _raw(retrieval_epoch_ms=1_750_000_000_000, observed_at_epoch_ms="1749999999000")
+    assert raw.retrieval_epoch_ms == 1_750_000_000_000
+    assert raw.observed_at_epoch_ms == "1749999999000"
+
+
+def test_missing_observed_at_epoch_ms_fails_fast():
+    with pytest.raises(TypeError):
+        make_public_raw_snapshot_record(
+            source_artifact="a", source_field="b", venue="hyperliquid", pair="BTC-USD",
+            base_asset="BTC", quote_asset="USD", instrument_id="BTC-USD-PERP",
+            venue_scope="SINGLE_VENUE", venue_buy="hyperliquid", venue_sell="hyperliquid",
+            retrieval_epoch_ms=1_750_000_000_000,
+            raw_snapshot_identity="replay-fixture-0001", field_payload=(),
+        )  # observed_at_epoch_ms intentionally omitted
+
+
+def test_raw_snapshot_with_core_identity_stays_frozen_slotted():
+    raw = _raw()
+    assert not hasattr(raw, "__dict__")
+    with pytest.raises(Exception):
+        raw.base_asset = "ETH"
+    with pytest.raises(AttributeError):
+        object.__setattr__(raw, "injected_identity", 1)
 
 
 # --- structural locks specific to this slice ------------------------------------------------------

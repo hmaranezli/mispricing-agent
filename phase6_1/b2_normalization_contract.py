@@ -16,6 +16,7 @@ imports nothing from Phase 5, instantiates no Slice-0 carrier, writes no output,
 and does no network or file access. Exact-type discipline only (`type(value) is ExactType`); no silent
 coercion; no default fallbacks; missing/malformed fields fail fast.
 """
+import re
 from dataclasses import dataclass, fields as dataclass_fields
 
 
@@ -80,7 +81,14 @@ class PublicRawSnapshotRecord(_AntiCoercion):
     source_field: object
     venue: object
     pair: object
+    base_asset: object
+    quote_asset: object
+    instrument_id: object
+    venue_scope: object
+    venue_buy: object
+    venue_sell: object
     retrieval_epoch_ms: object
+    observed_at_epoch_ms: object
     raw_snapshot_identity: object
     field_payload: object
 
@@ -188,6 +196,29 @@ def _require_non_negative_int(name, value):
         )
 
 
+# A canonical unsigned integer string: digits only, no sign, no separators, no leading zeros
+# (``"0"`` is the sole zero form). This is a verbatim carrier check — no int parsing, no arithmetic.
+_CANONICAL_UNSIGNED_INT_STR = re.compile(r"0|[1-9][0-9]*")
+
+
+def _require_canonical_unsigned_int_str(name, value):
+    if type(value) is not str:
+        raise B2NormalizationTypeError(
+            "field {!r} must be a canonical unsigned integer string, not {}".format(
+                name, type(value).__name__
+            )
+        )
+    if value.strip() == "":
+        raise B2NormalizationValueError(
+            "field {!r} must be a non-empty, non-whitespace string".format(name)
+        )
+    if _CANONICAL_UNSIGNED_INT_STR.fullmatch(value) is None:
+        raise B2NormalizationValueError(
+            "field {!r} must be a canonical unsigned integer string (digits only, no sign, "
+            "no separators, no leading zeros)".format(name)
+        )
+
+
 _REJECTED_CONTAINER_TYPES = (list, dict, set, frozenset, bytearray)
 
 
@@ -219,20 +250,49 @@ def make_public_raw_snapshot_record(
     source_field,
     venue,
     pair,
+    base_asset,
+    quote_asset,
+    instrument_id,
+    venue_scope,
+    venue_buy,
+    venue_sell,
     retrieval_epoch_ms,
+    observed_at_epoch_ms,
     raw_snapshot_identity,
     field_payload,
 ):
-    """Build one :class:`PublicRawSnapshotRecord`. All provenance fields are exact non-empty strings;
-    ``retrieval_epoch_ms`` is an exact non-negative UTC millisecond int; ``field_payload`` is tuple-only
-    replay material. Nothing is mapped or derived."""
+    """Build one :class:`PublicRawSnapshotRecord`. All provenance and market-identity fields are exact
+    non-empty strings carried verbatim — ``base_asset``, ``quote_asset``, ``instrument_id``,
+    ``venue_scope``, ``venue_buy``, ``venue_sell`` are never split, projected, or computed here.
+    ``retrieval_epoch_ms`` is an exact non-negative UTC millisecond int (when the system froze the
+    evidence); ``observed_at_epoch_ms`` is a canonical unsigned integer string for the source-observed
+    market time and is kept semantically distinct from ``retrieval_epoch_ms`` — it must be supplied
+    independently and may not be a stringified copy of the retrieval time. ``field_payload`` is
+    tuple-only replay material. Nothing is mapped or derived."""
     _require_str("source_artifact", source_artifact)
     _require_str("source_field", source_field)
     _require_str("venue", venue)
     _require_str("pair", pair)
+    _require_str("base_asset", base_asset)
+    _require_str("quote_asset", quote_asset)
+    _require_str("instrument_id", instrument_id)
+    _require_str("venue_scope", venue_scope)
+    _require_str("venue_buy", venue_buy)
+    _require_str("venue_sell", venue_sell)
     _require_non_negative_int("retrieval_epoch_ms", retrieval_epoch_ms)
+    _require_canonical_unsigned_int_str("observed_at_epoch_ms", observed_at_epoch_ms)
     _require_str("raw_snapshot_identity", raw_snapshot_identity)
     _require_tuple_only("field_payload", field_payload)
+
+    # Time-isolation / anti-copy lock: the source-observed market time must not be a stringified copy
+    # of the retrieval/freeze time. The two timestamps are semantically distinct and must be supplied
+    # independently; a silent substitution would invite lookahead bias. No comparison of magnitudes is
+    # performed — only an exact-string identity rejection.
+    if observed_at_epoch_ms == str(retrieval_epoch_ms):
+        raise B2NormalizationValueError(
+            "field 'observed_at_epoch_ms' must not equal str(retrieval_epoch_ms); the "
+            "source-observed market time and the retrieval/freeze time are distinct timestamps"
+        )
 
     record = object.__new__(PublicRawSnapshotRecord)
     object.__setattr__(record, "component_name", B2_NORMALIZATION_CONTRACT_COMPONENT_NAME)
@@ -241,7 +301,14 @@ def make_public_raw_snapshot_record(
     object.__setattr__(record, "source_field", source_field)
     object.__setattr__(record, "venue", venue)
     object.__setattr__(record, "pair", pair)
+    object.__setattr__(record, "base_asset", base_asset)
+    object.__setattr__(record, "quote_asset", quote_asset)
+    object.__setattr__(record, "instrument_id", instrument_id)
+    object.__setattr__(record, "venue_scope", venue_scope)
+    object.__setattr__(record, "venue_buy", venue_buy)
+    object.__setattr__(record, "venue_sell", venue_sell)
     object.__setattr__(record, "retrieval_epoch_ms", retrieval_epoch_ms)
+    object.__setattr__(record, "observed_at_epoch_ms", observed_at_epoch_ms)
     object.__setattr__(record, "raw_snapshot_identity", raw_snapshot_identity)
     object.__setattr__(record, "field_payload", field_payload)
     return record
@@ -334,7 +401,8 @@ def make_normalized_evidence_material(
 # Defensive guards: the declared field sets must remain closed contracts.
 assert tuple(f.name for f in dataclass_fields(PublicRawSnapshotRecord)) == (
     "component_name", "boundary_version", "source_artifact", "source_field", "venue", "pair",
-    "retrieval_epoch_ms", "raw_snapshot_identity", "field_payload",
+    "base_asset", "quote_asset", "instrument_id", "venue_scope", "venue_buy", "venue_sell",
+    "retrieval_epoch_ms", "observed_at_epoch_ms", "raw_snapshot_identity", "field_payload",
 )
 assert tuple(f.name for f in dataclass_fields(UnitBoundMagnitude)) == (
     "component_name", "boundary_version", "magnitude", "unit",
