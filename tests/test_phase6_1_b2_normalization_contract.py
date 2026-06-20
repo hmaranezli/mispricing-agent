@@ -711,6 +711,256 @@ def test_binding_cost_role_nonzero_magnitude_may_still_carry_evidence():
     assert b.zero_cost_evidence == "OBSERVED_ZERO_FEE"
 
 
+# --- Slice: B2 passive cost-component provenance carrier (optional, verbatim) ----------------------
+#
+# Authored under docs/handoff/phase6_1_b2_passive_cost_component_provenance_carrier_charter.md.
+# cost_component_provenance_reference is PASSIVE provenance metadata: optional (None = absent),
+# an exact non-empty/non-whitespace str when present, carried verbatim. No closed vocabulary, no
+# fee/rebate polarity inference, no derivation, no numeric parsing, no normalization. It is
+# independent of binding_role and of the magnitude sign — economics live only in the signed
+# magnitude. The 'fee'/'rebate' literals appearing in THIS test file are fixtures; the runtime
+# must contain no such semantic branching (proven by the negative-lock tests below).
+
+def _func_node(name):
+    for node in ast.walk(_b2_tree()):
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+    raise AssertionError("runtime function %r not found" % name)
+
+
+def test_binding_cost_provenance_defaults_to_none():
+    assert _binding().cost_component_provenance_reference is None
+
+
+def test_binding_cost_provenance_explicit_none_stays_none():
+    assert _binding(cost_component_provenance_reference=None).cost_component_provenance_reference is None
+
+
+def test_binding_cost_provenance_accepts_non_empty_str():
+    b = _binding(cost_component_provenance_reference="TAKER_FEE")
+    assert b.cost_component_provenance_reference == "TAKER_FEE"
+
+
+def test_binding_cost_provenance_carried_verbatim_no_strip_mutation():
+    # surrounding whitespace around real content is preserved exactly — no normalization/strip mutation
+    b = _binding(cost_component_provenance_reference=" maker rebate ")
+    assert b.cost_component_provenance_reference == " maker rebate "
+
+
+@pytest.mark.parametrize("bad", ["", "   "])
+def test_binding_cost_provenance_rejects_empty_or_whitespace(bad):
+    with pytest.raises(B2NormalizationValueError):
+        _binding(cost_component_provenance_reference=bad)
+
+
+@pytest.mark.parametrize("bad", [123, True, 1.0, {"e": 1}, ["x"], {"y"}, frozenset({"z"}), bytearray(b"x")])
+def test_binding_cost_provenance_rejects_non_str(bad):
+    with pytest.raises(B2NormalizationTypeError):
+        _binding(cost_component_provenance_reference=bad)
+
+
+def test_binding_cost_provenance_rejects_str_subclass():
+    class _S(str):
+        pass
+
+    with pytest.raises(B2NormalizationTypeError):
+        _binding(cost_component_provenance_reference=_S("TAKER_FEE"))
+
+
+def test_binding_cost_provenance_frozen_slotted():
+    b = _binding(cost_component_provenance_reference="TAKER_FEE")
+    assert not hasattr(b, "__dict__")
+    with pytest.raises(Exception):
+        b.cost_component_provenance_reference = "OTHER"
+    with pytest.raises(AttributeError):
+        object.__setattr__(b, "injected_provenance", 1)
+
+
+# independence from binding_role: unlike zero_cost_evidence, passive provenance is allowed on ANY role
+def test_binding_cost_provenance_allowed_on_gross_edge_role():
+    b = _binding(binding_role="GROSS_EDGE", cost_component_provenance_reference="SOME_LABEL")
+    assert b.cost_component_provenance_reference == "SOME_LABEL"
+
+
+def test_binding_cost_provenance_allowed_on_cost_role():
+    b = _binding(
+        binding_role="COST", normalized_field_name="total_cost",
+        cost_component_provenance_reference="SOME_LABEL",
+    )
+    assert b.cost_component_provenance_reference == "SOME_LABEL"
+
+
+# --- orthogonality: signed magnitude <-> provenance are fully independent --------------------------
+
+def test_provenance_orthogonal_positive_magnitude_carries_any_label():
+    b = _binding(
+        unit_bound_magnitude=make_unit_bound_magnitude(magnitude="0.006", unit="proportion"),
+        cost_component_provenance_reference="TAKER_FEE",
+    )
+    assert b.unit_bound_magnitude.magnitude == "0.006"
+    assert b.cost_component_provenance_reference == "TAKER_FEE"
+
+
+def test_provenance_orthogonal_negative_magnitude_carries_any_label():
+    b = _binding(
+        unit_bound_magnitude=make_unit_bound_magnitude(magnitude="-0.006", unit="proportion"),
+        cost_component_provenance_reference="TAKER_FEE",
+    )
+    assert b.unit_bound_magnitude.magnitude == "-0.006"
+    assert b.cost_component_provenance_reference == "TAKER_FEE"
+
+
+def test_provenance_orthogonal_zero_magnitude_carries_any_label():
+    b = _binding(
+        unit_bound_magnitude=make_unit_bound_magnitude(magnitude="0", unit="proportion"),
+        cost_component_provenance_reference="MAKER_REBATE",
+    )
+    assert b.unit_bound_magnitude.magnitude == "0"
+    assert b.cost_component_provenance_reference == "MAKER_REBATE"
+
+
+@pytest.mark.parametrize("mag", ["0.006", "-0.006", "0"])
+def test_provenance_none_valid_regardless_of_magnitude_sign(mag):
+    b = _binding(
+        unit_bound_magnitude=make_unit_bound_magnitude(magnitude=mag, unit="proportion"),
+        cost_component_provenance_reference=None,
+    )
+    assert b.cost_component_provenance_reference is None
+    assert b.unit_bound_magnitude.magnitude == mag
+
+
+def test_provenance_does_not_imply_polarity_same_label_opposite_signs():
+    # identical provenance label on a positive and a negative magnitude — the label implies no polarity;
+    # polarity lives only in the magnitude sign, never in the label.
+    pos = _binding(
+        unit_bound_magnitude=make_unit_bound_magnitude(magnitude="0.006", unit="proportion"),
+        cost_component_provenance_reference="FEE_OR_REBATE",
+    )
+    neg = _binding(
+        normalized_field_name="other",
+        unit_bound_magnitude=make_unit_bound_magnitude(magnitude="-0.006", unit="proportion"),
+        cost_component_provenance_reference="FEE_OR_REBATE",
+    )
+    assert pos.cost_component_provenance_reference == neg.cost_component_provenance_reference
+    assert pos.unit_bound_magnitude.magnitude == "0.006"
+    assert neg.unit_bound_magnitude.magnitude == "-0.006"
+
+
+def test_magnitude_sign_does_not_imply_provenance():
+    # same magnitude sign, different provenance (incl. None) — sign carries no provenance meaning.
+    a = _binding(
+        normalized_field_name="a",
+        unit_bound_magnitude=make_unit_bound_magnitude(magnitude="-0.006", unit="proportion"),
+        cost_component_provenance_reference=None,
+    )
+    b = _binding(
+        normalized_field_name="b",
+        unit_bound_magnitude=make_unit_bound_magnitude(magnitude="-0.006", unit="proportion"),
+        cost_component_provenance_reference="MAKER_REBATE",
+    )
+    assert a.unit_bound_magnitude.magnitude == b.unit_bound_magnitude.magnitude == "-0.006"
+    assert a.cost_component_provenance_reference is None
+    assert b.cost_component_provenance_reference == "MAKER_REBATE"
+
+
+def test_zero_magnitude_does_not_force_provenance_absence():
+    # a "0" magnitude binding may still carry a provenance label; zero does not imply None.
+    b = _binding(
+        binding_role="COST", normalized_field_name="total_cost",
+        unit_bound_magnitude=make_unit_bound_magnitude(magnitude="0", unit="proportion"),
+        cost_component_provenance_reference="TAKER_FEE",
+    )
+    assert b.unit_bound_magnitude.magnitude == "0"
+    assert b.cost_component_provenance_reference == "TAKER_FEE"
+
+
+def test_provenance_label_does_not_alter_other_fields_behaviorally():
+    # vary only the provenance label across a range of values; every other field is byte-for-byte equal,
+    # proving no code path branches on the label to alter numeric/role/name fields.
+    labels = ["TAKER_FEE", "MAKER_REBATE", "spread", "slippage", "gas", "funding", "anything-at-all"]
+    seen = []
+    for label in labels:
+        b = _binding(
+            binding_role="COST", normalized_field_name="total_cost",
+            source_field="summary.total_cost",
+            unit_bound_magnitude=make_unit_bound_magnitude(magnitude="0.006", unit="proportion"),
+            cost_component_provenance_reference=label,
+        )
+        seen.append(
+            (b.binding_role, b.normalized_field_name, b.source_field,
+             b.unit_bound_magnitude.magnitude, b.unit_bound_magnitude.unit,
+             b.cost_component_provenance_reference)
+        )
+    # all non-provenance fields identical; only the verbatim provenance differs
+    assert {s[:5] for s in seen} == {("COST", "total_cost", "summary.total_cost", "0.006", "proportion")}
+    assert [s[5] for s in seen] == labels
+
+
+# --- negative locks: passive provenance introduces no forbidden runtime surface --------------------
+
+_PROVENANCE_HELPER = "_require_optional_cost_component_provenance_reference"
+
+
+def test_provenance_helper_has_no_numeric_coercion_or_serialization():
+    # the provenance validator must not call Decimal/int/float/complex (no numeric parsing) nor
+    # json/base64 (no serialized/blob payloads).
+    forbidden = {"Decimal", "int", "float", "complex", "json", "base64", "loads", "b64decode"}
+    node = _func_node(_PROVENANCE_HELPER)
+    called = set()
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Call):
+            if isinstance(sub.func, ast.Name):
+                called.add(sub.func.id)
+            elif isinstance(sub.func, ast.Attribute):
+                called.add(sub.func.attr)
+    assert called & forbidden == set(), "provenance helper performs forbidden coercion/serialization: %r" % (called & forbidden)
+
+
+def test_provenance_helper_has_no_allowed_set_or_enum_validation():
+    # no closed vocabulary: the validator must not reference frozenset/set/enum membership constructs.
+    node = _func_node(_PROVENANCE_HELPER)
+    names = set()
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Name):
+            names.add(sub.id)
+        elif isinstance(sub, ast.Attribute):
+            names.add(sub.attr)
+    assert names & {"frozenset", "set", "Enum", "IntEnum"} == set()
+    # also: no membership test ("in {...}" / "not in {...}") inside the helper
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Compare):
+            for op in sub.ops:
+                assert not isinstance(op, (ast.In, ast.NotIn)), "provenance helper uses set/enum membership"
+
+
+def test_b2_runtime_has_no_cost_polarity_semantic_tokens():
+    # passive: the runtime must contain no fee/rebate/taker/maker/spread/slippage/gas/funding
+    # semantic branching for the provenance label (case-insensitive, word-boundary).
+    import re as _re
+
+    with open(_runtime_b2_path(), "r", encoding="utf-8") as fh:
+        text = fh.read()
+    forbidden_tokens = ("fee", "rebate", "taker", "maker", "spread", "slippage", "gas", "funding")
+    leaked = []
+    for tok in forbidden_tokens:
+        if _re.search(r"(?i)(?<![A-Za-z0-9_])" + _re.escape(tok) + r"(?![A-Za-z0-9_])", text):
+            leaked.append(tok)
+    assert leaked == [], "B2 runtime contains cost-polarity semantic tokens: %r" % leaked
+
+
+def test_b2_runtime_adds_no_b3_phase5_shadowintent_capacity_tokens():
+    import re as _re
+
+    with open(_runtime_b2_path(), "r", encoding="utf-8") as fh:
+        text = fh.read()
+    forbidden_tokens = ("b3", "phase5", "ShadowIntent", "capacity", "CapacityConstraintGate")
+    leaked = []
+    for tok in forbidden_tokens:
+        if _re.search(r"(?i)(?<![A-Za-z0-9_])" + _re.escape(tok) + r"(?![A-Za-z0-9_])", text):
+            leaked.append(tok)
+    assert leaked == [], "B2 runtime references downstream/forbidden surface: %r" % leaked
+
+
 # --- Slice: B2 depth source identity reference (optional, by identity) -----------------------------
 
 def test_material_depth_source_reference_defaults_to_none():
