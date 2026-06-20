@@ -23,9 +23,11 @@ import phase6_1
 from phase6_1.b2_normalization_contract import (
     PublicRawSnapshotRecord,
     UnitBoundMagnitude,
+    NormalizedEvidenceFieldBinding,
     NormalizedEvidenceMaterial,
     make_public_raw_snapshot_record,
     make_unit_bound_magnitude,
+    make_normalized_evidence_field_binding,
     make_normalized_evidence_material,
     B2NormalizationTypeError,
     B2NormalizationValueError,
@@ -59,10 +61,20 @@ def _ubm(**overrides):
     return make_unit_bound_magnitude(**kwargs)
 
 
+def _binding(**overrides):
+    kwargs = dict(
+        normalized_field_name="gross_edge",
+        source_field="summary.gross_edge",
+        unit_bound_magnitude=_ubm(),
+    )
+    kwargs.update(overrides)
+    return make_normalized_evidence_field_binding(**kwargs)
+
+
 def _material(**overrides):
     kwargs = dict(
         raw_snapshot=_raw(),
-        normalized_values=(_ubm(),),
+        normalized_field_bindings=(_binding(),),
         evidence_epoch_tolerance_ms=0,
     )
     kwargs.update(overrides)
@@ -252,23 +264,117 @@ def test_material_rejects_raw_snapshot_subclass():
         _material(raw_snapshot=sub)
 
 
-def test_material_normalized_values_must_be_tuple_of_unit_bound():
-    assert _material(normalized_values=()).normalized_values == ()
-    ok = _material(normalized_values=(_ubm(), _ubm()))
-    assert len(ok.normalized_values) == 2
+# --- NormalizedEvidenceFieldBinding: explicit field binding (no positional semantics) -------------
 
-
-@pytest.mark.parametrize("bad", [["x"], {"a": 1}, {"y"}, "nope"])
-def test_material_rejects_non_tuple_normalized_values(bad):
+def test_binding_direct_construction_blocked():
     with pytest.raises(B2NormalizationTypeError):
-        _material(normalized_values=bad)
+        NormalizedEvidenceFieldBinding()
 
 
-@pytest.mark.parametrize("bad_elem", ["0.006", 0.006, 6, None])
-def test_material_rejects_bare_magnitude_element(bad_elem):
-    # a bare magnitude (no unit binding) must be rejected
+def test_binding_is_frozen_slotted_no_dict():
+    binding = _binding()
+    assert not hasattr(binding, "__dict__")
+    with pytest.raises(Exception):
+        binding.normalized_field_name = "tampered"
+    with pytest.raises(AttributeError):
+        object.__setattr__(binding, "injected", 1)
+
+
+def test_binding_holds_fields_and_preserves_magnitude_by_identity():
+    ubm = _ubm()
+    binding = _binding(unit_bound_magnitude=ubm)
+    assert binding.normalized_field_name == "gross_edge"
+    assert binding.source_field == "summary.gross_edge"
+    assert binding.unit_bound_magnitude is ubm
+    assert id(binding.unit_bound_magnitude) == id(ubm)
+
+
+def test_binding_requires_all_three_fields():
+    with pytest.raises(TypeError):
+        make_normalized_evidence_field_binding(
+            normalized_field_name="gross_edge", source_field="summary.gross_edge"
+        )
+
+
+@pytest.mark.parametrize("field", ["normalized_field_name", "source_field"])
+@pytest.mark.parametrize("bad", [123, None, {"a": 1}, ["x"]])
+def test_binding_rejects_non_str_names(field, bad):
     with pytest.raises(B2NormalizationTypeError):
-        _material(normalized_values=(bad_elem,))
+        _binding(**{field: bad})
+
+
+def test_binding_rejects_str_subclass_name():
+    class _S(str):
+        pass
+
+    with pytest.raises(B2NormalizationTypeError):
+        _binding(normalized_field_name=_S("gross_edge"))
+
+
+@pytest.mark.parametrize("field", ["normalized_field_name", "source_field"])
+@pytest.mark.parametrize("bad", ["", "   "])
+def test_binding_rejects_empty_names(field, bad):
+    with pytest.raises(B2NormalizationValueError):
+        _binding(**{field: bad})
+
+
+@pytest.mark.parametrize("bad", ["0.006", 0.006, None, {"m": 1}])
+def test_binding_rejects_bare_magnitude(bad):
+    with pytest.raises(B2NormalizationTypeError):
+        _binding(unit_bound_magnitude=bad)
+
+
+def test_binding_rejects_unit_bound_magnitude_subclass():
+    class _Sub(UnitBoundMagnitude):
+        pass
+
+    sub = object.__new__(_Sub)
+    with pytest.raises(B2NormalizationTypeError):
+        _binding(unit_bound_magnitude=sub)
+
+
+# --- NormalizedEvidenceMaterial: binding collection (no positional semantics) ----------------------
+
+def test_material_accepts_tuple_of_exact_bindings():
+    assert _material(normalized_field_bindings=()).normalized_field_bindings == ()
+    ok = _material(normalized_field_bindings=(
+        _binding(normalized_field_name="gross_edge"),
+        _binding(normalized_field_name="total_cost"),
+    ))
+    assert len(ok.normalized_field_bindings) == 2
+
+
+def test_material_rejects_tuple_of_bare_unit_bound_magnitude():
+    with pytest.raises(B2NormalizationTypeError):
+        _material(normalized_field_bindings=(_ubm(),))
+
+
+@pytest.mark.parametrize("bad", [["x"], {"a": 1}, {"y"}, frozenset({"z"}), "nope"])
+def test_material_rejects_non_tuple_bindings(bad):
+    with pytest.raises(B2NormalizationTypeError):
+        _material(normalized_field_bindings=bad)
+
+
+def test_material_rejects_duplicate_normalized_field_name():
+    with pytest.raises(B2NormalizationValueError):
+        _material(normalized_field_bindings=(
+            _binding(normalized_field_name="gross_edge"),
+            _binding(normalized_field_name="gross_edge"),
+        ))
+
+
+def test_material_infers_no_meaning_from_index_under_reversal():
+    forward = (
+        _binding(normalized_field_name="gross_edge", source_field="summary.gross_edge"),
+        _binding(normalized_field_name="total_cost", source_field="summary.total_cost"),
+    )
+    reversed_bindings = tuple(reversed(forward))
+    material = _material(normalized_field_bindings=reversed_bindings)
+    # each binding still carries its own explicit field names regardless of tuple position
+    assert material.normalized_field_bindings[0].normalized_field_name == "total_cost"
+    assert material.normalized_field_bindings[0].source_field == "summary.total_cost"
+    assert material.normalized_field_bindings[1].normalized_field_name == "gross_edge"
+    assert material.normalized_field_bindings[1].source_field == "summary.gross_edge"
 
 
 def test_material_tolerance_zero_is_valid_strict_match():

@@ -116,14 +116,39 @@ class UnitBoundMagnitude(_AntiCoercion):
 
 
 @dataclass(frozen=True, repr=False, init=False, slots=True, eq=False)
+class NormalizedEvidenceFieldBinding(_AntiCoercion):
+    """One normalized evidence value bound explicitly to its semantic field name and raw source field.
+    Construct only through :func:`make_normalized_evidence_field_binding`. Carrying the names on the
+    binding removes any reliance on tuple position to infer meaning."""
+
+    component_name: object
+    boundary_version: object
+    normalized_field_name: object
+    source_field: object
+    unit_bound_magnitude: object
+
+    def __init__(self, *args, **kwargs):
+        raise B2NormalizationTypeError(
+            "NormalizedEvidenceFieldBinding cannot be constructed directly; use "
+            "make_normalized_evidence_field_binding(...)."
+        )
+
+    def __repr__(self):
+        return "NormalizedEvidenceFieldBinding(normalized_field_name={!r})".format(
+            object.__getattribute__(self, "normalized_field_name")
+        )
+
+
+@dataclass(frozen=True, repr=False, init=False, slots=True, eq=False)
 class NormalizedEvidenceMaterial(_AntiCoercion):
-    """B2 output. References the raw snapshot BY IDENTITY; carries only unit-bound magnitudes plus an
-    epoch tolerance. Construct only through :func:`make_normalized_evidence_material`."""
+    """B2 output. References the raw snapshot BY IDENTITY; carries a tuple of explicitly named
+    field bindings plus an epoch tolerance. Construct only through
+    :func:`make_normalized_evidence_material`."""
 
     component_name: object
     boundary_version: object
     raw_snapshot: object
-    normalized_values: object
+    normalized_field_bindings: object
     evidence_epoch_tolerance_ms: object
 
     def __init__(self, *args, **kwargs):
@@ -236,39 +261,72 @@ def make_unit_bound_magnitude(*, magnitude, unit):
     return bound
 
 
-def _require_unit_bound_tuple(name, value):
+def make_normalized_evidence_field_binding(*, normalized_field_name, source_field, unit_bound_magnitude):
+    """Build one :class:`NormalizedEvidenceFieldBinding`. ``normalized_field_name`` and ``source_field``
+    are exact non-empty strings; ``unit_bound_magnitude`` is an exact :class:`UnitBoundMagnitude`
+    referenced by identity. All three are required — a magnitude is never carried without its names."""
+    _require_str("normalized_field_name", normalized_field_name)
+    _require_str("source_field", source_field)
+    if type(unit_bound_magnitude) is not UnitBoundMagnitude:
+        raise B2NormalizationTypeError(
+            "unit_bound_magnitude must be an exact UnitBoundMagnitude, not {}".format(
+                type(unit_bound_magnitude).__name__
+            )
+        )
+
+    binding = object.__new__(NormalizedEvidenceFieldBinding)
+    object.__setattr__(binding, "component_name", B2_NORMALIZATION_CONTRACT_COMPONENT_NAME)
+    object.__setattr__(binding, "boundary_version", B2_NORMALIZATION_CONTRACT_BOUNDARY_VERSION)
+    object.__setattr__(binding, "normalized_field_name", normalized_field_name)
+    object.__setattr__(binding, "source_field", source_field)
+    object.__setattr__(binding, "unit_bound_magnitude", unit_bound_magnitude)
+    return binding
+
+
+def _require_field_binding_tuple(name, value):
+    """Exact tuple of exact NormalizedEvidenceFieldBinding, with unique normalized_field_name values.
+    Meaning is carried on each binding, never inferred from tuple position."""
     if type(value) is not tuple:
         raise B2NormalizationTypeError(
             "field {!r} must be a tuple, not {}".format(name, type(value).__name__)
         )
+    seen_field_names = set()
     for element in value:
-        if type(element) is not UnitBoundMagnitude:
+        if type(element) is not NormalizedEvidenceFieldBinding:
             raise B2NormalizationTypeError(
-                "field {!r} must contain only exact UnitBoundMagnitude values, not {}".format(
-                    name, type(element).__name__
-                )
+                "field {!r} must contain only exact NormalizedEvidenceFieldBinding values, not "
+                "{}".format(name, type(element).__name__)
             )
+        field_name = element.normalized_field_name
+        if field_name in seen_field_names:
+            raise B2NormalizationValueError(
+                "field {!r} has a duplicate normalized_field_name {!r}".format(name, field_name)
+            )
+        seen_field_names.add(field_name)
 
 
-def make_normalized_evidence_material(*, raw_snapshot, normalized_values, evidence_epoch_tolerance_ms):
+def make_normalized_evidence_material(
+    *, raw_snapshot, normalized_field_bindings, evidence_epoch_tolerance_ms
+):
     """Build one :class:`NormalizedEvidenceMaterial`. ``raw_snapshot`` is referenced by identity (exact
-    :class:`PublicRawSnapshotRecord`); ``normalized_values`` is a tuple of exact
-    :class:`UnitBoundMagnitude`; ``evidence_epoch_tolerance_ms`` is an exact non-negative int where ``0``
-    is a valid strict match and ``None``/negative/wrong-type is malformed. Nothing is derived."""
+    :class:`PublicRawSnapshotRecord`); ``normalized_field_bindings`` is a tuple of exact
+    :class:`NormalizedEvidenceFieldBinding` with unique ``normalized_field_name`` values;
+    ``evidence_epoch_tolerance_ms`` is an exact non-negative int where ``0`` is a valid strict match and
+    ``None``/negative/wrong-type is malformed. Nothing is derived."""
     if type(raw_snapshot) is not PublicRawSnapshotRecord:
         raise B2NormalizationTypeError(
             "raw_snapshot must be an exact PublicRawSnapshotRecord, not {}".format(
                 type(raw_snapshot).__name__
             )
         )
-    _require_unit_bound_tuple("normalized_values", normalized_values)
+    _require_field_binding_tuple("normalized_field_bindings", normalized_field_bindings)
     _require_non_negative_int("evidence_epoch_tolerance_ms", evidence_epoch_tolerance_ms)
 
     material = object.__new__(NormalizedEvidenceMaterial)
     object.__setattr__(material, "component_name", B2_NORMALIZATION_CONTRACT_COMPONENT_NAME)
     object.__setattr__(material, "boundary_version", B2_NORMALIZATION_CONTRACT_BOUNDARY_VERSION)
     object.__setattr__(material, "raw_snapshot", raw_snapshot)
-    object.__setattr__(material, "normalized_values", normalized_values)
+    object.__setattr__(material, "normalized_field_bindings", normalized_field_bindings)
     object.__setattr__(material, "evidence_epoch_tolerance_ms", evidence_epoch_tolerance_ms)
     return material
 
@@ -281,7 +339,11 @@ assert tuple(f.name for f in dataclass_fields(PublicRawSnapshotRecord)) == (
 assert tuple(f.name for f in dataclass_fields(UnitBoundMagnitude)) == (
     "component_name", "boundary_version", "magnitude", "unit",
 )
+assert tuple(f.name for f in dataclass_fields(NormalizedEvidenceFieldBinding)) == (
+    "component_name", "boundary_version", "normalized_field_name", "source_field",
+    "unit_bound_magnitude",
+)
 assert tuple(f.name for f in dataclass_fields(NormalizedEvidenceMaterial)) == (
-    "component_name", "boundary_version", "raw_snapshot", "normalized_values",
+    "component_name", "boundary_version", "raw_snapshot", "normalized_field_bindings",
     "evidence_epoch_tolerance_ms",
 )
