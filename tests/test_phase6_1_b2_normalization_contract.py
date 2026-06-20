@@ -598,6 +598,100 @@ def test_binding_role_frozen_slotted():
         object.__setattr__(binding, "injected_role", 1)
 
 
+# --- Slice 2B: zero_cost_evidence carrier ----------------------------------------------------------
+
+def test_binding_zero_cost_evidence_defaults_to_none():
+    assert _binding().zero_cost_evidence is None
+
+
+def test_binding_cost_role_accepts_none_or_str_evidence():
+    none_ev = _binding(
+        binding_role="COST", normalized_field_name="total_cost", zero_cost_evidence=None
+    )
+    assert none_ev.zero_cost_evidence is None
+    str_ev = _binding(
+        binding_role="COST", normalized_field_name="total_cost",
+        zero_cost_evidence="OBSERVED_ZERO_FEE",
+    )
+    assert str_ev.zero_cost_evidence == "OBSERVED_ZERO_FEE"
+
+
+@pytest.mark.parametrize("bad", [123, True, 1.0, "", "   ", {"e": 1}, ["x"]])
+def test_binding_cost_role_rejects_non_str_or_empty_evidence(bad):
+    with pytest.raises((B2NormalizationTypeError, B2NormalizationValueError)):
+        _binding(binding_role="COST", normalized_field_name="total_cost", zero_cost_evidence=bad)
+
+
+def test_binding_zero_cost_evidence_rejects_str_subclass():
+    class _S(str):
+        pass
+
+    with pytest.raises(B2NormalizationTypeError):
+        _binding(
+            binding_role="COST", normalized_field_name="total_cost",
+            zero_cost_evidence=_S("OBSERVED_ZERO_FEE"),
+        )
+
+
+def test_binding_gross_edge_role_forbids_non_none_evidence():
+    with pytest.raises(B2NormalizationValueError):
+        _binding(binding_role="GROSS_EDGE", zero_cost_evidence="OBSERVED_ZERO_FEE")
+
+
+def test_binding_gross_edge_role_allows_none_evidence():
+    assert _binding(binding_role="GROSS_EDGE", zero_cost_evidence=None).zero_cost_evidence is None
+
+
+def test_binding_zero_cost_evidence_no_default_string():
+    # the field default is None, never an implicit evidence string
+    b = _binding(binding_role="COST", normalized_field_name="total_cost")
+    assert b.zero_cost_evidence is None
+
+
+def test_binding_zero_cost_evidence_frozen_slotted():
+    b = _binding(
+        binding_role="COST", normalized_field_name="total_cost",
+        zero_cost_evidence="OBSERVED_ZERO_FEE",
+    )
+    assert not hasattr(b, "__dict__")
+    with pytest.raises(Exception):
+        b.zero_cost_evidence = "OTHER"
+    with pytest.raises(AttributeError):
+        object.__setattr__(b, "injected_evidence", 1)
+
+
+def test_binding_zero_cost_evidence_not_inferred_from_magnitude():
+    # identical magnitude, different evidence -> carried, never derived from the magnitude string
+    a = _binding(binding_role="COST", normalized_field_name="c1", zero_cost_evidence=None)
+    b = _binding(
+        binding_role="COST", normalized_field_name="c2", zero_cost_evidence="OBSERVED_ZERO_FEE"
+    )
+    assert a.unit_bound_magnitude.magnitude == b.unit_bound_magnitude.magnitude
+    assert a.zero_cost_evidence is None
+    assert b.zero_cost_evidence == "OBSERVED_ZERO_FEE"
+
+
+def test_binding_cost_role_zero_magnitude_does_not_require_evidence():
+    # B2 performs no numeric-zero decision: a "0" magnitude COST binding may carry None evidence
+    b = _binding(
+        binding_role="COST", normalized_field_name="total_cost",
+        unit_bound_magnitude=make_unit_bound_magnitude(magnitude="0", unit="proportion"),
+        zero_cost_evidence=None,
+    )
+    assert b.zero_cost_evidence is None
+    assert b.unit_bound_magnitude.magnitude == "0"
+
+
+def test_binding_cost_role_nonzero_magnitude_may_still_carry_evidence():
+    # B2 performs no numeric-nonzero decision either: evidence is not forbidden on a nonzero magnitude
+    b = _binding(
+        binding_role="COST", normalized_field_name="total_cost",
+        unit_bound_magnitude=make_unit_bound_magnitude(magnitude="0.006", unit="proportion"),
+        zero_cost_evidence="OBSERVED_ZERO_FEE",
+    )
+    assert b.zero_cost_evidence == "OBSERVED_ZERO_FEE"
+
+
 # --- structural locks specific to this slice ------------------------------------------------------
 
 def test_b2_runtime_does_not_import_phase5():

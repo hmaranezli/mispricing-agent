@@ -135,6 +135,7 @@ class NormalizedEvidenceFieldBinding(_AntiCoercion):
     source_field: object
     binding_role: object
     unit_bound_magnitude: object
+    zero_cost_evidence: object
 
     def __init__(self, *args, **kwargs):
         raise B2NormalizationTypeError(
@@ -234,6 +235,26 @@ def _require_binding_role(name, value):
     if value not in _ALLOWED_BINDING_ROLES:
         raise B2NormalizationValueError(
             "field {!r} must be exactly one of GROSS_EDGE or COST".format(name)
+        )
+
+
+def _require_optional_zero_cost_evidence(name, value, binding_role):
+    """Carrier-only evidence metadata. ``None`` is always type-valid; a supplied value must be an exact
+    non-empty str. No magnitude is parsed or compared here — whether a magnitude is numerically zero is
+    never decided at this boundary; that validation is deferred downstream. Role consistency: only a
+    COST binding may carry zero-cost evidence; a GROSS_EDGE binding must carry None."""
+    if value is not None:
+        if type(value) is not str:
+            raise B2NormalizationTypeError(
+                "field {!r} must be a str or None, not {}".format(name, type(value).__name__)
+            )
+        if value.strip() == "":
+            raise B2NormalizationValueError(
+                "field {!r}, when supplied, must be a non-empty, non-whitespace string".format(name)
+            )
+    if binding_role == "GROSS_EDGE" and value is not None:
+        raise B2NormalizationValueError(
+            "field {!r} must be None when binding_role is GROSS_EDGE".format(name)
         )
 
 
@@ -347,13 +368,17 @@ def make_unit_bound_magnitude(*, magnitude, unit):
 
 
 def make_normalized_evidence_field_binding(
-    *, normalized_field_name, source_field, binding_role, unit_bound_magnitude
+    *, normalized_field_name, source_field, binding_role, unit_bound_magnitude,
+    zero_cost_evidence=None,
 ):
     """Build one :class:`NormalizedEvidenceFieldBinding`. ``normalized_field_name`` and ``source_field``
     are exact non-empty strings; ``binding_role`` is a required exact-vocabulary string (``GROSS_EDGE``
     or ``COST``) that only states how the binding is to be interpreted later and is never inferred from
     any other field; ``unit_bound_magnitude`` is an exact :class:`UnitBoundMagnitude` referenced by
-    identity. All four are required — a magnitude is never carried without its names and role."""
+    identity. ``zero_cost_evidence`` is optional carrier-only metadata: ``None`` by default, an exact
+    non-empty str only when supplied, permitted only on a COST binding, and never derived from the
+    magnitude (no numeric-zero decision happens here). The first four are required — a magnitude is
+    never carried without its names and role."""
     _require_str("normalized_field_name", normalized_field_name)
     _require_str("source_field", source_field)
     _require_binding_role("binding_role", binding_role)
@@ -363,6 +388,7 @@ def make_normalized_evidence_field_binding(
                 type(unit_bound_magnitude).__name__
             )
         )
+    _require_optional_zero_cost_evidence("zero_cost_evidence", zero_cost_evidence, binding_role)
 
     binding = object.__new__(NormalizedEvidenceFieldBinding)
     object.__setattr__(binding, "component_name", B2_NORMALIZATION_CONTRACT_COMPONENT_NAME)
@@ -371,6 +397,7 @@ def make_normalized_evidence_field_binding(
     object.__setattr__(binding, "source_field", source_field)
     object.__setattr__(binding, "binding_role", binding_role)
     object.__setattr__(binding, "unit_bound_magnitude", unit_bound_magnitude)
+    object.__setattr__(binding, "zero_cost_evidence", zero_cost_evidence)
     return binding
 
 
@@ -433,7 +460,7 @@ assert tuple(f.name for f in dataclass_fields(UnitBoundMagnitude)) == (
 )
 assert tuple(f.name for f in dataclass_fields(NormalizedEvidenceFieldBinding)) == (
     "component_name", "boundary_version", "normalized_field_name", "source_field",
-    "binding_role", "unit_bound_magnitude",
+    "binding_role", "unit_bound_magnitude", "zero_cost_evidence",
 )
 assert tuple(f.name for f in dataclass_fields(NormalizedEvidenceMaterial)) == (
     "component_name", "boundary_version", "raw_snapshot", "normalized_field_bindings",

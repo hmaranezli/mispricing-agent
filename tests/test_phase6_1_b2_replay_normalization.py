@@ -347,6 +347,42 @@ def test_replay_binding_role_addressed_by_label_not_position():
     assert binding.normalized_field_name == "total_cost"
 
 
+# --- Slice 2B: zero_cost_evidence optional label flows through replay verbatim --------------------
+
+def test_replay_zero_cost_evidence_absent_is_none():
+    material = _normalize(raw_snapshot=_raw(field_payload=(
+        _entry(binding_role="COST", normalized_field_name="total_cost"),
+    )))
+    assert material.normalized_field_bindings[0].zero_cost_evidence is None
+
+
+def test_replay_zero_cost_evidence_present_flows_through():
+    entry = _entry(binding_role="COST", normalized_field_name="total_cost") + (
+        ("zero_cost_evidence", "OBSERVED_ZERO_FEE"),
+    )
+    material = _normalize(raw_snapshot=_raw(field_payload=(entry,)))
+    assert material.normalized_field_bindings[0].zero_cost_evidence == "OBSERVED_ZERO_FEE"
+
+
+def test_replay_zero_cost_evidence_on_gross_edge_fails_fast():
+    entry = _entry(binding_role="GROSS_EDGE") + (("zero_cost_evidence", "OBSERVED_ZERO_FEE"),)
+    with pytest.raises(B2NormalizationValueError):
+        _normalize(raw_snapshot=_raw(field_payload=(entry,)))
+
+
+def test_replay_zero_cost_evidence_addressed_by_label_not_position():
+    entry = (
+        ("zero_cost_evidence", "OBSERVED_ZERO_FEE"),
+        ("unit", "proportion"),
+        ("magnitude", "0.006"),
+        ("binding_role", "COST"),
+        ("source_field", "summary.total_cost"),
+        ("normalized_field_name", "total_cost"),
+    )
+    material = _normalize(raw_snapshot=_raw(field_payload=(entry,)))
+    assert material.normalized_field_bindings[0].zero_cost_evidence == "OBSERVED_ZERO_FEE"
+
+
 # --- structural locks specific to this slice ------------------------------------------------------
 
 def test_runtime_does_not_import_phase5():
