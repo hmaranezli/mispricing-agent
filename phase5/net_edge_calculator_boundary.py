@@ -25,6 +25,7 @@ from decimal import Decimal, localcontext
 
 from phase5.pre_net_edge_calculation_input_boundary import (
     PreNetEdgeCalculationInput,
+    ObservableCostValidityContext,
     reject_misrouted_halt_carrier,
     MisroutedHaltCarrierError,
 )
@@ -206,6 +207,164 @@ def _make_net_edge_result(**fields):
     return result
 
 
+# --- Passive (non-actionable) sibling carriers for net-edge arithmetic access -------------------
+# These let the existing calculate_net_edge algebra be reached WITHOUT the actionability-bundled
+# GrossEdgeObservation/PreNetEdgeCalculationInput. They carry ONLY the magnitude/unit + cost contexts
+# the arithmetic actually reads; no edge_direction, venue, staleness, or any actionability field.
+# Authored under
+# docs/handoff/phase6_1_phase5_passive_pre_net_edge_carrier_shape_entry_mechanism_design_charter.md.
+PASSIVE_PRE_NET_EDGE_COMPONENT_NAME = "phase5_passive_pre_net_edge_calculation_input"
+PASSIVE_PRE_NET_EDGE_BOUNDARY_VERSION = "phase5.net_edge_calculator_boundary.passive.v0"
+
+
+class PassiveCarrierTruthinessError(TypeError):
+    """Raised when a passive net-edge carrier is used in a truthiness/length context."""
+
+
+class PassiveCarrierCoercionError(TypeError):
+    """Raised when a passive net-edge carrier is coerced to a number, string, or bytes."""
+
+
+class PassiveGrossEdgeMagnitudeConstructionError(TypeError):
+    """Raised when a PassiveGrossEdgeMagnitude is constructed with a rejected/missing field value."""
+
+
+class PassivePreNetEdgeCalculationInputConstructionError(TypeError):
+    """Raised when a PassivePreNetEdgeCalculationInput is constructed with a rejected field value."""
+
+
+class _PassiveCarrierAntiCoercion:
+    """Shared anti-truthiness / anti-coercion behavior for the passive carriers (mirrors the
+    NetEdgeCalculationResult discipline): a carrier is inspected by field, never coerced."""
+
+    def __bool__(self):
+        raise PassiveCarrierTruthinessError(
+            "passive net-edge carrier must not be evaluated for truthiness; inspect fields instead."
+        )
+
+    def __len__(self):
+        raise PassiveCarrierTruthinessError(
+            "passive net-edge carrier has no length; inspect fields instead."
+        )
+
+    def __int__(self):
+        raise PassiveCarrierCoercionError("passive net-edge carrier must not be coerced to int.")
+
+    def __float__(self):
+        raise PassiveCarrierCoercionError("passive net-edge carrier must not be coerced to float.")
+
+    def __complex__(self):
+        raise PassiveCarrierCoercionError("passive net-edge carrier must not be coerced to complex.")
+
+    def __index__(self):
+        raise PassiveCarrierCoercionError("passive net-edge carrier must not be coerced to an index.")
+
+    def __str__(self):
+        raise PassiveCarrierCoercionError("passive net-edge carrier must not be coerced to str.")
+
+    def __bytes__(self):
+        raise PassiveCarrierCoercionError("passive net-edge carrier must not be coerced to bytes.")
+
+
+@dataclass(frozen=True, repr=False, init=False)
+class PassiveGrossEdgeMagnitude(_PassiveCarrierAntiCoercion):
+    """A frozen, non-actionable carrier of exactly one gross-edge magnitude bound to its unit.
+
+    Carries ONLY ``gross_edge_value``/``gross_edge_unit`` (the fields the net-edge arithmetic reads)
+    plus provenance. It is the passive counterpart of the magnitude portion of ``GrossEdgeObservation``
+    and deliberately holds NO ``edge_direction``/venue/staleness/actionability field. Construct only
+    through :func:`make_passive_gross_edge_magnitude`."""
+
+    component_name: object
+    boundary_version: object
+    gross_edge_value: object
+    gross_edge_unit: object
+
+    def __repr__(self):
+        return "PassiveGrossEdgeMagnitude(gross_edge_unit={!r})".format(
+            object.__getattribute__(self, "gross_edge_unit")
+        )
+
+
+@dataclass(frozen=True, repr=False, init=False)
+class PassivePreNetEdgeCalculationInput(_PassiveCarrierAntiCoercion):
+    """A frozen, non-actionable sibling of ``PreNetEdgeCalculationInput``. Holds an exact
+    :class:`PassiveGrossEdgeMagnitude` in the ``gross_observation`` slot and a non-empty tuple of exact
+    ``ObservableCostValidityContext`` items, preserved verbatim. Construct only through
+    :func:`make_passive_pre_net_edge_calculation_input`."""
+
+    component_name: object
+    boundary_version: object
+    gross_observation: object
+    cost_validity_contexts: object
+
+    def __repr__(self):
+        return "PassivePreNetEdgeCalculationInput(boundary_version={!r})".format(
+            object.__getattribute__(self, "boundary_version")
+        )
+
+
+def make_passive_gross_edge_magnitude(*, gross_edge_value, gross_edge_unit):
+    """Build one :class:`PassiveGrossEdgeMagnitude`. ``gross_edge_value`` must be an exact non-empty
+    canonical decimal string (same constraint as the actionable counterpart, preserved verbatim);
+    ``gross_edge_unit`` an exact non-empty, non-whitespace string. No actionability parameter is
+    accepted: a magnitude alone is observed, intent is never carried here."""
+    if type(gross_edge_value) is not str:
+        raise PassiveGrossEdgeMagnitudeConstructionError(
+            "field 'gross_edge_value' must be a str, not " + type(gross_edge_value).__name__
+        )
+    if _CANONICAL_DECIMAL.fullmatch(gross_edge_value) is None:
+        raise PassiveGrossEdgeMagnitudeConstructionError(
+            "field 'gross_edge_value' must be a canonical decimal string"
+        )
+    if type(gross_edge_unit) is not str or gross_edge_unit.strip() == "":
+        raise PassiveGrossEdgeMagnitudeConstructionError(
+            "field 'gross_edge_unit' must be a non-empty, non-whitespace string"
+        )
+    magnitude = object.__new__(PassiveGrossEdgeMagnitude)
+    object.__setattr__(magnitude, "component_name", PASSIVE_PRE_NET_EDGE_COMPONENT_NAME)
+    object.__setattr__(magnitude, "boundary_version", PASSIVE_PRE_NET_EDGE_BOUNDARY_VERSION)
+    object.__setattr__(magnitude, "gross_edge_value", gross_edge_value)
+    object.__setattr__(magnitude, "gross_edge_unit", gross_edge_unit)
+    return magnitude
+
+
+def make_passive_pre_net_edge_calculation_input(*, gross_observation, cost_validity_contexts):
+    """Build one :class:`PassivePreNetEdgeCalculationInput`. ``gross_observation`` must be an exact
+    :class:`PassiveGrossEdgeMagnitude` (an actionable ``GrossEdgeObservation`` is rejected — no
+    actionability is smuggled in). ``cost_validity_contexts`` must be an exact, non-empty ``tuple`` of
+    exact ``ObservableCostValidityContext`` items (identical constraint to the actionable carrier);
+    a zero/absent cost is a zero-VALUED cost context, never an empty tuple. The tuple is preserved
+    verbatim — never copied/sorted/deduplicated/filtered. No magnitude value is re-parsed here; the
+    calculator performs the defensive malformed re-validation, exactly as on the actionable path."""
+    if type(gross_observation) is not PassiveGrossEdgeMagnitude:
+        raise PassivePreNetEdgeCalculationInputConstructionError(
+            "field 'gross_observation' must be an exact PassiveGrossEdgeMagnitude, not "
+            + type(gross_observation).__name__
+        )
+    if type(cost_validity_contexts) is not tuple:
+        raise PassivePreNetEdgeCalculationInputConstructionError(
+            "field 'cost_validity_contexts' must be a tuple, not "
+            + type(cost_validity_contexts).__name__
+        )
+    if len(cost_validity_contexts) == 0:
+        raise PassivePreNetEdgeCalculationInputConstructionError(
+            "field 'cost_validity_contexts' must be a non-empty tuple"
+        )
+    for item in cost_validity_contexts:
+        if type(item) is not ObservableCostValidityContext:
+            raise PassivePreNetEdgeCalculationInputConstructionError(
+                "every cost_validity_contexts item must be an exact ObservableCostValidityContext, "
+                "not " + type(item).__name__
+            )
+    passive_input = object.__new__(PassivePreNetEdgeCalculationInput)
+    object.__setattr__(passive_input, "component_name", PASSIVE_PRE_NET_EDGE_COMPONENT_NAME)
+    object.__setattr__(passive_input, "boundary_version", PASSIVE_PRE_NET_EDGE_BOUNDARY_VERSION)
+    object.__setattr__(passive_input, "gross_observation", gross_observation)
+    object.__setattr__(passive_input, "cost_validity_contexts", cost_validity_contexts)
+    return passive_input
+
+
 def _calculator_blocked(*, status, blocked_status, reason_code, missing_or_invalid_field,
                         deterministic_next_action, may_retry_after_evidence):
     """Build a calculator BlockedPacket via the existing factory — no new packet class, no wrapper."""
@@ -309,11 +468,16 @@ def calculate_net_edge(*, calculation_input):
     :class:`NetEdgeCalculatorTypeError` or :class:`MisroutedHaltCarrierError`.
     """
     # --- Programmatic wrong-path / wrong-type first ---
+    # Additive exact-typed Union: the actionable PreNetEdgeCalculationInput path is unchanged; the
+    # passive PassivePreNetEdgeCalculationInput is accepted as a second exact alternative. Both expose
+    # `.gross_observation` (with gross_edge_value/unit) and `.cost_validity_contexts`, so the SAME
+    # algebra below reads either uniformly. No isinstance, no structural typing.
     reject_misrouted_halt_carrier(calculation_input)
-    if type(calculation_input) is not PreNetEdgeCalculationInput:
+    if (type(calculation_input) is not PreNetEdgeCalculationInput
+            and type(calculation_input) is not PassivePreNetEdgeCalculationInput):
         raise NetEdgeCalculatorTypeError(
-            "calculate_net_edge requires an exact PreNetEdgeCalculationInput, not "
-            + type(calculation_input).__name__
+            "calculate_net_edge requires an exact PreNetEdgeCalculationInput or "
+            "PassivePreNetEdgeCalculationInput, not " + type(calculation_input).__name__
         )
 
     gross = calculation_input.gross_observation
