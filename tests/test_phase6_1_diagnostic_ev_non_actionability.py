@@ -237,6 +237,32 @@ def test_runtime_has_no_actionability_or_ranking_surface():
     assert offenders == [], "actionability/ranking surface in runtime: %r" % offenders
 
 
+# --- module-scoped IO-lock exception (single allowlisted replay depth reader) ---------------------
+# Mirror of the exception in tests/test_phase6_1_forbidden_token_locks.py, authorized by
+# docs/handoff/phase6_1_replay_depth_reader_io_lock_exception_amendment_charter.md. Keyed on EXACTLY
+# one basename and closed: only the "json" token, the closed import allowlist {pathlib, json, csv}, and
+# a READ-ONLY open() are tolerated for that one module; every other module and every other forbidden
+# surface stay banned.
+
+_READER_BASENAME = "b1_replay_depth_artifact_reader.py"
+_READER_IMPORT_ALLOWLIST = {"pathlib", "json", "csv"}
+_READER_TOKEN_ALLOWLIST = {"json"}
+
+
+def _open_is_read_only(node):
+    mode = None
+    if len(node.args) >= 2:
+        mode = node.args[1]
+    for kw in node.keywords:
+        if kw.arg == "mode":
+            mode = kw.value
+    if mode is None:
+        return True
+    if isinstance(mode, ast.Constant) and isinstance(mode.value, str):
+        return not any(flag in mode.value for flag in ("w", "a", "x", "+"))
+    return False
+
+
 # --- 4(bis). Slice 0D forbidden-token lock still holds (self-contained re-assert) ------------------
 
 _FORBIDDEN_TOKENS = (
@@ -250,10 +276,14 @@ _FORBIDDEN_TOKENS = (
 def test_slice0d_forbidden_token_lock_still_holds():
     violations = []
     for path in _runtime_files():
+        basename = os.path.basename(str(path))
         text = _read(path)
+        allowed = _READER_TOKEN_ALLOWLIST if basename == _READER_BASENAME else frozenset()
         for tok in _FORBIDDEN_TOKENS:
+            if tok in allowed:
+                continue
             if _token_hits(tok, text):
-                violations.append((os.path.basename(str(path)), tok))
+                violations.append((basename, tok))
     assert violations == [], "forbidden tokens in runtime: %r" % violations
 
 
@@ -271,14 +301,23 @@ def test_slice0d_import_and_io_locks_still_hold():
     import_offenders = []
     call_offenders = []
     for path in _runtime_files():
+        basename = os.path.basename(str(path))
+        is_reader = basename == _READER_BASENAME
         tree = ast.parse(_read(path))
-        bad = _import_roots(tree) & _FORBIDDEN_IMPORT_ROOTS
+        roots = _import_roots(tree)
+        if is_reader:
+            roots = roots - _READER_IMPORT_ALLOWLIST
+        bad = roots & _FORBIDDEN_IMPORT_ROOTS
         if bad:
-            import_offenders.append((os.path.basename(str(path)), sorted(bad)))
+            import_offenders.append((basename, sorted(bad)))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                if node.func.id in _FORBIDDEN_CALL_NAMES:
-                    call_offenders.append((os.path.basename(str(path)), node.func.id))
+                name = node.func.id
+                if name not in _FORBIDDEN_CALL_NAMES:
+                    continue
+                if is_reader and name == "open" and _open_is_read_only(node):
+                    continue
+                call_offenders.append((basename, name))
     assert import_offenders == [], "forbidden imports: %r" % import_offenders
     assert call_offenders == [], "forbidden IO/exec calls: %r" % call_offenders
 

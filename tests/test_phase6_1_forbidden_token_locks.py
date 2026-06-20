@@ -126,6 +126,35 @@ def _no_eligible_packet():
     )
 
 
+# --- module-scoped IO-lock exception (single allowlisted replay depth reader) ---------------------
+# Authorized by docs/handoff/phase6_1_replay_depth_reader_io_lock_exception_amendment_charter.md. The
+# exception is keyed on EXACTLY one basename and is closed: it tolerates the "json" token, the closed
+# import allowlist {pathlib, json, csv}, and a READ-ONLY open() — and nothing else. Every other module
+# stays under the full no-IO posture, and every other forbidden surface (write/append open, network
+# imports, env/secrets, subprocess, dynamic exec, actionability tokens) stays banned for the reader too.
+
+_READER_BASENAME = "b1_replay_depth_artifact_reader.py"
+_READER_IMPORT_ALLOWLIST = {"pathlib", "json", "csv"}
+_READER_TOKEN_ALLOWLIST = {"json"}
+
+
+def _open_is_read_only(node):
+    """True iff this ``open(...)`` Call is read-only: mode absent/default, or a string literal mode
+    carrying no write/append/update flag ('w', 'a', 'x', '+'). A non-literal mode cannot be proven
+    read-only and is rejected."""
+    mode = None
+    if len(node.args) >= 2:
+        mode = node.args[1]
+    for kw in node.keywords:
+        if kw.arg == "mode":
+            mode = kw.value
+    if mode is None:
+        return True
+    if isinstance(mode, ast.Constant) and isinstance(mode.value, str):
+        return not any(flag in mode.value for flag in ("w", "a", "x", "+"))
+    return False
+
+
 # --- 1. global forbidden-token source scan (word-boundary exact) ----------------------------------
 
 _FORBIDDEN_TOKENS = (
@@ -146,10 +175,14 @@ def _token_hits(token, text):
 def test_runtime_source_is_free_of_forbidden_tokens():
     violations = []
     for path in _runtime_files():
+        basename = os.path.basename(str(path))
         text = _read(path)
+        allowed = _READER_TOKEN_ALLOWLIST if basename == _READER_BASENAME else frozenset()
         for token in _FORBIDDEN_TOKENS:
+            if token in allowed:
+                continue
             if _token_hits(token, text):
-                violations.append((os.path.basename(str(path)), token))
+                violations.append((basename, token))
     assert violations == [], "forbidden tokens in phase6_1 runtime: %r" % violations
 
 
@@ -178,21 +211,34 @@ def _import_roots(tree):
 def test_runtime_has_no_forbidden_imports():
     offenders = []
     for path in _runtime_files():
+        basename = os.path.basename(str(path))
         tree = ast.parse(_read(path))
-        bad = _import_roots(tree) & _FORBIDDEN_IMPORT_ROOTS
+        roots = _import_roots(tree)
+        if basename == _READER_BASENAME:
+            roots = roots - _READER_IMPORT_ALLOWLIST
+        bad = roots & _FORBIDDEN_IMPORT_ROOTS
         if bad:
-            offenders.append((os.path.basename(str(path)), sorted(bad)))
+            offenders.append((basename, sorted(bad)))
     assert offenders == [], "forbidden imports in phase6_1 runtime: %r" % offenders
 
 
 def test_runtime_has_no_io_or_dynamic_exec_calls():
     offenders = []
     for path in _runtime_files():
+        basename = os.path.basename(str(path))
+        is_reader = basename == _READER_BASENAME
         tree = ast.parse(_read(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                if node.func.id in _FORBIDDEN_CALL_NAMES:
-                    offenders.append((os.path.basename(str(path)), node.func.id))
+                name = node.func.id
+                if name not in _FORBIDDEN_CALL_NAMES:
+                    continue
+                # Module-scoped exception: the single allowlisted reader may use a READ-ONLY open()
+                # for its local artifact. Any open() in any other module, any write/append/non-literal
+                # open even here, and every dynamic-exec call everywhere stay banned.
+                if is_reader and name == "open" and _open_is_read_only(node):
+                    continue
+                offenders.append((basename, name))
     assert offenders == [], "forbidden IO/dynamic-exec calls in phase6_1 runtime: %r" % offenders
 
 
