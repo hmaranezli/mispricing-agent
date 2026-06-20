@@ -275,6 +275,15 @@ _BANNED_NAME_SUBSTRINGS = (
     "actionability", "actionable", "recommendation", "verdict",
 )
 
+# S1 in-memory sink: an EXACT-NAME, per-basename name-surface exception authorized by
+# docs/handoff/phase6_1_s1_score_record_name_lock_exception_charter.md. ONLY the exact defined name
+# "ObservationScoreRecord" is permitted, and ONLY in this one basename. The substring "score" stays
+# globally banned; no other score-containing name (score/scoring/scorer/score_record/...) and no other
+# banned substring (calculate/compute/derive/readiness/actionability/.../verdict) is touched.
+_NAME_SURFACE_ALLOWLIST_BY_BASENAME = {
+    "s1_in_memory_observation_sink.py": frozenset({"ObservationScoreRecord"}),
+}
+
 
 def _defined_names(tree):
     names = []
@@ -293,11 +302,15 @@ def _defined_names(tree):
 def test_runtime_has_no_calculation_or_actionability_surface():
     offenders = []
     for path in _runtime_files():
+        basename = os.path.basename(str(path))
+        allowed_names = _NAME_SURFACE_ALLOWLIST_BY_BASENAME.get(basename, frozenset())
         tree = ast.parse(_read(path))
         for name in _defined_names(tree):
+            if name in allowed_names:
+                continue
             low = name.lower()
             if any(tok in low for tok in _BANNED_NAME_SUBSTRINGS):
-                offenders.append((os.path.basename(str(path)), name))
+                offenders.append((basename, name))
     assert offenders == [], "calculation/actionability surface in phase6_1 runtime: %r" % offenders
 
 

@@ -218,6 +218,15 @@ _BANNED_SURFACE_SUBSTRINGS = (
     "rank", "ranking", "threshold",
 )
 
+# S1 in-memory sink: an EXACT-NAME, per-basename name-surface exception authorized by
+# docs/handoff/phase6_1_s1_score_record_name_lock_exception_charter.md. ONLY the exact defined name
+# "ObservationScoreRecord" is permitted, and ONLY in this one basename. The substring "score" stays
+# globally banned; no other score-containing name and no other banned substring (incl. rank/ranking/
+# threshold) is touched.
+_NAME_SURFACE_ALLOWLIST_BY_BASENAME = {
+    "s1_in_memory_observation_sink.py": frozenset({"ObservationScoreRecord"}),
+}
+
 
 def test_surface_detector_has_teeth():
     bad = ast.parse("def score_threshold():\n    pass\n")
@@ -230,10 +239,14 @@ def test_surface_detector_has_teeth():
 def test_runtime_has_no_actionability_or_ranking_surface():
     offenders = []
     for path in _runtime_files():
+        basename = os.path.basename(str(path))
+        allowed_names = _NAME_SURFACE_ALLOWLIST_BY_BASENAME.get(basename, frozenset())
         for name in _defined_names(ast.parse(_read(path))):
+            if name in allowed_names:
+                continue
             low = name.lower()
             if any(tok in low for tok in _BANNED_SURFACE_SUBSTRINGS):
-                offenders.append((os.path.basename(str(path)), name))
+                offenders.append((basename, name))
     assert offenders == [], "actionability/ranking surface in runtime: %r" % offenders
 
 
