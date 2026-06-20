@@ -19,6 +19,8 @@ coercion; no default fallbacks; missing/malformed fields fail fast.
 import re
 from dataclasses import dataclass, fields as dataclass_fields
 
+from phase6_1.b1_depth_source_contract import PublicDepthSourceRecord
+
 
 B2_NORMALIZATION_CONTRACT_COMPONENT_NAME = "phase6_1_b2_normalization_contract"
 B2_NORMALIZATION_CONTRACT_BOUNDARY_VERSION = "phase6_1.b2_normalization_contract.v0"
@@ -160,6 +162,7 @@ class NormalizedEvidenceMaterial(_AntiCoercion):
     raw_snapshot: object
     normalized_field_bindings: object
     evidence_epoch_tolerance_ms: object
+    depth_source_reference: object
 
     def __init__(self, *args, **kwargs):
         raise B2NormalizationTypeError(
@@ -423,14 +426,29 @@ def _require_field_binding_tuple(name, value):
         seen_field_names.add(field_name)
 
 
+def _require_optional_depth_source_reference(name, value):
+    """A by-identity reference to an exact :class:`PublicDepthSourceRecord`, or ``None``. The record is
+    held blindly: none of its fields are read, parsed, compared, copied, or extracted here. Exact type
+    only (subclasses and look-alikes are rejected)."""
+    if value is not None and type(value) is not PublicDepthSourceRecord:
+        raise B2NormalizationTypeError(
+            "field {!r} must be an exact PublicDepthSourceRecord or None, not {}".format(
+                name, type(value).__name__
+            )
+        )
+
+
 def make_normalized_evidence_material(
-    *, raw_snapshot, normalized_field_bindings, evidence_epoch_tolerance_ms
+    *, raw_snapshot, normalized_field_bindings, evidence_epoch_tolerance_ms,
+    depth_source_reference=None,
 ):
     """Build one :class:`NormalizedEvidenceMaterial`. ``raw_snapshot`` is referenced by identity (exact
     :class:`PublicRawSnapshotRecord`); ``normalized_field_bindings`` is a tuple of exact
     :class:`NormalizedEvidenceFieldBinding` with unique ``normalized_field_name`` values;
     ``evidence_epoch_tolerance_ms`` is an exact non-negative int where ``0`` is a valid strict match and
-    ``None``/negative/wrong-type is malformed. Nothing is derived."""
+    ``None``/negative/wrong-type is malformed. ``depth_source_reference`` is optional: ``None`` by
+    default, otherwise an exact :class:`PublicDepthSourceRecord` held by identity and never inspected or
+    altered. Nothing is derived."""
     if type(raw_snapshot) is not PublicRawSnapshotRecord:
         raise B2NormalizationTypeError(
             "raw_snapshot must be an exact PublicRawSnapshotRecord, not {}".format(
@@ -439,6 +457,7 @@ def make_normalized_evidence_material(
         )
     _require_field_binding_tuple("normalized_field_bindings", normalized_field_bindings)
     _require_non_negative_int("evidence_epoch_tolerance_ms", evidence_epoch_tolerance_ms)
+    _require_optional_depth_source_reference("depth_source_reference", depth_source_reference)
 
     material = object.__new__(NormalizedEvidenceMaterial)
     object.__setattr__(material, "component_name", B2_NORMALIZATION_CONTRACT_COMPONENT_NAME)
@@ -446,6 +465,7 @@ def make_normalized_evidence_material(
     object.__setattr__(material, "raw_snapshot", raw_snapshot)
     object.__setattr__(material, "normalized_field_bindings", normalized_field_bindings)
     object.__setattr__(material, "evidence_epoch_tolerance_ms", evidence_epoch_tolerance_ms)
+    object.__setattr__(material, "depth_source_reference", depth_source_reference)
     return material
 
 
@@ -464,5 +484,5 @@ assert tuple(f.name for f in dataclass_fields(NormalizedEvidenceFieldBinding)) =
 )
 assert tuple(f.name for f in dataclass_fields(NormalizedEvidenceMaterial)) == (
     "component_name", "boundary_version", "raw_snapshot", "normalized_field_bindings",
-    "evidence_epoch_tolerance_ms",
+    "evidence_epoch_tolerance_ms", "depth_source_reference",
 )

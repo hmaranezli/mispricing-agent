@@ -34,6 +34,10 @@ from phase6_1.b2_normalization_contract import (
     B2NormalizationTruthinessError,
     B2NormalizationCoercionError,
 )
+from phase6_1.b1_depth_source_contract import (
+    PublicDepthSourceRecord,
+    make_public_depth_source_record,
+)
 
 
 _B2_MODULE_BASENAME = "b2_normalization_contract.py"
@@ -87,6 +91,21 @@ def _material(**overrides):
     )
     kwargs.update(overrides)
     return make_normalized_evidence_material(**kwargs)
+
+
+def _depth(**overrides):
+    kwargs = dict(
+        observed_size="125.5",
+        size_unit="contracts",
+        depth_source_field="levels.0.size",
+        depth_source_artifact="replay-depth-fixture-0001 (read-only public depth reference)",
+        depth_source_contract="external_market_replay_depth_provenance_contract.md",
+        depth_observed_at_epoch_ms="1749990000000",
+        depth_retrieval_epoch_ms=1_750_000_000_000,
+        depth_snapshot_identity="replay-depth-0001",
+    )
+    kwargs.update(overrides)
+    return make_public_depth_source_record(**kwargs)
 
 
 def _runtime_b2_path():
@@ -690,6 +709,95 @@ def test_binding_cost_role_nonzero_magnitude_may_still_carry_evidence():
         zero_cost_evidence="OBSERVED_ZERO_FEE",
     )
     assert b.zero_cost_evidence == "OBSERVED_ZERO_FEE"
+
+
+# --- Slice: B2 depth source identity reference (optional, by identity) -----------------------------
+
+def test_material_depth_source_reference_defaults_to_none():
+    assert _material().depth_source_reference is None
+
+
+def test_material_accepts_depth_source_reference_by_identity():
+    d = _depth()
+    m = _material(depth_source_reference=d)
+    assert m.depth_source_reference is d
+    assert id(m.depth_source_reference) == id(d)
+
+
+def test_material_depth_source_reference_explicit_none():
+    assert _material(depth_source_reference=None).depth_source_reference is None
+
+
+@pytest.mark.parametrize("bad", [{"observed_size": "1"}, ("125.5",), "125.5", 123, 1.0, True, ["d"]])
+def test_material_rejects_non_depth_source_reference(bad):
+    with pytest.raises(B2NormalizationTypeError):
+        _material(depth_source_reference=bad)
+
+
+def test_material_rejects_depth_source_reference_subclass():
+    class _Sub(PublicDepthSourceRecord):
+        pass
+
+    sub = object.__new__(_Sub)
+    with pytest.raises(B2NormalizationTypeError):
+        _material(depth_source_reference=sub)
+
+
+def test_material_depth_source_reference_held_by_identity_not_copied():
+    # a non-numeric observed_size is carried by identity without any parsing/extraction
+    d = _depth(observed_size="not-a-number")
+    m = _material(depth_source_reference=d)
+    assert m.depth_source_reference is d
+    assert m.depth_source_reference.observed_size == "not-a-number"
+
+
+def test_material_with_depth_reference_stays_frozen_slotted():
+    d = _depth()
+    m = _material(depth_source_reference=d)
+    assert not hasattr(m, "__dict__")
+    with pytest.raises(Exception):
+        m.depth_source_reference = d
+    with pytest.raises(AttributeError):
+        object.__setattr__(m, "injected_depth", 1)
+
+
+def test_material_does_not_alter_depth_record():
+    d = _depth()
+    before = (
+        d.observed_size, d.size_unit, d.depth_source_field, d.depth_source_artifact,
+        d.depth_source_contract, d.depth_observed_at_epoch_ms, d.depth_retrieval_epoch_ms,
+        d.depth_snapshot_identity,
+    )
+    _material(depth_source_reference=d)
+    after = (
+        d.observed_size, d.size_unit, d.depth_source_field, d.depth_source_artifact,
+        d.depth_source_contract, d.depth_observed_at_epoch_ms, d.depth_retrieval_epoch_ms,
+        d.depth_snapshot_identity,
+    )
+    assert before == after
+
+
+_DEPTH_SUBFIELD_NAMES = (
+    "observed_size", "size_unit", "depth_source_field", "depth_source_artifact",
+    "depth_source_contract", "depth_observed_at_epoch_ms", "depth_retrieval_epoch_ms",
+    "depth_snapshot_identity",
+)
+
+
+def test_b2_runtime_does_not_inspect_depth_subfields():
+    # blind carriage: B2 holds the depth record by identity and never names any depth subfield.
+    # Word-boundary match so the import path 'phase6_1.b1_depth_source_contract' (underscore-prefixed)
+    # is not a false positive — only a bare subfield identifier would be flagged.
+    import re as _re
+
+    with open(_runtime_b2_path(), "r", encoding="utf-8") as fh:
+        text = fh.read()
+    leaked = []
+    for name in _DEPTH_SUBFIELD_NAMES:
+        pattern = r"(?<![A-Za-z0-9_])" + _re.escape(name) + r"(?![A-Za-z0-9_])"
+        if _re.search(pattern, text):
+            leaked.append(name)
+    assert leaked == [], "B2 runtime references depth subfields: %r" % leaked
 
 
 # --- structural locks specific to this slice ------------------------------------------------------
