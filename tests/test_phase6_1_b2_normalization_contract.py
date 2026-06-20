@@ -72,6 +72,7 @@ def _binding(**overrides):
     kwargs = dict(
         normalized_field_name="gross_edge",
         source_field="summary.gross_edge",
+        binding_role="GROSS_EDGE",
         unit_bound_magnitude=_ubm(),
     )
     kwargs.update(overrides)
@@ -536,6 +537,65 @@ def test_raw_snapshot_with_core_identity_stays_frozen_slotted():
         raw.base_asset = "ETH"
     with pytest.raises(AttributeError):
         object.__setattr__(raw, "injected_identity", 1)
+
+
+# --- Slice 2A: binding role/kind discriminator -----------------------------------------------------
+
+def test_binding_accepts_role_gross_edge_and_cost():
+    g = _binding(binding_role="GROSS_EDGE")
+    c = _binding(binding_role="COST", normalized_field_name="total_cost")
+    assert g.binding_role == "GROSS_EDGE"
+    assert c.binding_role == "COST"
+
+
+@pytest.mark.parametrize(
+    "bad", ["gross_edge", "Cost", "EDGE", "FEE", "", "   ", "GROSS_EDGE ", "UNKNOWN", "GROSS_EDGE,COST"]
+)
+def test_binding_rejects_out_of_vocabulary_role(bad):
+    with pytest.raises(B2NormalizationValueError):
+        _binding(binding_role=bad)
+
+
+@pytest.mark.parametrize("bad", [123, None, True, 1.0, {"r": 1}, ["GROSS_EDGE"]])
+def test_binding_rejects_non_str_role(bad):
+    with pytest.raises(B2NormalizationTypeError):
+        _binding(binding_role=bad)
+
+
+def test_binding_rejects_str_subclass_role():
+    class _S(str):
+        pass
+
+    with pytest.raises(B2NormalizationTypeError):
+        _binding(binding_role=_S("GROSS_EDGE"))
+
+
+def test_binding_role_required_no_default():
+    with pytest.raises(TypeError):
+        make_normalized_evidence_field_binding(
+            normalized_field_name="gross_edge",
+            source_field="summary.gross_edge",
+            unit_bound_magnitude=_ubm(),
+        )  # binding_role intentionally omitted
+
+
+def test_binding_role_is_explicit_not_inferred_from_other_fields():
+    # identical names/source/magnitude, opposite roles -> role is carried, never inferred
+    a = _binding(normalized_field_name="x", source_field="s", binding_role="GROSS_EDGE")
+    b = _binding(normalized_field_name="x", source_field="s", binding_role="COST")
+    assert a.binding_role == "GROSS_EDGE"
+    assert b.binding_role == "COST"
+    assert a.normalized_field_name == b.normalized_field_name == "x"
+    assert a.source_field == b.source_field == "s"
+
+
+def test_binding_role_frozen_slotted():
+    binding = _binding(binding_role="COST")
+    assert not hasattr(binding, "__dict__")
+    with pytest.raises(Exception):
+        binding.binding_role = "GROSS_EDGE"
+    with pytest.raises(AttributeError):
+        object.__setattr__(binding, "injected_role", 1)
 
 
 # --- structural locks specific to this slice ------------------------------------------------------

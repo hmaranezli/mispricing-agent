@@ -36,12 +36,14 @@ _B2_REPLAY_BASENAME = "b2_replay_normalization.py"
 def _entry(
     normalized_field_name="gross_edge",
     source_field="summary.gross_edge",
+    binding_role="GROSS_EDGE",
     magnitude="0.006",
     unit="proportion",
 ):
     return (
         ("normalized_field_name", normalized_field_name),
         ("source_field", source_field),
+        ("binding_role", binding_role),
         ("magnitude", magnitude),
         ("unit", unit),
     )
@@ -126,6 +128,7 @@ def test_reversed_label_pairs_inside_entry_yield_same_binding():
     reversed_entry = (
         ("unit", "proportion"),
         ("magnitude", "0.006"),
+        ("binding_role", "GROSS_EDGE"),
         ("source_field", "summary.gross_edge"),
         ("normalized_field_name", "gross_edge"),
     )
@@ -304,6 +307,44 @@ def test_deterministic_replay_reproducibility():
     second = tuple(_project(b) for b in normalize_replay_snapshot_to_evidence_material(
         raw_snapshot=raw, evidence_epoch_tolerance_ms=0).normalized_field_bindings)
     assert first == second
+
+
+# --- Slice 2A: binding_role label flows through replay verbatim -----------------------------------
+
+def test_replay_passes_binding_role_verbatim():
+    material = _normalize(raw_snapshot=_raw(field_payload=(_entry(binding_role="COST"),)))
+    assert material.normalized_field_bindings[0].binding_role == "COST"
+
+
+def test_replay_requires_binding_role_label():
+    # a 4-label entry without binding_role now fails fast (binding_role is a required label)
+    entry = (
+        ("normalized_field_name", "gross_edge"),
+        ("source_field", "summary.gross_edge"),
+        ("magnitude", "0.006"),
+        ("unit", "proportion"),
+    )
+    with pytest.raises(B2NormalizationValueError):
+        _normalize(raw_snapshot=_raw(field_payload=(entry,)))
+
+
+def test_replay_rejects_out_of_vocabulary_binding_role():
+    with pytest.raises(B2NormalizationValueError):
+        _normalize(raw_snapshot=_raw(field_payload=(_entry(binding_role="FEE"),)))
+
+
+def test_replay_binding_role_addressed_by_label_not_position():
+    reversed_entry = (
+        ("binding_role", "COST"),
+        ("unit", "proportion"),
+        ("magnitude", "0.006"),
+        ("source_field", "summary.total_cost"),
+        ("normalized_field_name", "total_cost"),
+    )
+    material = _normalize(raw_snapshot=_raw(field_payload=(reversed_entry,)))
+    binding = material.normalized_field_bindings[0]
+    assert binding.binding_role == "COST"
+    assert binding.normalized_field_name == "total_cost"
 
 
 # --- structural locks specific to this slice ------------------------------------------------------

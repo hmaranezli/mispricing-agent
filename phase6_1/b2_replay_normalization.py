@@ -6,9 +6,11 @@ from the existing B2 contract carriers. Authored under
 `docs/handoff/phase6_1_b2_normalization_boundary_charter.md`.
 
 Each field-entry in ``raw_snapshot.field_payload`` is a tuple of exact two-item label/value pairs.
-Meaning is carried by the explicit labels (normalized_field_name, source_field, magnitude, unit) and by
-the binding fields — never by tuple position. Magnitudes are carried verbatim as exact strings: no
-Decimal/float/int parsing, no unit conversion, and no magnitude comparison happens here.
+Meaning is carried by the explicit labels (normalized_field_name, source_field, binding_role, magnitude,
+unit) and by the binding fields — never by tuple position. ``binding_role`` is passed through verbatim
+to the contract factory, which enforces its exact vocabulary; it is never inferred here. Magnitudes are
+carried verbatim as exact strings: no Decimal/float/int parsing, no unit conversion, and no magnitude
+comparison happens here.
 
 It imports nothing from Phase 5, builds no Slice-0 carrier, writes no output, reads no environment, and
 performs no network or file access. Exact-type discipline only; no silent coercion; no default
@@ -24,7 +26,9 @@ from phase6_1.b2_normalization_contract import (
 )
 
 
-_REQUIRED_LABELS = frozenset(("normalized_field_name", "source_field", "magnitude", "unit"))
+_REQUIRED_LABELS = frozenset(
+    ("normalized_field_name", "source_field", "binding_role", "magnitude", "unit")
+)
 
 
 def _require_nonempty_str(name, value):
@@ -66,15 +70,17 @@ def _binding_from_entry(entry):
     if frozenset(extracted) != _REQUIRED_LABELS:
         raise B2NormalizationValueError(
             "field-entry must carry exactly the required labels: normalized_field_name, "
-            "source_field, magnitude, unit"
+            "source_field, binding_role, magnitude, unit"
         )
 
     unit_bound = make_unit_bound_magnitude(
         magnitude=extracted["magnitude"], unit=extracted["unit"]
     )
+    # binding_role is passed through verbatim; the contract factory enforces its exact vocabulary.
     return make_normalized_evidence_field_binding(
         normalized_field_name=extracted["normalized_field_name"],
         source_field=extracted["source_field"],
+        binding_role=extracted["binding_role"],
         unit_bound_magnitude=unit_bound,
     )
 
