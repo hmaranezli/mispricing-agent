@@ -137,6 +137,19 @@ _READER_BASENAME = "b1_replay_depth_artifact_reader.py"
 _READER_IMPORT_ALLOWLIST = {"pathlib", "json", "csv"}
 _READER_TOKEN_ALLOWLIST = {"json"}
 
+# Option-B event-stream reader: a TOKEN-ONLY "json" exception, authorized by
+# docs/handoff/phase6_1_option_b_reader_io_lock_exception_amendment_charter.md. This basename is granted
+# NO import/open/IO/path exception — it stays under the package-wide import and IO/dynamic-exec scans
+# unchanged (it uses no open() and imports nothing forbidden). Only the "json" source token is tolerated.
+_OPTION_B_READER_BASENAME = "option_b_event_stream_reader.py"
+_OPTION_B_READER_TOKEN_ALLOWLIST = {"json"}
+
+# Per-basename source-token allowlist consulted ONLY by the forbidden-token scan below.
+_TOKEN_ALLOWLIST_BY_BASENAME = {
+    _READER_BASENAME: _READER_TOKEN_ALLOWLIST,
+    _OPTION_B_READER_BASENAME: _OPTION_B_READER_TOKEN_ALLOWLIST,
+}
+
 
 def _open_is_read_only(node):
     """True iff this ``open(...)`` Call is read-only: mode absent/default, or a string literal mode
@@ -177,7 +190,7 @@ def test_runtime_source_is_free_of_forbidden_tokens():
     for path in _runtime_files():
         basename = os.path.basename(str(path))
         text = _read(path)
-        allowed = _READER_TOKEN_ALLOWLIST if basename == _READER_BASENAME else frozenset()
+        allowed = _TOKEN_ALLOWLIST_BY_BASENAME.get(basename, frozenset())
         for token in _FORBIDDEN_TOKENS:
             if token in allowed:
                 continue
