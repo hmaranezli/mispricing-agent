@@ -9,8 +9,10 @@ Forbidden carrier names / Phase 5 identifiers appearing in THIS file are explici
 runtime must contain none of them.
 """
 import ast
+import json
 import os
 import pathlib
+import re
 
 import pytest
 
@@ -26,6 +28,8 @@ from phase6_1.b2_normalization_contract import (
 from phase6_1.b2_replay_normalization import (
     normalize_replay_snapshot_to_evidence_material,
 )
+from phase6_1.b1_depth_source_contract import PublicDepthSourceRecord
+from phase6_1.b1_replay_depth_artifact_reader import read_replay_depth_artifact
 
 
 _B2_REPLAY_BASENAME = "b2_replay_normalization.py"
@@ -457,3 +461,100 @@ def test_runtime_has_no_calculation_or_actionability_surface():
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             low = node.name.lower()
             assert not any(tok in low for tok in _BANNED_SURFACE_SUBSTRINGS), node.name
+
+
+# --- Replay-Depth Threading: optional reader-produced PublicDepthSourceRecord by identity ----------
+
+_DEPTH_ARTIFACT = {
+    "observed_size": "125.5",
+    "size_unit": "contracts",
+    "depth_source_field": "levels.0.size",
+    "depth_source_artifact": "replay-depth-fixture-0001 (read-only public depth reference)",
+    "depth_source_contract": "external_market_replay_depth_provenance_contract.md",
+    "depth_snapshot_identity": "replay-depth-0001",
+    "depth_observed_at_epoch_ms": "1749990000000",
+    "depth_retrieval_epoch_ms": 1_750_000_000_000,
+}
+
+
+def _reader_record(tmp_path):
+    """Produce a depth record the only sanctioned way: via the replay depth reader from a local
+    artifact. B2 must accept this exact object — it never reads an artifact itself."""
+    p = tmp_path / "depth.json"
+    p.write_text(json.dumps(_DEPTH_ARTIFACT), encoding="utf-8")
+    return read_replay_depth_artifact(str(p))
+
+
+def test_replay_threads_reader_depth_reference_by_identity(tmp_path):
+    record = _reader_record(tmp_path)
+    assert type(record) is PublicDepthSourceRecord
+    material = _normalize(depth_source_reference=record)
+    assert material.depth_source_reference is record
+    assert id(material.depth_source_reference) == id(record)
+
+
+def test_replay_depth_reference_default_absent_is_none():
+    # No depth supplied → carried as None, with no fabricated/dummy record.
+    material = _normalize()
+    assert material.depth_source_reference is None
+
+
+def test_replay_depth_reference_explicit_none_is_none():
+    material = _normalize(depth_source_reference=None)
+    assert material.depth_source_reference is None
+
+
+@pytest.mark.parametrize("bad", [{"x": 1}, ["x"], 123, "depth", 1.0])
+def test_replay_rejects_wrong_type_depth_reference(bad):
+    with pytest.raises(B2NormalizationTypeError):
+        _normalize(depth_source_reference=bad)
+
+
+def test_replay_rejects_depth_reference_subclass():
+    class _Sub(PublicDepthSourceRecord):
+        pass
+
+    sub = object.__new__(_Sub)
+    with pytest.raises(B2NormalizationTypeError):
+        _normalize(depth_source_reference=sub)
+
+
+def test_replay_depth_reference_is_exact_object_not_a_copy(tmp_path):
+    # Identity proof, not equality: the exact reader object is carried, never copied/deepcopied,
+    # serialized, dict/tuple-converted, or reconstructed.
+    record = _reader_record(tmp_path)
+    material = _normalize(depth_source_reference=record)
+    assert material.depth_source_reference is record
+
+
+_DEPTH_SUBFIELDS = (
+    "observed_size", "size_unit", "depth_source_field", "depth_source_artifact",
+    "depth_source_contract", "depth_snapshot_identity", "depth_observed_at_epoch_ms",
+    "depth_retrieval_epoch_ms",
+)
+
+
+def test_runtime_does_not_inspect_depth_subfields():
+    # B2 carries the depth record blindly: it must not name/read any depth subfield. Word-boundary
+    # match avoids false positives from module-path substrings.
+    with open(_runtime_path(), "r", encoding="utf-8") as fh:
+        text = fh.read()
+    for name in _DEPTH_SUBFIELDS:
+        pattern = r"(?<![A-Za-z0-9_])" + re.escape(name) + r"(?![A-Za-z0-9_])"
+        assert re.search(pattern, text) is None, name
+
+
+def test_runtime_does_no_depth_artifact_io():
+    # B2 must not read a depth artifact itself — no open/json/csv/pathlib IO surface here.
+    tree = _tree()
+    roots = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                roots.add(alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            roots.add(node.module.split(".")[0])
+    assert roots & {"json", "csv", "pathlib", "io", "os"} == set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            assert node.func.id != "open"

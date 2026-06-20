@@ -92,7 +92,9 @@ def _binding_from_entry(entry):
     )
 
 
-def normalize_replay_snapshot_to_evidence_material(*, raw_snapshot, evidence_epoch_tolerance_ms):
+def normalize_replay_snapshot_to_evidence_material(
+    *, raw_snapshot, evidence_epoch_tolerance_ms, depth_source_reference=None
+):
     """Normalize one exact :class:`PublicRawSnapshotRecord` into one
     :class:`NormalizedEvidenceMaterial`.
 
@@ -100,6 +102,11 @@ def normalize_replay_snapshot_to_evidence_material(*, raw_snapshot, evidence_epo
     extraction, binding construction, or material construction. ``0`` is a valid strict match;
     ``None``/negative/wrong-type is malformed. ``raw_snapshot`` must be exact; ``field_payload`` must be
     a non-empty tuple of field-entries. The raw snapshot is referenced by identity in the result.
+
+    ``depth_source_reference`` is optional: ``None`` when absent (no fabricated stand-in), or an exact
+    reader-produced depth-evidence record supplied by an explicit caller. It is threaded through
+    verbatim by identity to the material contract, which validates its exact type and holds it by
+    reference. Its fields are never inspected here, and no artifact is read here.
     """
     # --- tolerance validated FIRST (fail-fast ordering invariant) ---
     if type(evidence_epoch_tolerance_ms) is not int:
@@ -132,4 +139,5 @@ def normalize_replay_snapshot_to_evidence_material(*, raw_snapshot, evidence_epo
         raw_snapshot=raw_snapshot,
         normalized_field_bindings=tuple(bindings),
         evidence_epoch_tolerance_ms=evidence_epoch_tolerance_ms,
+        depth_source_reference=depth_source_reference,
     )
