@@ -576,6 +576,6 @@ def test_runtime_has_no_test_or_fixture_awareness():
         assert token not in text, token
 
 
-def test_slice_d_e_f_targets_not_created():
-    for absent in ("classification_predicates.py", "atomic_replay_step.py", "reconstruction.py"):
+def test_slice_e_f_targets_not_created():
+    for absent in ("atomic_replay_step.py", "reconstruction.py"):
         assert not (_package_dir() / absent).exists(), absent
