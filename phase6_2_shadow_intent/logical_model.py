@@ -39,6 +39,10 @@ NEGATIVE_EXPOSURE = "NEGATIVE_EXPOSURE"
 INERT_STATE = "INERT_STATE"
 _DIRECTIONAL_ORIENTATIONS = frozenset({POSITIVE_EXPOSURE, NEGATIVE_EXPOSURE})
 
+# --- declared hypothetical-window duration range (signed-64, e471f19) ----------------------------
+MIN_HYPOTHETICAL_WINDOW_DURATION_MS = 0
+MAX_HYPOTHETICAL_WINDOW_DURATION_MS = 9223372036854775807  # 2^63 - 1
+
 # --- closed lifecycle-state vocabulary (e9995e7 §4) ----------------------------------------------
 AUDIT_REPLAYED = "AUDIT_REPLAYED"
 INTENT_RECORDED = "INTENT_RECORDED"
@@ -69,13 +73,21 @@ def _require_opaque_text(name, value):
 
 
 def _require_non_negative_int_ms(name, value):
-    """Exact non-negative integer milliseconds; ``bool`` is not an integer here (``type(True) is bool``)."""
+    """Exact integer milliseconds within the inclusive signed-64 range ``[0, 2^63-1]`` (``e471f19``).
+
+    ``bool`` is not an integer here (``type(True) is bool``); negative values and values above
+    ``MAX_HYPOTHETICAL_WINDOW_DURATION_MS`` are rejected.
+    """
     if type(value) is not int:
         raise LogicalModelError(
             "field {!r} must be an exact int (milliseconds), not {}".format(name, type(value).__name__)
         )
-    if value < 0:
+    if value < MIN_HYPOTHETICAL_WINDOW_DURATION_MS:
         raise LogicalModelError("field {!r} must be a non-negative integer".format(name))
+    if value > MAX_HYPOTHETICAL_WINDOW_DURATION_MS:
+        raise LogicalModelError(
+            "field {!r} must be <= MAX_HYPOTHETICAL_WINDOW_DURATION_MS (2^63-1)".format(name)
+        )
     return value
 
 

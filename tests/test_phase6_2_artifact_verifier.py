@@ -308,3 +308,124 @@ def test_no_public_writer_surface():
     # Slice B exposes verification only — no artifact-authoring/writer/serialize entrypoint.
     for forbidden in ("write_artifact", "serialize_artifact", "encode_artifact", "make_artifact_bytes", "dump"):
         assert not hasattr(av, forbidden)
+
+
+# --- duration signed-64 range (Slice B) -----------------------------------------------------------
+
+_MAXD = "9223372036854775807"        # 2^63 - 1
+_MAXD_PLUS_1 = "9223372036854775808"
+
+
+def test_duration_max_text_accepted_and_round_trip():
+    data = _canon(_root(definitions=[_inert("a", "0", dur=_MAXD)]))
+    result, spy = _verify(data)
+    assert spy.reads == 1
+    key = next(iter(result.definitions_by_silver_pair))
+    assert result.definitions_by_silver_pair[key].hypothetical_window_duration_ms == 9223372036854775807
+
+
+def test_duration_zero_text_accepted():
+    result, _ = _verify(_canon(_root(definitions=[_inert("a", "0", dur="0")])))
+    key = next(iter(result.definitions_by_silver_pair))
+    assert result.definitions_by_silver_pair[key].hypothetical_window_duration_ms == 0
+
+
+def test_duration_overflow_and_overlong_rejected_without_raw_valueerror():
+    # MAX + 1 (19 digits) rejected
+    _expect_fail(_canon(_root(definitions=[_inert("a", "0", dur=_MAXD_PLUS_1)])))
+    # 20-digit value rejected
+    _expect_fail(_canon(_root(definitions=[_inert("a", "0", dur="1" + "0" * 19)])))
+    # 5000-digit all-numeric value rejected as ArtifactVerificationError (no raw ValueError leak),
+    # exactly one read
+    data = _canon(_root(definitions=[_inert("a", "0", dur="9" * 5000)]))
+    spy = _Spy(data)
+    with pytest.raises(av.ArtifactVerificationError):
+        av.verify_artifact(reference=_ref(_digest(data)), binary_stream=spy)
+    assert spy.reads == 1
+
+
+# --- reference self-validation (Slice B) ----------------------------------------------------------
+
+def test_reference_direct_construction_self_validates():
+    valid = _digest(b"x")
+    with pytest.raises(av.ArtifactVerificationError):
+        av.SealedArtifactReference(opaque_artifact_locator=1, expected_detached_sha256_digest=valid)
+    with pytest.raises(av.ArtifactVerificationError):
+        av.SealedArtifactReference(opaque_artifact_locator="l", expected_detached_sha256_digest="NOTHEX")
+    with pytest.raises(av.ArtifactVerificationError):
+        av.make_sealed_artifact_reference(opaque_artifact_locator="l", expected_detached_sha256_digest="short")
+    # valid construction succeeds
+    r = av.SealedArtifactReference(opaque_artifact_locator="l", expected_detached_sha256_digest=valid)
+    assert r.expected_detached_sha256_digest == valid
+
+
+def test_forged_or_non_reference_fails_before_read():
+    poison = object.__new__(av.SealedArtifactReference)  # bypass __post_init__
+    object.__setattr__(poison, "opaque_artifact_locator", "l")
+    object.__setattr__(poison, "expected_detached_sha256_digest", "NOT_A_VALID_DIGEST")
+    spy = _Spy(b"{}")
+    with pytest.raises(av.ArtifactVerificationError):
+        av.verify_artifact(reference=poison, binary_stream=spy)
+    assert spy.reads == 0
+    spy2 = _Spy(b"{}")
+    with pytest.raises(av.ArtifactVerificationError):
+        av.verify_artifact(reference="not a reference", binary_stream=spy2)
+    assert spy2.reads == 0
+
+
+# --- read / error-surface normalization (Slice B) -------------------------------------------------
+
+class _RaisingRead:
+    def __init__(self, exc):
+        self._exc = exc
+        self.reads = 0
+
+    def read(self, *a, **k):
+        self.reads += 1
+        raise self._exc
+
+
+def test_missing_read_normalized():
+    class _NoRead:
+        pass
+    with pytest.raises(av.ArtifactVerificationError):
+        av.verify_artifact(reference=_ref(_digest(b"x")), binary_stream=_NoRead())
+
+
+def test_read_raising_ordinary_exceptions_normalized():
+    for exc in (ValueError("closed file"), OSError("io"), Exception("boom")):
+        s = _RaisingRead(exc)
+        with pytest.raises(av.ArtifactVerificationError):
+            av.verify_artifact(reference=_ref(_digest(b"x")), binary_stream=s)
+        assert s.reads == 1
+
+
+def test_read_raising_memoryerror_reraised_unwrapped():
+    s = _RaisingRead(MemoryError())
+    with pytest.raises(MemoryError):
+        av.verify_artifact(reference=_ref(_digest(b"x")), binary_stream=s)
+
+
+def test_read_raising_base_exceptions_unwrapped():
+    for exc in (KeyboardInterrupt(), SystemExit(), GeneratorExit()):
+        s = _RaisingRead(exc)
+        with pytest.raises(type(exc)):
+            av.verify_artifact(reference=_ref(_digest(b"x")), binary_stream=s)
+
+
+def test_read_returning_non_bytes_normalized():
+    class _StrRead:
+        def read(self, *a, **k):
+            return "not bytes"
+    with pytest.raises(av.ArtifactVerificationError):
+        av.verify_artifact(reference=_ref(_digest(b"x")), binary_stream=_StrRead())
+
+
+# --- parser recursion normalization (Slice B) -----------------------------------------------------
+
+def test_deeply_nested_json_normalized_to_verification_error():
+    data = b"[" * 20000 + b"]" * 20000
+    spy = _Spy(data)
+    with pytest.raises(av.ArtifactVerificationError):
+        av.verify_artifact(reference=_ref(_digest(data)), binary_stream=spy)
+    assert spy.reads == 1

@@ -164,6 +164,26 @@ def test_duration_non_negative_int_bool_rejected():
             _directional(dur=bad)
 
 
+def test_duration_signed64_range_endpoints():
+    assert lm.MIN_HYPOTHETICAL_WINDOW_DURATION_MS == 0
+    assert lm.MAX_HYPOTHETICAL_WINDOW_DURATION_MS == 9223372036854775807  # 2^63 - 1
+    _max = lm.MAX_HYPOTHETICAL_WINDOW_DURATION_MS
+    # endpoints accepted (factory + direct construction), both variants
+    assert _directional(dur=0).hypothetical_window_duration_ms == 0
+    assert _directional(dur=_max).hypothetical_window_duration_ms == _max
+    assert _inert(dur=_max).hypothetical_window_duration_ms == _max
+    assert lm.InertShadowIntentDefinition(
+        exposure_orientation=lm.INERT_STATE, hypothetical_window_duration_ms=_max
+    ).hypothetical_window_duration_ms == _max
+    # MAX + 1 rejected (factory + direct construction)
+    with pytest.raises(lm.LogicalModelError):
+        _directional(dur=_max + 1)
+    with pytest.raises(lm.LogicalModelError):
+        lm.InertShadowIntentDefinition(
+            exposure_orientation=lm.INERT_STATE, hypothetical_window_duration_ms=_max + 1
+        )
+
+
 # --- inert definition ----------------------------------------------------------------------------
 
 def test_inert_valid_and_requires_inert_state():

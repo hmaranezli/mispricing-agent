@@ -56,23 +56,32 @@ class ArtifactVerificationError(ValueError):
     """Raised for any pre-replay verification failure (digest, encoding, structure, or byte identity)."""
 
 
+def _require_reference_invariants(opaque_artifact_locator, expected_detached_sha256_digest):
+    """Shared reference invariants: opaque str locator + exactly 64 lowercase-hex detached digest."""
+    if type(opaque_artifact_locator) is not str:
+        raise ArtifactVerificationError("opaque_artifact_locator must be a str")
+    if type(expected_detached_sha256_digest) is not str or _SHA256_HEX.match(expected_detached_sha256_digest) is None:
+        raise ArtifactVerificationError("expected_detached_sha256_digest must be 64 lowercase hex chars")
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class SealedArtifactReference:
-    """A frozen, slotted explicit artifact reference: an opaque locator + an expected detached digest.
+    """A frozen, slotted, self-validating explicit artifact reference: an opaque locator + a detached digest.
 
     ``opaque_artifact_locator`` is opaque metadata — never parsed as a path/URI, normalized, opened, or
-    used for discovery. ``expected_detached_sha256_digest`` is the caller-supplied expected digest.
+    used for discovery. ``expected_detached_sha256_digest`` is the caller-supplied expected digest (exactly
+    64 lowercase hex chars). Both direct construction and the factory enforce these invariants via
+    ``__post_init__``.
     """
 
     opaque_artifact_locator: object
     expected_detached_sha256_digest: object
 
+    def __post_init__(self):
+        _require_reference_invariants(self.opaque_artifact_locator, self.expected_detached_sha256_digest)
+
 
 def make_sealed_artifact_reference(*, opaque_artifact_locator, expected_detached_sha256_digest):
-    if type(opaque_artifact_locator) is not str:
-        raise ArtifactVerificationError("opaque_artifact_locator must be a str")
-    if type(expected_detached_sha256_digest) is not str:
-        raise ArtifactVerificationError("expected_detached_sha256_digest must be a str")
     return SealedArtifactReference(
         opaque_artifact_locator=opaque_artifact_locator,
         expected_detached_sha256_digest=expected_detached_sha256_digest,
@@ -202,6 +211,10 @@ def _build_definition(raw):
     duration_text = _require_str("hypothetical_window_duration_ms", raw.get("hypothetical_window_duration_ms"))
     if _CANONICAL_DURATION.match(duration_text) is None:
         raise ArtifactVerificationError("invalid duration grammar: {!r}".format(duration_text))
+    # Bounded inclusive signed-64 check (e471f19) BEFORE int(): reject overlong/overflowing strings so
+    # int() never sees a value beyond the interpreter's string-conversion limit (no raw ValueError).
+    if len(duration_text) > 19 or (len(duration_text) == 19 and duration_text > "9223372036854775807"):
+        raise ArtifactVerificationError("duration exceeds signed-64 maximum (2^63-1)")
 
     if kind == _DIRECTIONAL_KIND:
         if set(raw) != _DIRECTIONAL_MEMBERS:
@@ -239,7 +252,7 @@ def _parse_and_project(text):
         )
     except ArtifactVerificationError:
         raise
-    except (ValueError, UnicodeError) as exc:
+    except (ValueError, UnicodeError, RecursionError) as exc:
         raise ArtifactVerificationError("malformed JSON: {}".format(exc))
 
     if type(root) is not dict:
@@ -287,11 +300,20 @@ def verify_artifact(*, reference, binary_stream):
     """
     if type(reference) is not SealedArtifactReference:
         raise ArtifactVerificationError("reference must be a SealedArtifactReference")
+    # Defensive revalidation (guards an object.__new__-bypassed/forged reference) — before any read.
+    _require_reference_invariants(reference.opaque_artifact_locator, reference.expected_detached_sha256_digest)
     expected_digest = reference.expected_detached_sha256_digest
-    if type(expected_digest) is not str or _SHA256_HEX.match(expected_digest) is None:
-        raise ArtifactVerificationError("expected_detached_sha256_digest must be 64 lowercase hex chars")
 
-    raw_bytes = binary_stream.read()
+    # Read exactly once. A missing/raising read() is normalized to a deterministic verification error;
+    # MemoryError is re-raised unwrapped (it is an Exception subclass), and KeyboardInterrupt/SystemExit/
+    # GeneratorExit (BaseException, not Exception) propagate unwrapped. The stream is never sought,
+    # reread, substituted, retained, or closed.
+    try:
+        raw_bytes = binary_stream.read()
+    except MemoryError:
+        raise
+    except Exception as exc:
+        raise ArtifactVerificationError("binary_stream.read() failed: {}".format(exc))
     if type(raw_bytes) is not bytes:
         raise ArtifactVerificationError("binary_stream.read() must return exact bytes")
 
