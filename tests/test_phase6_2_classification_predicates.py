@@ -40,9 +40,12 @@ from phase6_2_shadow_intent.classification_predicates import (
     WINDOW_EXPIRED,
     PREDICATE_WRONG_CARRIER_TYPE,
     PREDICATE_FORGED_OR_MISSING_SLOT,
+    PREDICATE_INVALID_TEXT,
     PREDICATE_INVALID_CANONICAL_TIMESTAMP,
     PREDICATE_INVALID_DURATION,
     PREDICATE_INVALID_DECIMAL,
+    PREDICATE_INVALID_DECIMAL_LEXIS,
+    PREDICATE_MAGNITUDE_TEXT_VALUE_DISAGREEMENT,
     PREDICATE_INVALID_ORIENTATION,
     PREDICATE_INERT_HAS_NO_CROSSING,
 )
@@ -385,6 +388,131 @@ def test_no_classifier_invokes_another_and_no_whole_definition_pass():
             assert other + "(" not in src, (fn.__name__, other)
         # no predicate revalidates an entire Slice-A definition (only narrow fields are passed in).
         assert "ShadowIntentDefinition" not in src, fn.__name__
+
+
+# --- consumer-boundary populated-forgery defenses -------------------------------------------------
+
+def _forge(carrier_type, **slots):
+    """An object.__new__-forged carrier with caller-chosen POPULATED slots (bypasses the Slice-C
+    factory's publication invariants) — used ONLY to prove Slice-D defensive revalidation."""
+    obj = object.__new__(carrier_type)
+    for name, value in slots.items():
+        object.__setattr__(obj, name, value)
+    return obj
+
+
+@pytest.mark.parametrize("bad_tuple", [("", "BTC"), ("hl", ""), (" ", "BTC"), ("hl", " ")])
+def test_context_rejects_populated_blank_forgery_in_both_positions(bad_tuple):
+    forged = _forge(sep.ScoreContextProjection, score_inputs_summary=bad_tuple)
+    valid = _context("hl", "BTC")
+    with pytest.raises(ClassificationPredicateError) as e_root:
+        context_equals(root_context=forged, observed_context=valid)
+    assert e_root.value.reason == PREDICATE_INVALID_TEXT
+    with pytest.raises(ClassificationPredicateError) as e_obs:
+        context_equals(root_context=valid, observed_context=forged)
+    assert e_obs.value.reason == PREDICATE_INVALID_TEXT
+
+
+def test_context_rejects_non_tuple_and_wrong_arity_and_non_text_forgery():
+    valid = _context("hl", "BTC")
+    for bad in (["hl", "BTC"], ("hl",), ("hl", "BTC", "x"), ("hl", 7)):
+        forged = _forge(sep.ScoreContextProjection, score_inputs_summary=bad)
+        with pytest.raises(ClassificationPredicateError) as exc:
+            context_equals(root_context=forged, observed_context=valid)
+        assert exc.value.reason == PREDICATE_INVALID_TEXT
+
+
+def test_context_preserves_valid_verbatim_text_with_internal_or_edge_nonblank():
+    # a trailing-space-but-nonblank scalar is VALID and preserved verbatim (no trim/repair).
+    a = _forge(sep.ScoreContextProjection, score_inputs_summary=("hl ", "BTC"))
+    b = _forge(sep.ScoreContextProjection, score_inputs_summary=("hl ", "BTC"))
+    assert context_equals(root_context=a, observed_context=b) is True
+    c = _context("hl", "BTC")                       # genuine "hl" (no trailing space)
+    assert context_equals(root_context=a, observed_context=c) is False   # byte-exact, not trimmed
+
+
+def test_magnitude_rejects_text_value_disagreement_forgery():
+    forged = _forge(sep.ScoreMagnitudeProjection,
+                    passive_score_magnitude_text="7", passive_score_magnitude=Decimal("8"))
+    with pytest.raises(ClassificationPredicateError) as exc:
+        classify_directional_crossing(exposure_orientation=lm.POSITIVE_EXPOSURE,
+                                      boundary_magnitude=Decimal("1"), observed_magnitude=forged)
+    assert exc.value.reason == PREDICATE_MAGNITUDE_TEXT_VALUE_DISAGREEMENT
+
+
+def test_magnitude_rejects_invalid_lexical_text_forgery():
+    for bad_text in ("garbage", "+1", "1e3", " 1 ", "", "1."):
+        forged = _forge(sep.ScoreMagnitudeProjection,
+                        passive_score_magnitude_text=bad_text, passive_score_magnitude=Decimal("1"))
+        with pytest.raises(ClassificationPredicateError) as exc:
+            classify_directional_crossing(exposure_orientation=lm.POSITIVE_EXPOSURE,
+                                          boundary_magnitude=Decimal("1"), observed_magnitude=forged)
+        assert exc.value.reason == PREDICATE_INVALID_DECIMAL_LEXIS
+
+
+def test_magnitude_rejects_non_str_text_and_missing_slot_and_nonfinite_value():
+    non_str_text = _forge(sep.ScoreMagnitudeProjection,
+                          passive_score_magnitude_text=7, passive_score_magnitude=Decimal("7"))
+    with pytest.raises(ClassificationPredicateError) as e1:
+        classify_directional_crossing(exposure_orientation=lm.POSITIVE_EXPOSURE,
+                                      boundary_magnitude=Decimal("1"), observed_magnitude=non_str_text)
+    assert e1.value.reason == PREDICATE_INVALID_DECIMAL_LEXIS
+
+    missing_text = _forge(sep.ScoreMagnitudeProjection, passive_score_magnitude=Decimal("7"))
+    with pytest.raises(ClassificationPredicateError) as e2:
+        classify_directional_crossing(exposure_orientation=lm.POSITIVE_EXPOSURE,
+                                      boundary_magnitude=Decimal("1"), observed_magnitude=missing_text)
+    assert e2.value.reason == PREDICATE_FORGED_OR_MISSING_SLOT
+
+    non_finite = _forge(sep.ScoreMagnitudeProjection,
+                        passive_score_magnitude_text="1", passive_score_magnitude=Decimal("NaN"))
+    with pytest.raises(ClassificationPredicateError) as e3:
+        classify_directional_crossing(exposure_orientation=lm.POSITIVE_EXPOSURE,
+                                      boundary_magnitude=Decimal("1"), observed_magnitude=non_finite)
+    assert e3.value.reason == PREDICATE_INVALID_DECIMAL
+
+
+def test_magnitude_accepts_valid_lexical_distinctions_via_forgery():
+    # 007 / 1.50 / -0 are Phase-5-valid with Decimal(text) == stored value.
+    for text in ("007", "1.50", "-0"):
+        carrier = _forge(sep.ScoreMagnitudeProjection,
+                         passive_score_magnitude_text=text, passive_score_magnitude=Decimal(text))
+        # POSITIVE vs a boundary at/below the value -> a clean bool, no error.
+        result = classify_directional_crossing(
+            exposure_orientation=lm.POSITIVE_EXPOSURE,
+            boundary_magnitude=Decimal(text), observed_magnitude=carrier)
+        assert result is True
+
+
+def test_orientation_requires_exact_str_type_rejecting_subclass():
+    class _StrSub(str):
+        pass
+    valid_mag = _magnitude("2")
+    for impostor in (_StrSub("POSITIVE_EXPOSURE"), _StrSub("NEGATIVE_EXPOSURE")):
+        with pytest.raises(ClassificationPredicateError) as exc:
+            classify_directional_crossing(exposure_orientation=impostor,
+                                          boundary_magnitude=Decimal("1"), observed_magnitude=valid_mag)
+        assert exc.value.reason == PREDICATE_INVALID_ORIENTATION
+
+
+def test_orientation_rejects_equality_impostor_without_invoking_eq():
+    class _EqBomb:
+        def __eq__(self, other):
+            raise AssertionError("exposure_orientation __eq__ must never be invoked")
+        __hash__ = None
+    with pytest.raises(ClassificationPredicateError) as exc:
+        classify_directional_crossing(exposure_orientation=_EqBomb(),
+                                      boundary_magnitude=Decimal("1"),
+                                      observed_magnitude=_magnitude("1"))
+    assert exc.value.reason == PREDICATE_INVALID_ORIENTATION
+
+
+def test_inert_rejection_still_precedes_magnitude_inspection_after_type_guard():
+    # exact-str INERT_STATE is still rejected BEFORE any magnitude inspection.
+    with pytest.raises(ClassificationPredicateError) as exc:
+        classify_directional_crossing(exposure_orientation=lm.INERT_STATE,
+                                      boundary_magnitude=Decimal("1"), observed_magnitude=None)
+    assert exc.value.reason == PREDICATE_INERT_HAS_NO_CROSSING
 
 
 # --- dependency direction: only logical_model, s1_evidence_projection, stdlib ----------------------

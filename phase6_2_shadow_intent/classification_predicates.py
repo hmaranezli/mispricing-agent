@@ -57,6 +57,8 @@ PREDICATE_INVALID_TEXT = "PREDICATE_INVALID_TEXT"
 PREDICATE_INVALID_CANONICAL_TIMESTAMP = "PREDICATE_INVALID_CANONICAL_TIMESTAMP"
 PREDICATE_INVALID_DURATION = "PREDICATE_INVALID_DURATION"
 PREDICATE_INVALID_DECIMAL = "PREDICATE_INVALID_DECIMAL"
+PREDICATE_INVALID_DECIMAL_LEXIS = "PREDICATE_INVALID_DECIMAL_LEXIS"
+PREDICATE_MAGNITUDE_TEXT_VALUE_DISAGREEMENT = "PREDICATE_MAGNITUDE_TEXT_VALUE_DISAGREEMENT"
 PREDICATE_INVALID_ORIENTATION = "PREDICATE_INVALID_ORIENTATION"
 PREDICATE_INERT_HAS_NO_CROSSING = "PREDICATE_INERT_HAS_NO_CROSSING"
 
@@ -101,6 +103,55 @@ def _require_finite_decimal(value):
     if type(value) is not decimal.Decimal or not value.is_finite():
         raise ClassificationPredicateError(
             PREDICATE_INVALID_DECIMAL, "expected a finite decimal.Decimal")
+    return value
+
+
+def _is_phase5_decimal_text(text):
+    """The exact Phase-5 S1 magnitude lexis ``^-?\\d+(\\.\\d+)?$`` (ASCII digits), scanned manually so no
+    new import is needed and Gate-B grammar is never applied. Leading/trailing zeros and ``-0`` are valid."""
+    if type(text) is not str:
+        return False
+    length = len(text)
+    index = 0
+    if index < length and text[index] == "-":
+        index += 1
+    integer_start = index
+    while index < length and "0" <= text[index] <= "9":
+        index += 1
+    if index == integer_start:                 # at least one integer digit required
+        return False
+    if index < length and text[index] == ".":
+        index += 1
+        fraction_start = index
+        while index < length and "0" <= text[index] <= "9":
+            index += 1
+        if index == fraction_start:            # a point requires at least one fractional digit
+            return False
+    return index == length
+
+
+def _require_validated_magnitude(observed_magnitude):
+    """Full consumer-boundary revalidation of a populated SCORE-magnitude carrier: exact carrier type, both
+    populated slots, Phase-5 lexical text, finite ``Decimal`` value, and ``Decimal(text) == value`` — so an
+    ``object.__new__`` populated forgery cannot smuggle a malformed magnitude past the crossing predicate."""
+    _require_carrier(observed_magnitude, ScoreMagnitudeProjection)
+    text = _slot(observed_magnitude, "passive_score_magnitude_text")
+    value = _slot(observed_magnitude, "passive_score_magnitude")
+    if not _is_phase5_decimal_text(text):
+        raise ClassificationPredicateError(
+            PREDICATE_INVALID_DECIMAL_LEXIS, "passive_score_magnitude_text violates the Phase-5 S1 lexis")
+    if type(value) is not decimal.Decimal or not value.is_finite():
+        raise ClassificationPredicateError(
+            PREDICATE_INVALID_DECIMAL, "passive_score_magnitude must be a finite decimal.Decimal")
+    try:
+        reparsed = decimal.Decimal(text)
+    except decimal.InvalidOperation:
+        raise ClassificationPredicateError(
+            PREDICATE_INVALID_DECIMAL_LEXIS, "passive_score_magnitude_text is not an exact decimal")
+    if reparsed != value:
+        raise ClassificationPredicateError(
+            PREDICATE_MAGNITUDE_TEXT_VALUE_DISAGREEMENT,
+            "passive_score_magnitude_text and passive_score_magnitude disagree")
     return value
 
 
@@ -176,9 +227,14 @@ def context_equals(*, root_context, observed_context):
 
 
 def _require_context_tuple(value):
-    if type(value) is not tuple or len(value) != 2 or type(value[0]) is not str or type(value[1]) is not str:
+    # exact tuple, arity two, exact str elements, each non-empty and non-whitespace; type checks precede
+    # .strip() so a non-str element never leaks an AttributeError. Valid text is preserved verbatim.
+    if (type(value) is not tuple or len(value) != 2
+            or type(value[0]) is not str or type(value[1]) is not str
+            or value[0].strip() == "" or value[1].strip() == ""):
         raise ClassificationPredicateError(
-            PREDICATE_INVALID_TEXT, "score_inputs_summary must be exactly two text scalars")
+            PREDICATE_INVALID_TEXT,
+            "score_inputs_summary must be exactly two non-empty, non-whitespace text scalars")
     return value
 
 
@@ -222,6 +278,11 @@ def classify_directional_crossing(*, exposure_orientation, boundary_magnitude, o
     evidence <= boundary (exact ``Decimal`` comparison). ``INERT_STATE`` has no crossing predicate and is
     rejected BEFORE the magnitude carrier is inspected. ``boundary_magnitude`` is a Slice-A finite
     ``Decimal``; ``observed_magnitude`` is a Slice-C :class:`ScoreMagnitudeProjection`."""
+    # exact-type guard FIRST: a str subclass or an equality-impostor must be rejected before any
+    # equality/membership comparison, so no foreign __eq__ is ever invoked.
+    if type(exposure_orientation) is not str:
+        raise ClassificationPredicateError(
+            PREDICATE_INVALID_ORIENTATION, "exposure_orientation must be an exact str")
     if exposure_orientation == INERT_STATE:
         raise ClassificationPredicateError(
             PREDICATE_INERT_HAS_NO_CROSSING, "INERT_STATE has no crossing predicate")
@@ -230,8 +291,7 @@ def classify_directional_crossing(*, exposure_orientation, boundary_magnitude, o
             PREDICATE_INVALID_ORIENTATION,
             "exposure_orientation must be POSITIVE_EXPOSURE or NEGATIVE_EXPOSURE")
     boundary = _require_finite_decimal(boundary_magnitude)
-    _require_carrier(observed_magnitude, ScoreMagnitudeProjection)
-    evidence = _require_finite_decimal(_slot(observed_magnitude, "passive_score_magnitude"))
+    evidence = _require_validated_magnitude(observed_magnitude)
     if exposure_orientation == POSITIVE_EXPOSURE:
         return evidence >= boundary
     return evidence <= boundary
