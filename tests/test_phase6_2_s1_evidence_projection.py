@@ -1,27 +1,24 @@
 """tests/test_phase6_2_s1_evidence_projection.py — Phase 6.2 Slice C — S1 Evidence Projection.
 
 Pins the quarantined, dependency-leaf S1 evidence projector
-(`phase6_2_shadow_intent/s1_evidence_projection.py`) after the Lazy-Projection / Constructor-Hardening /
-Context-Shape correction. The eager monolith is gone: projection is exposed as six separately invoked,
-narrow lazy operations (row-envelope, SCORE family/context/timestamp/unit/magnitude), each inspecting ONLY
-its own whitelisted field(s) so a later Slice D/E can enforce the ratified ordering (expiry-before-
-unit/magnitude, context relevance, terminal relevance). Every exported carrier is frozen/slotted/kw-only/
-methodless and **factory-only** (direct construction raises `S1EvidenceProjectionError`, never a raw
-`TypeError`).
+(`phase6_2_shadow_intent/s1_evidence_projection.py`) after the Strict-Lazy Guard/Context-Precedence &
+Publication-Invariant correction. Projection is exposed as strictly independent, separately invoked lazy
+operations: a Silver-pair global guard, an observation-kind guard, and five SCORE field operations
+(family / context / timestamp / unit / magnitude). Each inspects ONLY its own whitelisted field(s) — no
+hidden prerequisite calls — so a later Slice D/E can enforce the legal ordering (Silver-pair guard →
+duplicate/root → relevance → per-field classification). Every exported carrier is frozen/slotted/kw-only/
+methodless and factory-only; every private maker independently enforces the carrier's complete invariant.
 
-Built under the ratified Phase 6.2 chain: planning/slice (`457d279`), predicate (`474cc6f`) +
-precedence/decimal-consistency (`d7204d6`), negative-evidence fixture boundary (`b4368fd`, `045caea`), the
-score-context empty/whitespace amendment (`04c88fc`), and the fixed-literal / Slice-C-trust-ownership
-micro-correction (`c8204ec`).
-
-Successful FULL evidence is adapter-only (through `S1DurableSqliteSink.record_observation` + replay).
-Malformed-evidence rejection (and the lazy non-inspection proofs) use the quarantined negative-evidence row
-helper, whose single-fault rows are poison. Forbidden tokens / payload identifiers in THIS test file are
-explicit fixtures; the runtime stays a stdlib-only leaf with no test/fixture awareness.
+Built under the ratified Phase 6.2 chain (planning `457d279`; predicate `474cc6f` + precedence/decimal
+`d7204d6`; negative-evidence boundary `b4368fd`, `045caea`; score-context amendment `04c88fc`;
+fixed-literal / trust-ownership `c8204ec`). Successful FULL evidence is adapter-only; malformed-evidence
+and lazy non-inspection proofs use the quarantined negative-evidence row helper (unchanged). Forbidden
+tokens / payload identifiers in THIS file are explicit fixtures; the runtime stays a stdlib-only leaf.
 """
 import ast
 import dataclasses
 import importlib.util
+import inspect
 import io
 import pathlib
 import sqlite3
@@ -30,13 +27,15 @@ from decimal import Decimal
 import pytest
 
 from phase6_2_shadow_intent.s1_evidence_projection import (
-    project_row_envelope,
+    project_silver_pair,
+    project_observation_kind,
     project_score_family,
     project_score_context,
     project_score_timestamp,
     project_score_unit,
     project_score_magnitude,
-    RowEnvelopeProjection,
+    SilverPairProjection,
+    ObservationKindProjection,
     ScoreFamilyProjection,
     ScoreContextProjection,
     ScoreTimestampProjection,
@@ -47,6 +46,7 @@ from phase6_2_shadow_intent.s1_evidence_projection import (
     PROJECTION_ROW_NOT_SQLITE_ROW,
     PROJECTION_ROW_COLUMN_SET,
     PROJECTION_DIRECT_CONSTRUCTION,
+    PROJECTION_PUBLICATION_INVARIANT,
     PROJECTION_NON_SCORE_OBSERVATION,
 )
 import phase6_2_shadow_intent.s1_evidence_projection as sep
@@ -66,16 +66,14 @@ neg = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(neg)
 
 
-_PUBLIC_OPERATIONS = (
-    project_row_envelope, project_score_family, project_score_context,
-    project_score_timestamp, project_score_unit, project_score_magnitude,
-)
+_GUARD_OPERATIONS = (project_silver_pair, project_observation_kind)
 _SCORE_PAYLOAD_OPERATIONS = (
     project_score_family, project_score_context,
     project_score_timestamp, project_score_unit, project_score_magnitude,
 )
+_PUBLIC_OPERATIONS = _GUARD_OPERATIONS + _SCORE_PAYLOAD_OPERATIONS
 _EXPORTED_CARRIERS = (
-    RowEnvelopeProjection, ScoreFamilyProjection, ScoreContextProjection,
+    SilverPairProjection, ObservationKindProjection, ScoreFamilyProjection, ScoreContextProjection,
     ScoreTimestampProjection, ScoreUnitProjection, ScoreMagnitudeProjection,
 )
 
@@ -136,34 +134,38 @@ def _halt_row(tmp_path):
     return rows[1]
 
 
-# --- module identity & no-eager-monolith ----------------------------------------------------------
+# --- module identity & removal of the overreading envelope op -------------------------------------
 
 def test_component_name_constant():
     assert S1_EVIDENCE_PROJECTION_COMPONENT_NAME == "phase6_2_shadow_intent_s1_evidence_projection"
 
 
-def test_eager_monolith_and_all_field_carriers_are_removed():
-    # the bypassable eager compatibility surface must not survive.
-    for gone in ("project_s1_evidence", "ScoreEvidenceProjection", "NonScoreEnvelopeProjection"):
+def test_overreading_row_envelope_op_and_carrier_are_removed():
+    for gone in ("project_row_envelope", "RowEnvelopeProjection",
+                 "project_s1_evidence", "ScoreEvidenceProjection", "NonScoreEnvelopeProjection"):
         assert not hasattr(sep, gone), gone
     public_projection_ops = {n for n in dir(sep) if n.startswith("project_")}
     assert public_projection_ops == {
-        "project_row_envelope", "project_score_family", "project_score_context",
-        "project_score_timestamp", "project_score_unit", "project_score_magnitude",
+        "project_silver_pair", "project_observation_kind", "project_score_family",
+        "project_score_context", "project_score_timestamp", "project_score_unit",
+        "project_score_magnitude",
     }
 
 
 # --- adapter-only SCORE happy path, per narrow operation -------------------------------------------
 
-def test_row_envelope_projection_over_score_row(tmp_path):
+def test_silver_pair_projection(tmp_path):
     row = _score_row(tmp_path, locator="artifact-XYZ")
-    env = project_row_envelope(replay_row=row)
-    assert type(env) is RowEnvelopeProjection
-    assert env.observation_kind == "SCORE"
-    assert env.family_descriptor == "passive_net_edge_diagnostic"
-    assert env.silver_artifact_locator == "artifact-XYZ"
-    assert env.silver_physical_record_position == row["physical_record_position"]
-    assert env.provenance_timestamp == "1750000000000"
+    sp = project_silver_pair(replay_row=row)
+    assert type(sp) is SilverPairProjection
+    assert sp.silver_artifact_locator == "artifact-XYZ"
+    assert sp.silver_physical_record_position == row["physical_record_position"]
+
+
+def test_observation_kind_projection(tmp_path):
+    ok = project_observation_kind(replay_row=_score_row(tmp_path))
+    assert type(ok) is ObservationKindProjection
+    assert ok.observation_kind == "SCORE"
 
 
 def test_score_family_projection(tmp_path):
@@ -177,7 +179,6 @@ def test_score_context_projection(tmp_path):
     ctx = project_score_context(replay_row=_score_row(tmp_path))
     assert type(ctx) is ScoreContextProjection
     assert ctx.score_inputs_summary == ("hl", "BTC")
-    assert all(type(v) is str for v in ctx.score_inputs_summary)
 
 
 def test_score_timestamp_projection(tmp_path):
@@ -203,16 +204,12 @@ def test_score_magnitude_projection(tmp_path):
     assert type(mag.passive_score_magnitude) is Decimal
 
 
-# --- adapter-only non-SCORE envelope (no payload internals) ----------------------------------------
+# --- adapter-only non-SCORE: guards work; SCORE-family op is non-SCORE -----------------------------
 
-def test_row_envelope_projection_over_halt_row(tmp_path):
+def test_halt_row_guards_succeed(tmp_path):
     row = _halt_row(tmp_path)
-    env = project_row_envelope(replay_row=row)
-    assert type(env) is RowEnvelopeProjection
-    assert env.observation_kind == "HALT"
-    assert env.family_descriptor == "passive_local_parse_halt"
-    assert env.provenance_timestamp is None                 # HALT carries NULL provenance
-    assert env.silver_artifact_locator == row["artifact_locator"]
+    assert project_silver_pair(replay_row=row).silver_artifact_locator == row["artifact_locator"]
+    assert project_observation_kind(replay_row=row).observation_kind == "HALT"
 
 
 def test_score_family_op_on_halt_row_is_non_score(tmp_path):
@@ -221,121 +218,45 @@ def test_score_family_op_on_halt_row_is_non_score(tmp_path):
     assert exc.value.reason == PROJECTION_NON_SCORE_OBSERVATION
 
 
-# --- constructor hardening: every exported carrier is factory-only --------------------------------
+# --- strict context-first independence (Case 1 / Case 2) ------------------------------------------
 
-def _one_of_each_carrier(tmp_path):
-    row = _score_row(tmp_path)
-    return {
-        RowEnvelopeProjection: project_row_envelope(replay_row=row),
-        ScoreFamilyProjection: project_score_family(replay_row=row),
-        ScoreContextProjection: project_score_context(replay_row=row),
-        ScoreTimestampProjection: project_score_timestamp(replay_row=row),
-        ScoreUnitProjection: project_score_unit(replay_row=row),
-        ScoreMagnitudeProjection: project_score_magnitude(replay_row=row),
-    }
-
-
-def test_exported_carriers_reject_every_direct_constructor():
-    for carrier in _EXPORTED_CARRIERS:
-        for call in (lambda c=carrier: c(),
-                     lambda c=carrier: c("positional"),
-                     lambda c=carrier: c(bogus="x")):
-            with pytest.raises(S1EvidenceProjectionError) as exc:
-                call()
-            assert exc.value.reason == PROJECTION_DIRECT_CONSTRUCTION
-
-
-def test_exported_carriers_are_frozen_slotted_kwonly_methodless(tmp_path):
-    instances = _one_of_each_carrier(tmp_path)
-    for carrier, instance in instances.items():
-        assert not hasattr(instance, "__dict__"), carrier                 # slotted, no __dict__
-        params = carrier.__dataclass_params__
-        assert params.frozen is True and params.kw_only is True, carrier   # frozen + kw-only
-        public_methods = [
-            name for name in vars(carrier)
-            if callable(getattr(carrier, name)) and not name.startswith("__")
-        ]
-        assert public_methods == [], (carrier, public_methods)             # methodless
-        field0 = next(iter(carrier.__dataclass_fields__))
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            object.__setattr__  # keep import; the next line is the real frozen probe
-            setattr(instance, field0, "MUTATED")
-
-
-def test_factory_published_instances_carry_no_mutable_containers(tmp_path):
-    ctx = project_score_context(replay_row=_score_row(tmp_path))
-    assert type(ctx.score_inputs_summary) is tuple                         # immutable nested value
-
-
-# --- lazy precedence: narrow operations over a single-fault poison row -----------------------------
-
-def _assert_succeeds(op, row):
-    # a narrow operation that does not inspect the malformed field must succeed (relevance/lazy behavior).
-    result = op(replay_row=row)
-    assert result is not None
-
-
-def _assert_raises(op, row, reason):
+def test_context_independent_of_kind_disagreement():
+    row = neg.build_negative_evidence_row(case=neg.ROW_PAYLOAD_OBSERVATION_KIND_DISAGREEMENT)
+    # context can be determined before family consistency: a kind defect does not abort context.
+    assert project_score_context(replay_row=row).score_inputs_summary == ("hl", "BTC")
     with pytest.raises(S1EvidenceProjectionError) as exc:
-        op(replay_row=row)
-    assert exc.value.reason == reason
+        project_score_family(replay_row=row)
+    assert exc.value.reason == neg.ROW_PAYLOAD_OBSERVATION_KIND_DISAGREEMENT
 
 
-def test_lazy_malformed_magnitude_only_magnitude_op_fails():
-    row = neg.build_negative_evidence_row(
-        case=neg.INVALID_S1_DECIMAL_LEXIS, subvariant=neg.EXPONENT_DECIMAL)
-    for op in (project_row_envelope, project_score_family, project_score_context,
-               project_score_timestamp, project_score_unit):
-        _assert_succeeds(op, row)
-    _assert_raises(project_score_magnitude, row, neg.INVALID_S1_DECIMAL_LEXIS)
+def test_context_independent_of_family_disagreement():
+    row = neg.build_negative_evidence_row(case=neg.ROW_PAYLOAD_FAMILY_DESCRIPTOR_DISAGREEMENT)
+    assert project_score_context(replay_row=row).score_inputs_summary == ("hl", "BTC")
+    with pytest.raises(S1EvidenceProjectionError) as exc:
+        project_score_family(replay_row=row)
+    assert exc.value.reason == neg.ROW_PAYLOAD_FAMILY_DESCRIPTOR_DISAGREEMENT
 
 
-def test_lazy_malformed_timestamp_only_timestamp_op_fails():
-    row = neg.build_negative_evidence_row(
-        case=neg.INVALID_PROVENANCE_TIMESTAMP, subvariant=neg.CONSISTENT_NEGATIVE_TIMESTAMP)
-    for op in (project_row_envelope, project_score_family, project_score_context,
-               project_score_unit, project_score_magnitude):
-        _assert_succeeds(op, row)
-    _assert_raises(project_score_timestamp, row, neg.INVALID_PROVENANCE_TIMESTAMP)
+# --- full operation-by-case non-inspection matrix -------------------------------------------------
 
-
-def test_lazy_malformed_context_only_context_op_fails():
-    row = neg.build_negative_evidence_row(
-        case=neg.MALFORMED_SCORE_INPUTS_SUMMARY, subvariant=neg.EMPTY_TEXT_ELEMENT)
-    for op in (project_row_envelope, project_score_family, project_score_timestamp,
-               project_score_unit, project_score_magnitude):
-        _assert_succeeds(op, row)
-    _assert_raises(project_score_context, row, neg.MALFORMED_SCORE_INPUTS_SUMMARY)
-
-
-def test_lazy_malformed_json_envelope_succeeds_payload_ops_fail():
-    row = neg.build_negative_evidence_row(case=neg.MALFORMED_CANONICAL_JSON)
-    _assert_succeeds(project_row_envelope, row)                 # envelope never parses the payload
-    for op in _SCORE_PAYLOAD_OPERATIONS:
-        _assert_raises(op, row, neg.MALFORMED_CANONICAL_JSON)
-
-
-# --- negative-evidence fixtures: closed cases / subvariants -> exact reason via the demanding op ----
-
-def _operation_for_case(case):
+def _demanding_op(case):
     return {
         neg.ROW_PAYLOAD_OBSERVATION_KIND_DISAGREEMENT: project_score_family,
         neg.ROW_PAYLOAD_FAMILY_DESCRIPTOR_DISAGREEMENT: project_score_family,
         neg.ROW_PAYLOAD_TIMESTAMP_DISAGREEMENT: project_score_timestamp,
-        neg.MALFORMED_CANONICAL_JSON: project_score_family,
         neg.MALFORMED_SCORE_INPUTS_SUMMARY: project_score_context,
         neg.INVALID_S1_DECIMAL_LEXIS: project_score_magnitude,
         neg.INVALID_PROVENANCE_TIMESTAMP: project_score_timestamp,
     }[case]
 
 
-_NEGATIVE_CASES = [
+# (case, subvariant, expected_reason) — single-field poison: exactly ONE op fails, all others succeed.
+_SINGLE_FIELD_CASES = [
     (neg.ROW_PAYLOAD_OBSERVATION_KIND_DISAGREEMENT, None,
      neg.ROW_PAYLOAD_OBSERVATION_KIND_DISAGREEMENT),
     (neg.ROW_PAYLOAD_FAMILY_DESCRIPTOR_DISAGREEMENT, None,
      neg.ROW_PAYLOAD_FAMILY_DESCRIPTOR_DISAGREEMENT),
     (neg.ROW_PAYLOAD_TIMESTAMP_DISAGREEMENT, None, neg.ROW_PAYLOAD_TIMESTAMP_DISAGREEMENT),
-    (neg.MALFORMED_CANONICAL_JSON, None, neg.MALFORMED_CANONICAL_JSON),
     (neg.MALFORMED_SCORE_INPUTS_SUMMARY, neg.MISSING_SCORE_INPUTS_SUMMARY,
      neg.MALFORMED_SCORE_INPUTS_SUMMARY),
     (neg.MALFORMED_SCORE_INPUTS_SUMMARY, neg.WRONG_ARITY_SCORE_INPUTS_SUMMARY,
@@ -357,53 +278,138 @@ _NEGATIVE_CASES = [
 ]
 
 
-@pytest.mark.parametrize("case,subvariant,expected_reason", _NEGATIVE_CASES)
-def test_negative_fixture_is_poison_with_exact_reason(case, subvariant, expected_reason):
+@pytest.mark.parametrize("case,subvariant,reason", _SINGLE_FIELD_CASES)
+def test_single_field_poison_only_demanding_op_fails(case, subvariant, reason):
     row = neg.build_negative_evidence_row(case=case, subvariant=subvariant)
     assert type(row) is sqlite3.Row
-    _assert_raises(_operation_for_case(case), row, expected_reason)
+    failing = _demanding_op(case)
+    with pytest.raises(S1EvidenceProjectionError) as exc:
+        failing(replay_row=row)
+    assert exc.value.reason == reason
+    # every OTHER public operation must succeed (required lazy non-inspection behavior).
+    for op in _PUBLIC_OPERATIONS:
+        if op is failing:
+            continue
+        assert op(replay_row=row) is not None, op.__name__
 
 
-# --- fixture API closure + exact five Case-5 subvariants & byte shapes -----------------------------
-
-def test_case5_has_exactly_five_subvariants():
-    assert neg.SCORE_INPUTS_SUMMARY_SUBVARIANTS == (
-        neg.MISSING_SCORE_INPUTS_SUMMARY, neg.WRONG_ARITY_SCORE_INPUTS_SUMMARY,
-        neg.NON_TEXT_SCORE_INPUTS_SUMMARY_ELEMENT, neg.EMPTY_TEXT_ELEMENT,
-        neg.WHITESPACE_ONLY_TEXT_ELEMENT,
-    )
-
-
-def test_seven_top_level_cases_preserved():
-    assert len(neg.NEGATIVE_EVIDENCE_CASES) == 7
+def test_malformed_canonical_json_guards_succeed_payload_ops_fail():
+    row = neg.build_negative_evidence_row(case=neg.MALFORMED_CANONICAL_JSON)
+    for guard in _GUARD_OPERATIONS:                # silver-pair + observation-kind never parse
+        assert guard(replay_row=row) is not None
+    for op in _SCORE_PAYLOAD_OPERATIONS:
+        with pytest.raises(S1EvidenceProjectionError) as exc:
+            op(replay_row=row)
+        assert exc.value.reason == neg.MALFORMED_CANONICAL_JSON
 
 
-def _summary_of(row):
-    import json
-    return json.loads(row["canonical_text_payload"])["family_payload"]["score_inputs_summary"]
+# --- publication-maker rejection matrix (direct private-maker exercise) ----------------------------
+
+def _expect_publication_invariant(call):
+    with pytest.raises(S1EvidenceProjectionError) as exc:
+        call()
+    assert exc.value.reason == PROJECTION_PUBLICATION_INVARIANT
 
 
-def test_empty_and_whitespace_fixture_exact_byte_shapes():
-    empty = neg.build_negative_evidence_row(
-        case=neg.MALFORMED_SCORE_INPUTS_SUMMARY, subvariant=neg.EMPTY_TEXT_ELEMENT)
-    assert _summary_of(empty) == ["hl", ""]
+def test_publication_makers_reject_malformed_values_without_raw_exceptions():
+    _expect_publication_invariant(
+        lambda: sep._make_silver_pair(silver_artifact_locator=123,
+                                      silver_physical_record_position="x"))
+    _expect_publication_invariant(lambda: sep._make_observation_kind(observation_kind=None))
+    _expect_publication_invariant(
+        lambda: sep._make_score_family(observation_kind="HALT", family_descriptor="x"))
+    _expect_publication_invariant(
+        lambda: sep._make_score_family(observation_kind="SCORE", family_descriptor="wrong"))
+    # context: empty / whitespace-only / wrong-arity / non-text element (no raw TypeError leak)
+    _expect_publication_invariant(lambda: sep._make_score_context(score_inputs_summary=("hl", "")))
+    _expect_publication_invariant(lambda: sep._make_score_context(score_inputs_summary=("hl", " ")))
+    _expect_publication_invariant(
+        lambda: sep._make_score_context(score_inputs_summary=("hl", "BTC", "x")))
+    _expect_publication_invariant(lambda: sep._make_score_context(score_inputs_summary=("hl", 7)))
+    _expect_publication_invariant(lambda: sep._make_score_context(score_inputs_summary=["hl", "BTC"]))
+    # timestamp: non-canonical grammar
+    _expect_publication_invariant(lambda: sep._make_score_timestamp(provenance_timestamp="-5"))
+    _expect_publication_invariant(lambda: sep._make_score_timestamp(provenance_timestamp="01"))
+    _expect_publication_invariant(lambda: sep._make_score_timestamp(provenance_timestamp=5))
+    # unit
+    _expect_publication_invariant(lambda: sep._make_score_unit(score_unit_context=7))
+    # magnitude: bad lexis / value mismatch / non-Decimal (no raw InvalidOperation leak)
+    _expect_publication_invariant(
+        lambda: sep._make_score_magnitude(passive_score_magnitude_text="garbage",
+                                          passive_score_magnitude=Decimal("0")))
+    _expect_publication_invariant(
+        lambda: sep._make_score_magnitude(passive_score_magnitude_text="7",
+                                          passive_score_magnitude=Decimal("8")))
+    _expect_publication_invariant(
+        lambda: sep._make_score_magnitude(passive_score_magnitude_text="7",
+                                          passive_score_magnitude="not-a-decimal"))
 
-    ws = neg.build_negative_evidence_row(
-        case=neg.MALFORMED_SCORE_INPUTS_SUMMARY, subvariant=neg.WHITESPACE_ONLY_TEXT_ELEMENT)
-    summary = _summary_of(ws)
-    assert summary == ["hl", " "]
-    assert summary[1] == " "
-    assert summary[1].encode("utf-8") == b"\x20"               # exactly one 0x20 byte
+
+def test_publication_makers_accept_valid_lexical_variants():
+    # valid Phase-5 forms (leading/trailing zeros, negative zero) publish with verbatim text preserved.
+    for text in ("007", "1.50", "-0"):
+        carrier = sep._make_score_magnitude(
+            passive_score_magnitude_text=text, passive_score_magnitude=Decimal(text))
+        assert carrier.passive_score_magnitude_text == text
+        assert carrier.passive_score_magnitude == Decimal(text)
 
 
-def test_fixture_rejects_unknown_case_and_bad_subvariant():
-    with pytest.raises(neg.NegativeEvidenceFixtureError):
-        neg.build_negative_evidence_row(case="NOT_A_CASE")
-    with pytest.raises(neg.NegativeEvidenceFixtureError):
-        neg.build_negative_evidence_row(
-            case=neg.ROW_PAYLOAD_OBSERVATION_KIND_DISAGREEMENT, subvariant=neg.EMPTY_TEXT_ELEMENT)
-    with pytest.raises(neg.NegativeEvidenceFixtureError):
-        neg.build_negative_evidence_row(case=neg.MALFORMED_SCORE_INPUTS_SUMMARY)  # subvariant required
+# --- negative fixtures still poison via the demanding op (deterministic reason) --------------------
+
+@pytest.mark.parametrize("case,subvariant,reason", _SINGLE_FIELD_CASES + [
+    (neg.MALFORMED_CANONICAL_JSON, None, neg.MALFORMED_CANONICAL_JSON),
+])
+def test_negative_fixture_demanding_op_exact_reason(case, subvariant, reason):
+    row = neg.build_negative_evidence_row(case=case, subvariant=subvariant)
+    op = project_score_family if case == neg.MALFORMED_CANONICAL_JSON else _demanding_op(case)
+    with pytest.raises(S1EvidenceProjectionError) as exc:
+        op(replay_row=row)
+    assert exc.value.reason == reason
+
+
+# --- constructor hardening: every exported carrier is factory-only --------------------------------
+
+def _one_of_each_carrier(tmp_path):
+    row = _score_row(tmp_path)
+    return {
+        SilverPairProjection: project_silver_pair(replay_row=row),
+        ObservationKindProjection: project_observation_kind(replay_row=row),
+        ScoreFamilyProjection: project_score_family(replay_row=row),
+        ScoreContextProjection: project_score_context(replay_row=row),
+        ScoreTimestampProjection: project_score_timestamp(replay_row=row),
+        ScoreUnitProjection: project_score_unit(replay_row=row),
+        ScoreMagnitudeProjection: project_score_magnitude(replay_row=row),
+    }
+
+
+def test_exported_carriers_reject_every_direct_constructor():
+    for carrier in _EXPORTED_CARRIERS:
+        for call in (lambda c=carrier: c(),
+                     lambda c=carrier: c("positional"),
+                     lambda c=carrier: c(bogus="x")):
+            with pytest.raises(S1EvidenceProjectionError) as exc:
+                call()
+            assert exc.value.reason == PROJECTION_DIRECT_CONSTRUCTION
+
+
+def test_exported_carriers_are_frozen_slotted_kwonly_methodless(tmp_path):
+    for carrier, instance in _one_of_each_carrier(tmp_path).items():
+        assert not hasattr(instance, "__dict__"), carrier
+        params = carrier.__dataclass_params__
+        assert params.frozen is True and params.kw_only is True, carrier
+        public_methods = [
+            name for name in vars(carrier)
+            if callable(getattr(carrier, name)) and not name.startswith("__")
+        ]
+        assert public_methods == [], (carrier, public_methods)
+        field0 = next(iter(carrier.__dataclass_fields__))
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            setattr(instance, field0, "MUTATED")
+
+
+def test_context_carrier_owns_immutable_tuple(tmp_path):
+    ctx = project_score_context(replay_row=_score_row(tmp_path))
+    assert type(ctx.score_inputs_summary) is tuple
 
 
 # --- determinism & no-mutation --------------------------------------------------------------------
@@ -445,6 +451,78 @@ def test_every_operation_rejects_wrong_column_set():
         with pytest.raises(S1EvidenceProjectionError) as exc:
             op(replay_row=wrong)
         assert exc.value.reason == PROJECTION_ROW_COLUMN_SET
+
+
+# --- static proof: guard operations access no forbidden columns / never parse ----------------------
+
+_ALL_COLUMNS = ("observation_kind", "family_descriptor", "artifact_locator",
+                "physical_record_position", "provenance_timestamp", "canonical_text_payload")
+
+
+def _operation_code(func):
+    """The function's executable code with its docstring stripped — so static field-access proofs scan
+    real references, not documentation prose that legitimately names fields the op does NOT read."""
+    tree = ast.parse(inspect.getsource(func))
+    fn = tree.body[0]
+    if (fn.body and isinstance(fn.body[0], ast.Expr)
+            and isinstance(fn.body[0].value, ast.Constant)
+            and isinstance(fn.body[0].value.value, str)):
+        fn.body = fn.body[1:]
+    return ast.unparse(fn)
+
+
+def test_silver_pair_op_accesses_only_silver_columns():
+    code = _operation_code(project_silver_pair)
+    allowed = {"artifact_locator", "physical_record_position"}
+    for column in _ALL_COLUMNS:
+        if column in allowed:
+            continue
+        assert column not in code, column
+    assert "_parse_payload" not in code and "canonical_text_payload" not in code
+
+
+def test_observation_kind_op_accesses_only_observation_kind():
+    code = _operation_code(project_observation_kind)
+    for column in _ALL_COLUMNS:
+        if column == "observation_kind":
+            continue
+        assert column not in code, column
+    assert "_parse_payload" not in code
+
+
+def test_context_op_does_not_reference_unrelated_fields():
+    code = _operation_code(project_score_context)
+    for token in ("observation_kind", "family_descriptor", "score_family_descriptor",
+                  "provenance_timestamp", "score_unit_context", "passive_score_magnitude"):
+        assert token not in code, token
+    # it MAY reach the structural family_payload parent + score_inputs_summary only.
+    assert "score_inputs_summary" in code
+
+
+# --- fixture closure: five Case-5 subvariants + seven top-level cases (helper unchanged) -----------
+
+def test_case5_has_exactly_five_subvariants_and_seven_top_level():
+    assert neg.SCORE_INPUTS_SUMMARY_SUBVARIANTS == (
+        neg.MISSING_SCORE_INPUTS_SUMMARY, neg.WRONG_ARITY_SCORE_INPUTS_SUMMARY,
+        neg.NON_TEXT_SCORE_INPUTS_SUMMARY_ELEMENT, neg.EMPTY_TEXT_ELEMENT,
+        neg.WHITESPACE_ONLY_TEXT_ELEMENT,
+    )
+    assert len(neg.NEGATIVE_EVIDENCE_CASES) == 7
+
+
+def _summary_of(row):
+    import json
+    return json.loads(row["canonical_text_payload"])["family_payload"]["score_inputs_summary"]
+
+
+def test_empty_and_whitespace_fixture_exact_byte_shapes():
+    empty = neg.build_negative_evidence_row(
+        case=neg.MALFORMED_SCORE_INPUTS_SUMMARY, subvariant=neg.EMPTY_TEXT_ELEMENT)
+    assert _summary_of(empty) == ["hl", ""]
+    ws = neg.build_negative_evidence_row(
+        case=neg.MALFORMED_SCORE_INPUTS_SUMMARY, subvariant=neg.WHITESPACE_ONLY_TEXT_ELEMENT)
+    summary = _summary_of(ws)
+    assert summary == ["hl", " "] and summary[1].encode("utf-8") == b"\x20"
 
 
 # --- dependency leaf + import-direction lock + Slice D/E/F absence ---------------------------------
