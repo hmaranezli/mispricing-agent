@@ -6,6 +6,7 @@ rejection, immutable finite definitions map) and the closed lifecycle vocabulary
 slot/snapshot *container* shape is deliberately NOT exercised here — it is not source-proven and Slice A
 invents nothing.
 """
+import dataclasses
 import decimal
 
 import pytest
@@ -82,7 +83,7 @@ def test_silver_pair_key_preserves_verbatim_and_is_hashable_frozen():
     assert k.silver_artifact_locator_text == "Loc A"
     assert k.silver_physical_record_position_text == "  42 "  # verbatim, no trim/normalize
     assert hash(k) == hash(_silver("Loc A", "  42 "))
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         k.silver_artifact_locator_text = "x"  # frozen
 
 
@@ -237,7 +238,95 @@ def test_artifact_rejects_non_key_entry_and_non_definition_value():
 
 def test_artifact_and_definitions_are_frozen():
     art = _artifact()
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         art.artifact_version_reference = "x"
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         _directional().passive_boundary_magnitude = _DEC("9")
+
+
+# --- Slice-A hardening: constructor-bypass, slotting, error-surface -------------------------------
+
+def test_direct_construction_validates_field_bearing_dtos():
+    with pytest.raises(lm.LogicalModelError):
+        lm.OpaqueSilverPairKey(silver_artifact_locator_text=1, silver_physical_record_position_text="0")
+    with pytest.raises(lm.LogicalModelError):
+        lm.PredecessorReference(opaque_reference=7)
+    with pytest.raises(lm.LogicalModelError):
+        lm.DirectionalShadowIntentDefinition(
+            exposure_orientation="LONG", passive_boundary_magnitude=_DEC("1"),
+            boundary_unit_context="u", hypothetical_window_duration_ms=1,
+        )
+    with pytest.raises(lm.LogicalModelError):
+        lm.InertShadowIntentDefinition(
+            exposure_orientation=lm.POSITIVE_EXPOSURE, hypothetical_window_duration_ms=1,
+        )
+
+
+def test_field_bearing_dtos_are_keyword_only():
+    with pytest.raises(TypeError):
+        lm.OpaqueSilverPairKey("a", "0")  # positional construction rejected (kw_only)
+
+
+def test_artifact_cannot_be_constructed_directly():
+    for attempt in (
+        lambda: lm.ShadowIntentDefinitionArtifact(),
+        lambda: lm.ShadowIntentDefinitionArtifact("a", "b", "c", lm.NoPredecessor(), {}),
+        lambda: lm.ShadowIntentDefinitionArtifact(
+            artifact_field_shape_version_reference="a", artifact_version_reference="b",
+            declarer_opaque_reference="c", predecessor_artifact_version_reference=lm.NoPredecessor(),
+            definitions_by_silver_pair={},
+        ),
+    ):
+        with pytest.raises(lm.LogicalModelError):
+            attempt()
+
+
+def test_artifact_revalidates_bypassed_nested_key():
+    poison = object.__new__(lm.OpaqueSilverPairKey)  # bypass __post_init__
+    object.__setattr__(poison, "silver_artifact_locator_text", 123)
+    object.__setattr__(poison, "silver_physical_record_position_text", "0")
+    with pytest.raises(lm.LogicalModelError):
+        lm.make_shadow_intent_definition_artifact(
+            artifact_field_shape_version_reference="v", artifact_version_reference="v",
+            declarer_opaque_reference="d", predecessor_artifact_version_reference=lm.NoPredecessor(),
+            definition_entries=((poison, _inert()),),
+        )
+
+
+def test_artifact_revalidates_bypassed_nested_definition():
+    poison = object.__new__(lm.InertShadowIntentDefinition)  # bypass __post_init__
+    object.__setattr__(poison, "exposure_orientation", lm.INERT_STATE)
+    object.__setattr__(poison, "hypothetical_window_duration_ms", -5)
+    with pytest.raises(lm.LogicalModelError):
+        lm.make_shadow_intent_definition_artifact(
+            artifact_field_shape_version_reference="v", artifact_version_reference="v",
+            declarer_opaque_reference="d", predecessor_artifact_version_reference=lm.NoPredecessor(),
+            definition_entries=((_silver(), poison),),
+        )
+
+
+def test_unhashable_orientation_raises_logical_model_error():
+    with pytest.raises(lm.LogicalModelError):
+        _directional(orientation=["POSITIVE_EXPOSURE"])  # unhashable: must not leak raw TypeError
+    with pytest.raises(lm.LogicalModelError):
+        lm.make_inert_shadow_intent_definition(
+            exposure_orientation={"x"}, hypothetical_window_duration_ms=1
+        )
+
+
+def test_no_dict_on_all_instances_and_extra_field_injection_fails():
+    instances = (
+        _silver(), lm.NoPredecessor(), lm.PredecessorReference(opaque_reference="p"),
+        _directional(), _inert(), _artifact(),
+    )
+    for obj in instances:
+        assert not hasattr(obj, "__dict__")  # slotted: no storage for injected fields
+    # frozen forbids reassigning a declared field
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        _silver().silver_artifact_locator_text = "x"
+    # slotted + frozen: an unknown attribute can never be stored (the frozen+slots __setattr__
+    # raises; CPython surfaces this as TypeError for a non-declared name) and leaves nothing behind
+    target = _inert()
+    with pytest.raises((dataclasses.FrozenInstanceError, AttributeError, TypeError)):
+        target.injected_extra = 1
+    assert not hasattr(target, "injected_extra")
