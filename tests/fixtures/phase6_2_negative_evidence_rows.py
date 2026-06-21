@@ -43,14 +43,18 @@ NEGATIVE_EVIDENCE_CASES = (
     INVALID_PROVENANCE_TIMESTAMP,
 )
 
-# --- closed subvariants (charter §6/§7/§8) --------------------------------------------------------
+# --- closed subvariants (charter §6/§7/§8; Case-5 extended by 04c88fc §6 + c8204ec §4) ------------
 MISSING_SCORE_INPUTS_SUMMARY = "MISSING_SCORE_INPUTS_SUMMARY"
 WRONG_ARITY_SCORE_INPUTS_SUMMARY = "WRONG_ARITY_SCORE_INPUTS_SUMMARY"
 NON_TEXT_SCORE_INPUTS_SUMMARY_ELEMENT = "NON_TEXT_SCORE_INPUTS_SUMMARY_ELEMENT"
+EMPTY_TEXT_ELEMENT = "EMPTY_TEXT_ELEMENT"
+WHITESPACE_ONLY_TEXT_ELEMENT = "WHITESPACE_ONLY_TEXT_ELEMENT"
 SCORE_INPUTS_SUMMARY_SUBVARIANTS = (
     MISSING_SCORE_INPUTS_SUMMARY,
     WRONG_ARITY_SCORE_INPUTS_SUMMARY,
     NON_TEXT_SCORE_INPUTS_SUMMARY_ELEMENT,
+    EMPTY_TEXT_ELEMENT,
+    WHITESPACE_ONLY_TEXT_ELEMENT,
 )
 
 LEADING_PLUS_DECIMAL = "LEADING_PLUS_DECIMAL"
@@ -193,8 +197,13 @@ def build_negative_evidence_row(*, case, subvariant=None):
             del payload["family_payload"]["score_inputs_summary"]
         elif subvariant == WRONG_ARITY_SCORE_INPUTS_SUMMARY:
             payload["family_payload"]["score_inputs_summary"] = ["hl"]
-        else:  # NON_TEXT_SCORE_INPUTS_SUMMARY_ELEMENT
+        elif subvariant == NON_TEXT_SCORE_INPUTS_SUMMARY_ELEMENT:
             payload["family_payload"]["score_inputs_summary"] = ["hl", 7]
+        elif subvariant == EMPTY_TEXT_ELEMENT:
+            # exactly ["hl", ""] — second element the empty string.
+            payload["family_payload"]["score_inputs_summary"] = ["hl", ""]
+        else:  # WHITESPACE_ONLY_TEXT_ELEMENT — exactly ["hl", " "]; second element one U+0020 (0x20).
+            payload["family_payload"]["score_inputs_summary"] = ["hl", " "]
         canonical_text_payload = _canonical(payload)
     elif case == INVALID_S1_DECIMAL_LEXIS:
         payload["family_payload"]["passive_score_magnitude"] = _decimal_lexis_for(subvariant)
