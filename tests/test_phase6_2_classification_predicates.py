@@ -22,6 +22,8 @@ import inspect
 import json
 import pathlib
 import sqlite3
+import symtable
+import textwrap
 from decimal import Decimal
 
 import pytest
@@ -751,7 +753,6 @@ def test_timestamp_anchor_no_isinstance_or_type_special_case_on_anchor():
 def _root_context_use_tags(fn_source, *, legal_shape):
     """Return a tag for every `root_context` Load in ``fn_source`` (each must be the sole/first positional
     arg of a whitelisted call), raising AssertionError on the first non-whitelisted use."""
-    import textwrap
     tree = ast.parse(textwrap.dedent(fn_source))
     parents = {}
     for parent in ast.walk(tree):
@@ -839,6 +840,66 @@ def test_root_context_whitelist_accepts_only_exact_legal_call_shapes():
     kw_src = "def f(root_context):\n    return _slot(root_context, name='source_venue_context_text')\n"
     with pytest.raises(AssertionError):
         _root_context_use_tags(kw_src, legal_shape=_legal_helper_use)
+
+
+# --- compiler-semantic rebinding lock via stdlib symtable -----------------------------------------
+#
+# The closed AST Load whitelist proves WHERE root_context is read; this lock proves the compiler's own
+# binding semantics for the name. Using CPython's symtable over the exact function symbol table,
+# root_context must be a pristine read-only PARAMETER: any Assign / AnnAssign / NamedExpr / del / for- or
+# with-target / except-as / import-as / nested def-or-class / match capture flips is_assigned (or
+# is_imported / is_namespace), and any global/nonlocal/free linkage is likewise rejected. This catches
+# rebindings independent of the syntactic Load shapes the AST whitelist inspects.
+
+def _function_symbol_table(fn_source, fn_name):
+    top = symtable.symtable(textwrap.dedent(fn_source), "<rebind-lock>", "exec")
+    for child in top.get_children():
+        if child.get_name() == fn_name and child.get_type() == "function":
+            return child
+    raise AssertionError("no function symbol table for {!r}".format(fn_name))
+
+
+def _assert_root_context_is_pristine_parameter(fn_source, fn_name):
+    ftab = _function_symbol_table(fn_source, fn_name)
+    sym = ftab.lookup("root_context")               # KeyError if the parameter is absent
+    assert sym.is_parameter(), (fn_name, "not a parameter")
+    assert sym.is_local(), (fn_name, "not local")
+    assert not sym.is_assigned(), (fn_name, "rebound/assigned")
+    assert not sym.is_imported(), (fn_name, "import-as rebound")
+    assert not sym.is_namespace(), (fn_name, "shadowed by nested def/class")
+    assert not sym.is_global(), (fn_name, "global")
+    assert not sym.is_nonlocal(), (fn_name, "nonlocal")
+    assert not sym.is_free(), (fn_name, "free")
+
+
+def test_legal_functions_pass_both_whitelist_and_rebinding_lock():
+    # the untouched legal functions satisfy BOTH the closed AST Load whitelist AND the symtable lock.
+    for fn, fn_name, legal in (
+        (cp.context_equals, "context_equals", _legal_context_equals_use),
+        (cp._require_root_context_scalars, "_require_root_context_scalars", _legal_helper_use),
+    ):
+        src = inspect.getsource(fn)
+        _root_context_use_tags(src, legal_shape=legal)               # (1) AST Load whitelist: no raise
+        _assert_root_context_is_pristine_parameter(src, fn_name)     # (2) symtable rebinding lock: no raise
+
+
+@pytest.mark.parametrize("body", [
+    "    root_context = 1\n",                                                       # Assign
+    "    root_context: object = 1\n",                                               # AnnAssign
+    "    return (root_context := 1)\n",                                             # NamedExpr (walrus)
+    "    del root_context\n",                                                       # del
+    "    for root_context in []:\n        pass\n",                                  # for-target rebind
+    "    with open('x') as root_context:\n        pass\n",                          # with-target rebind
+    "    try:\n        pass\n    except Exception as root_context:\n        pass\n",  # except-as rebind
+    "    import os as root_context\n",                                             # import-as rebind
+    "    def root_context():\n        pass\n",                                      # nested function binding
+    "    class root_context:\n        pass\n",                                      # nested class binding
+    "    match subject:\n        case [root_context]:\n            pass\n",          # match capture
+])
+def test_root_context_rebinding_lock_rejects_every_rebinding(body):
+    src = "def f(root_context, subject=None):\n" + body
+    with pytest.raises(AssertionError):
+        _assert_root_context_is_pristine_parameter(src, "f")
 
 
 def test_module_has_no_private_maker_overload_or_synthetic_row():
