@@ -200,7 +200,7 @@ def _require_predecessor_option(value):
     if type(value) is NoPredecessor:
         return value
     if type(value) is PredecessorReference:
-        _require_opaque_text("opaque_reference", value.opaque_reference)
+        _require_opaque_text("opaque_reference", _slot_value(value, "opaque_reference"))
         return value
     raise LogicalModelError(
         "predecessor_artifact_version_reference must be NoPredecessor or PredecessorReference, not {}".format(
@@ -274,14 +274,20 @@ def _revalidate_silver_pair_key(key):
 def _revalidate_definition(definition):
     """Defensive: re-assert a definition variant's complete invariants (guards object.__new__ bypasses)."""
     if type(definition) is DirectionalShadowIntentDefinition:
-        _require_directional_orientation(definition.exposure_orientation)
-        _require_finite_decimal("passive_boundary_magnitude", definition.passive_boundary_magnitude)
-        _require_opaque_text("boundary_unit_context", definition.boundary_unit_context)
-        _require_non_negative_int_ms("hypothetical_window_duration_ms", definition.hypothetical_window_duration_ms)
+        _require_directional_orientation(_slot_value(definition, "exposure_orientation"))
+        _require_finite_decimal(
+            "passive_boundary_magnitude", _slot_value(definition, "passive_boundary_magnitude")
+        )
+        _require_opaque_text("boundary_unit_context", _slot_value(definition, "boundary_unit_context"))
+        _require_non_negative_int_ms(
+            "hypothetical_window_duration_ms", _slot_value(definition, "hypothetical_window_duration_ms")
+        )
         return
     if type(definition) is InertShadowIntentDefinition:
-        _require_inert_orientation(definition.exposure_orientation)
-        _require_non_negative_int_ms("hypothetical_window_duration_ms", definition.hypothetical_window_duration_ms)
+        _require_inert_orientation(_slot_value(definition, "exposure_orientation"))
+        _require_non_negative_int_ms(
+            "hypothetical_window_duration_ms", _slot_value(definition, "hypothetical_window_duration_ms")
+        )
         return
     raise LogicalModelError(
         "definition must be a Directional or Inert ShadowIntentDefinition, not {}".format(type(definition).__name__)

@@ -719,6 +719,147 @@ def test_forged_missing_slot_lifecycle_slot_each_field_via_snapshot():
         lm.make_shadow_lifecycle_snapshot(slot_entries=((k, _new(lm.ShadowIntentLifecycleSlot)),))
 
 
+# --- Legacy missing-slot forgery retrofit: predecessor + definition trust boundaries -------------
+# Routed through the public make_shadow_intent_definition_artifact boundary. Each carrier is forged via
+# object.__new__ leaving a slot UNSET; pytest.raises(LogicalModelError) proves no raw AttributeError.
+
+def _artifact_with(*, predecessor=_UNSET, entries=()):
+    if predecessor is _UNSET:
+        predecessor = lm.NoPredecessor()
+    return lm.make_shadow_intent_definition_artifact(
+        artifact_field_shape_version_reference="v", artifact_version_reference="v",
+        declarer_opaque_reference="d", predecessor_artifact_version_reference=predecessor,
+        definition_entries=tuple(entries),
+    )
+
+
+def _forge(cls, **slots):
+    obj = object.__new__(cls)  # bypass __init__/__post_init__; only the given slots are populated
+    for name, value in slots.items():
+        object.__setattr__(obj, name, value)
+    return obj
+
+
+_DIR_VALID = {
+    "exposure_orientation": lm.POSITIVE_EXPOSURE,
+    "passive_boundary_magnitude": _DEC("1.5"),
+    "boundary_unit_context": "proportion",
+    "hypothetical_window_duration_ms": 840000,
+}
+_INERT_VALID = {
+    "exposure_orientation": lm.INERT_STATE,
+    "hypothetical_window_duration_ms": 840000,
+}
+
+
+def test_forged_missing_slot_predecessor_reference():
+    # wholly empty (its single opaque_reference slot UNSET) reached via _require_predecessor_option
+    with pytest.raises(lm.LogicalModelError):
+        _artifact_with(predecessor=_forge(lm.PredecessorReference))
+
+
+def test_forged_missing_slot_directional_definition_wholly_empty():
+    with pytest.raises(lm.LogicalModelError):
+        _artifact_with(entries=((_silver(), _forge(lm.DirectionalShadowIntentDefinition)),))
+
+
+@pytest.mark.parametrize("missing", sorted(_DIR_VALID))
+def test_forged_missing_slot_directional_each_field_individually(missing):
+    present = {k: v for k, v in _DIR_VALID.items() if k != missing}  # all-but-one valid
+    forged = _forge(lm.DirectionalShadowIntentDefinition, **present)
+    with pytest.raises(lm.LogicalModelError):
+        _artifact_with(entries=((_silver(), forged),))
+
+
+def test_forged_missing_slot_inert_definition_wholly_empty():
+    with pytest.raises(lm.LogicalModelError):
+        _artifact_with(entries=((_silver(), _forge(lm.InertShadowIntentDefinition)),))
+
+
+@pytest.mark.parametrize("missing", sorted(_INERT_VALID))
+def test_forged_missing_slot_inert_each_field_individually(missing):
+    present = {k: v for k, v in _INERT_VALID.items() if k != missing}
+    forged = _forge(lm.InertShadowIntentDefinition, **present)
+    with pytest.raises(lm.LogicalModelError):
+        _artifact_with(entries=((_silver(), forged),))
+
+
+# --- AST trust-boundary lock: every defensive reader must read carrier fields via _slot_value -----
+
+def _logical_model_functiondefs():
+    import ast
+    import os
+    src = os.path.join(os.path.dirname(lm.__file__), "logical_model.py")
+    with open(src, encoding="utf-8") as fh:
+        tree = ast.parse(fh.read())
+    return {node.name: node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+
+
+# function name -> the carrier param/local names whose field reads MUST be guarded
+_GUARDED_READERS = {
+    "_require_predecessor_option": {"value"},
+    "_revalidate_silver_pair_key": {"key"},
+    "_revalidate_definition": {"definition"},
+    "_revalidate_established_root_context": {"ctx"},
+    "_require_root_evidence_option": {"value"},
+    "_revalidate_lifecycle_slot": {"slot"},
+    "make_shadow_lifecycle_snapshot": {"slot"},  # the key/slot identity publication check
+}
+
+
+def test_ast_lock_no_direct_carrier_attribute_loads_in_defensive_readers():
+    import ast
+    fns = _logical_model_functiondefs()
+    for name, carriers in _GUARDED_READERS.items():
+        assert name in fns, "missing defensive reader: {}".format(name)
+        fn = fns[name]
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load):
+                base = node.value
+                assert not (isinstance(base, ast.Name) and base.id in carriers), (
+                    "direct attribute load {}.{} in {} bypasses _slot_value".format(base.id, node.attr, name)
+                )
+
+
+def test_ast_lock_defensive_readers_use_slot_value_on_carriers():
+    import ast
+    fns = _logical_model_functiondefs()
+    for name, carriers in _GUARDED_READERS.items():
+        fn = fns[name]
+        guarded = False
+        for node in ast.walk(fn):
+            if (
+                isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "_slot_value" and node.args
+                and isinstance(node.args[0], ast.Name) and node.args[0].id in carriers
+            ):
+                guarded = True
+                break
+        assert guarded, "{} never reads a carrier field through _slot_value".format(name)
+
+
+def test_ast_lock_does_not_touch_post_init_direct_field_reads():
+    # __post_init__ methods read self.<field> directly by design; the lock targets only the named
+    # defensive readers, so ordinary self-reads remain legal (regression guard against over-reach).
+    import ast
+    fns = _logical_model_functiondefs()
+    assert "__post_init__" not in _GUARDED_READERS
+    # at least one __post_init__ exists and reads self.<field> directly — and is NOT locked
+    post_inits = [n for n in fns if False]  # functiondefs dict keys are names; __post_init__ collides
+    # (presence proof via walking all method defs)
+    src_has_self_read = False
+    import os
+    with open(os.path.join(os.path.dirname(lm.__file__), "logical_model.py"), encoding="utf-8") as fh:
+        tree = ast.parse(fh.read())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "__post_init__":
+            for n in ast.walk(node):
+                if (isinstance(n, ast.Attribute) and isinstance(n.ctx, ast.Load)
+                        and isinstance(n.value, ast.Name) and n.value.id == "self"):
+                    src_has_self_read = True
+    assert src_has_self_read  # confirms direct self-reads exist and are intentionally not prohibited
+
+
 # --- Exact-API proofs: keyword-only factories, pinned names only, forbidden aliases absent --------
 
 def test_snapshot_factories_reject_positional_and_misnamed_arguments():
