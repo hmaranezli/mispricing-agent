@@ -176,10 +176,9 @@ _GENUINE_FIRST_POSITION = "0"
 
 
 def _genuine_two_score_rows(tmp_path, name="s1_stateful.db"):
-    """Return the genuine immutable replay tuple of two SCORE rows from two valid pipeline lines.
-
-    Both rows share locator ``loc`` with distinct physical_record_positions, so a manifest targeting the
-    first row establishes one shadow intent while the second row stays a non-targeted Slice-E no-op.
+    """Return the genuine immutable replay tuple of two SCORE rows in append order from two valid pipeline
+    lines. Slice F's responsibility is limited to passing them sequentially and threading the returned
+    snapshots.
     """
     mem = S1InMemoryObservationSink()
     run_in_memory_shadow_pipeline(
@@ -514,13 +513,15 @@ def test_targeted_multi_row_success_grows_state_and_threads_changed_snapshots(tm
 
 
 def test_stateful_cross_execution_distinct_but_equal_nonempty(tmp_path):
+    # genuine rows + verified manifest created exactly once; the SAME objects drive both executions
+    rows = _genuine_two_score_rows(tmp_path)
     manifest = _verified_manifest_targeting_first_genuine_row()
     expected_key = _expected_genuine_key()
     result_a = reconstruct_shadow_intent_state(
-        ordered_replay_rows=_genuine_two_score_rows(tmp_path, name="exec_a.db"),
+        ordered_replay_rows=rows,
         verified_manifest_artifact=manifest)
     result_b = reconstruct_shadow_intent_state(
-        ordered_replay_rows=_genuine_two_score_rows(tmp_path, name="exec_b.db"),
+        ordered_replay_rows=rows,
         verified_manifest_artifact=manifest)
     # both alive simultaneously
     assert result_a is not result_b
