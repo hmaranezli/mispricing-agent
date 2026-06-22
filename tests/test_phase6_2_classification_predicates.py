@@ -80,6 +80,12 @@ def _context(a, b):
     return sep.project_score_context(replay_row=_row(canonical_text_payload=payload))
 
 
+def _root(venue="hl", pair="BTC"):
+    # The Slice-A established-root carrier the lifecycle slot stores; the asymmetric root operand for
+    # context_equals. Built through the ratified self-validating logical_model dataclass (no row, no maker).
+    return lm.EstablishedRootContext(source_venue_context_text=venue, source_pair_context_text=pair)
+
+
 def _timestamp(digits):
     payload = '{"provenance_timestamp": ' + digits + '}'   # canonical digits -> a valid JSON number
     return sep.project_score_timestamp(
@@ -147,97 +153,151 @@ def test_silver_pair_rejects_forged_missing_slot():
 # --- context equality -----------------------------------------------------------------------------
 
 def test_context_equals_exact():
-    assert context_equals(root_context=_context("hl", "BTC"),
+    # ASYMMETRIC: root is the Slice-A EstablishedRootContext (two scalar fields); observed is the Slice-C
+    # ScoreContextProjection (score_inputs_summary tuple). Compared byte/position-exact: venue<->[0], pair<->[1].
+    assert context_equals(root_context=_root("hl", "BTC"),
                           observed_context=_context("hl", "BTC")) is True
 
 
 def test_context_unequal_on_any_scalar():
-    assert context_equals(root_context=_context("hl", "BTC"),
+    assert context_equals(root_context=_root("hl", "BTC"),
                           observed_context=_context("hl", "ETH")) is False
-    assert context_equals(root_context=_context("hl", "BTC"),
+    assert context_equals(root_context=_root("hl", "BTC"),
                           observed_context=_context("kraken", "BTC")) is False
 
 
 def test_context_is_byte_exact_no_normalization():
-    assert context_equals(root_context=_context("hl", "BTC"),
+    assert context_equals(root_context=_root("hl", "BTC"),
                           observed_context=_context("hl ", "BTC")) is False   # trailing space preserved
-    assert context_equals(root_context=_context("HL", "BTC"),
+    assert context_equals(root_context=_root("HL", "BTC"),
                           observed_context=_context("hl", "BTC")) is False   # case preserved
+
+
+def test_context_root_must_be_established_root_not_score_context():
+    # The OLD symmetric root operand (a ScoreContextProjection) is now an exact-carrier-type violation:
+    # PREDICATE_WRONG_CARRIER_TYPE is reserved to the EstablishedRootContext root operand.
+    with pytest.raises(ClassificationPredicateError) as exc:
+        context_equals(root_context=_context("hl", "BTC"), observed_context=_context("hl", "BTC"))
+    assert exc.value.reason == PREDICATE_WRONG_CARRIER_TYPE
 
 
 def test_context_rejects_wrong_type_and_forged():
     with pytest.raises(ClassificationPredicateError) as e1:
         context_equals(root_context="x", observed_context=_context("hl", "BTC"))
     assert e1.value.reason == PREDICATE_WRONG_CARRIER_TYPE
+    # observed-operand forgery (missing slot) still surfaces the closed forged/missing-slot reason.
     forged = object.__new__(sep.ScoreContextProjection)
     with pytest.raises(ClassificationPredicateError) as e2:
-        context_equals(root_context=_context("hl", "BTC"), observed_context=forged)
+        context_equals(root_context=_root("hl", "BTC"), observed_context=forged)
     assert e2.value.reason == PREDICATE_FORGED_OR_MISSING_SLOT
+
+
+def test_context_rejects_root_missing_slot_forgery():
+    # An object.__new__-forged EstablishedRootContext with NO slots set surfaces the forged/missing-slot reason.
+    forged_root = object.__new__(lm.EstablishedRootContext)
+    with pytest.raises(ClassificationPredicateError) as exc:
+        context_equals(root_context=forged_root, observed_context=_context("hl", "BTC"))
+    assert exc.value.reason == PREDICATE_FORGED_OR_MISSING_SLOT
+
+
+def test_context_root_u200b_scalar_is_nonblank_and_accepted():
+    # U+200B is non-blank under Python str.strip() and is accepted verbatim in the root scalars.
+    zwsp = "​"
+    assert context_equals(root_context=_root(zwsp, "BTC"),
+                          observed_context=_context(zwsp, "BTC")) is True
+    assert context_equals(root_context=_root(zwsp, "BTC"),
+                          observed_context=_context("hl", "BTC")) is False
 
 
 # --- timestamp-window classification (exact lexical arithmetic, no int()) -------------------------
 
 def test_window_zero_duration_boundary():
-    assert classify_timestamp_window(anchor=_timestamp("100"), comparison=_timestamp("100"),
+    # ASYMMETRIC: anchor is a bare canonical timestamp str; comparison stays a ScoreTimestampProjection.
+    assert classify_timestamp_window(anchor="100", comparison=_timestamp("100"),
                                      duration_ms=0) == WINDOW_IN_WINDOW
-    assert classify_timestamp_window(anchor=_timestamp("100"), comparison=_timestamp("101"),
+    assert classify_timestamp_window(anchor="100", comparison=_timestamp("101"),
                                      duration_ms=0) == WINDOW_EXPIRED
 
 
 def test_window_delta_equals_duration_is_in_window():
-    assert classify_timestamp_window(anchor=_timestamp("100"), comparison=_timestamp("105"),
+    assert classify_timestamp_window(anchor="100", comparison=_timestamp("105"),
                                      duration_ms=5) == WINDOW_IN_WINDOW
 
 
 def test_window_delta_equals_duration_plus_one_is_expired():
-    assert classify_timestamp_window(anchor=_timestamp("100"), comparison=_timestamp("106"),
+    assert classify_timestamp_window(anchor="100", comparison=_timestamp("106"),
                                      duration_ms=5) == WINDOW_EXPIRED
 
 
 def test_window_negative_delta_is_non_comparable():
-    assert classify_timestamp_window(anchor=_timestamp("100"), comparison=_timestamp("99"),
+    assert classify_timestamp_window(anchor="100", comparison=_timestamp("99"),
                                      duration_ms=5) == WINDOW_NON_COMPARABLE
 
 
 def test_window_max_duration_boundary():
     mx = str(lm.MAX_HYPOTHETICAL_WINDOW_DURATION_MS)
-    assert classify_timestamp_window(anchor=_timestamp("0"), comparison=_timestamp(mx),
+    assert classify_timestamp_window(anchor="0", comparison=_timestamp(mx),
                                      duration_ms=lm.MAX_HYPOTHETICAL_WINDOW_DURATION_MS) == WINDOW_IN_WINDOW
     over = str(lm.MAX_HYPOTHETICAL_WINDOW_DURATION_MS + 1)
-    assert classify_timestamp_window(anchor=_timestamp("0"), comparison=_timestamp(over),
+    assert classify_timestamp_window(anchor="0", comparison=_timestamp(over),
                                      duration_ms=lm.MAX_HYPOTHETICAL_WINDOW_DURATION_MS) == WINDOW_EXPIRED
 
 
 def test_window_5000_digit_timestamps_without_raw_valueerror():
     big = "1" + "0" * 4999                       # 10**4999, a 5000-digit canonical integer
     big_plus_one = "1" + "0" * 4998 + "1"        # 10**4999 + 1
-    assert classify_timestamp_window(anchor=_timestamp(big), comparison=_timestamp(big),
+    assert classify_timestamp_window(anchor=big, comparison=_timestamp(big),
                                      duration_ms=0) == WINDOW_IN_WINDOW
-    assert classify_timestamp_window(anchor=_timestamp(big), comparison=_timestamp(big_plus_one),
+    assert classify_timestamp_window(anchor=big, comparison=_timestamp(big_plus_one),
                                      duration_ms=0) == WINDOW_EXPIRED
-    assert classify_timestamp_window(anchor=_timestamp(big), comparison=_timestamp("0"),
+    assert classify_timestamp_window(anchor=big, comparison=_timestamp("0"),
                                      duration_ms=0) == WINDOW_NON_COMPARABLE
 
 
 def test_window_rejects_invalid_duration():
     for bad in (-1, lm.MAX_HYPOTHETICAL_WINDOW_DURATION_MS + 1, True, "5", 1.0):
         with pytest.raises(ClassificationPredicateError) as exc:
-            classify_timestamp_window(anchor=_timestamp("0"), comparison=_timestamp("0"), duration_ms=bad)
+            classify_timestamp_window(anchor="0", comparison=_timestamp("0"), duration_ms=bad)
         assert exc.value.reason == PREDICATE_INVALID_DURATION
 
 
-def test_window_rejects_wrong_type_and_forged_or_noncanonical():
+def test_window_anchor_non_canonical_str_is_invalid_canonical_timestamp():
+    for bad in ("x", "", "-5", "00", "007", "+1", "1.0", "1e3", " 1", "1 "):
+        with pytest.raises(ClassificationPredicateError) as exc:
+            classify_timestamp_window(anchor=bad, comparison=_timestamp("0"), duration_ms=0)
+        assert exc.value.reason == PREDICATE_INVALID_CANONICAL_TIMESTAMP
+
+
+def test_window_anchor_every_non_str_maps_to_invalid_canonical_timestamp():
+    # The OLD symmetric anchor (a ScoreTimestampProjection) and every other non-str value collapse to the
+    # SAME reason: there is no carrier branch, ghost check, or PREDICATE_WRONG_CARRIER_TYPE for the anchor.
+    class _StrSub(str):
+        pass
+    non_str_anchors = (
+        _timestamp("0"),                                 # old symmetric ScoreTimestampProjection anchor
+        object.__new__(sep.ScoreTimestampProjection),    # forged/missing-slot carrier
+        100, True, None, Decimal("1"), b"100", ["100"], {"x": 1}, object(),
+        _StrSub("100"),                                  # str subclass: type(x) is str is False
+    )
+    for bad in non_str_anchors:
+        with pytest.raises(ClassificationPredicateError) as exc:
+            classify_timestamp_window(anchor=bad, comparison=_timestamp("0"), duration_ms=0)
+        assert exc.value.reason == PREDICATE_INVALID_CANONICAL_TIMESTAMP, repr(bad)
+
+
+def test_window_comparison_carrier_wrong_type_forged_or_noncanonical():
+    # PREDICATE_WRONG_CARRIER_TYPE is reserved to the comparison carrier operand.
     with pytest.raises(ClassificationPredicateError) as e1:
-        classify_timestamp_window(anchor="x", comparison=_timestamp("0"), duration_ms=0)
+        classify_timestamp_window(anchor="0", comparison="x", duration_ms=0)
     assert e1.value.reason == PREDICATE_WRONG_CARRIER_TYPE
     missing = object.__new__(sep.ScoreTimestampProjection)
     with pytest.raises(ClassificationPredicateError) as e2:
-        classify_timestamp_window(anchor=missing, comparison=_timestamp("0"), duration_ms=0)
+        classify_timestamp_window(anchor="0", comparison=missing, duration_ms=0)
     assert e2.value.reason == PREDICATE_FORGED_OR_MISSING_SLOT
     forged = object.__new__(sep.ScoreTimestampProjection)
     object.__setattr__(forged, "provenance_timestamp", "-5")     # non-canonical forged value
     with pytest.raises(ClassificationPredicateError) as e3:
-        classify_timestamp_window(anchor=forged, comparison=_timestamp("0"), duration_ms=0)
+        classify_timestamp_window(anchor="0", comparison=forged, duration_ms=0)
     assert e3.value.reason == PREDICATE_INVALID_CANONICAL_TIMESTAMP
 
 
@@ -401,34 +461,51 @@ def _forge(carrier_type, **slots):
     return obj
 
 
+@pytest.mark.parametrize("venue,pair", [("", "BTC"), ("hl", ""), (" ", "BTC"), ("hl", " ")])
+def test_context_rejects_populated_blank_root_forgery(venue, pair):
+    # An object.__new__-forged EstablishedRootContext with a populated-but-blank scalar (bypassing the
+    # dataclass __post_init__) is rejected at the consumer boundary with the closed invalid-text reason.
+    forged_root = _forge(lm.EstablishedRootContext,
+                         source_venue_context_text=venue, source_pair_context_text=pair)
+    with pytest.raises(ClassificationPredicateError) as exc:
+        context_equals(root_context=forged_root, observed_context=_context("hl", "BTC"))
+    assert exc.value.reason == PREDICATE_INVALID_TEXT
+
+
 @pytest.mark.parametrize("bad_tuple", [("", "BTC"), ("hl", ""), (" ", "BTC"), ("hl", " ")])
-def test_context_rejects_populated_blank_forgery_in_both_positions(bad_tuple):
+def test_context_rejects_populated_blank_observed_forgery(bad_tuple):
     forged = _forge(sep.ScoreContextProjection, score_inputs_summary=bad_tuple)
-    valid = _context("hl", "BTC")
-    with pytest.raises(ClassificationPredicateError) as e_root:
-        context_equals(root_context=forged, observed_context=valid)
-    assert e_root.value.reason == PREDICATE_INVALID_TEXT
-    with pytest.raises(ClassificationPredicateError) as e_obs:
-        context_equals(root_context=valid, observed_context=forged)
-    assert e_obs.value.reason == PREDICATE_INVALID_TEXT
+    with pytest.raises(ClassificationPredicateError) as exc:
+        context_equals(root_context=_root("hl", "BTC"), observed_context=forged)
+    assert exc.value.reason == PREDICATE_INVALID_TEXT
 
 
-def test_context_rejects_non_tuple_and_wrong_arity_and_non_text_forgery():
-    valid = _context("hl", "BTC")
+def test_context_rejects_root_non_str_scalar_forgery():
+    # A populated-but-non-str root scalar (bypassing __post_init__) surfaces the closed invalid-text reason.
+    for venue, pair in ((7, "BTC"), ("hl", 7), (None, "BTC")):
+        forged_root = _forge(lm.EstablishedRootContext,
+                             source_venue_context_text=venue, source_pair_context_text=pair)
+        with pytest.raises(ClassificationPredicateError) as exc:
+            context_equals(root_context=forged_root, observed_context=_context("hl", "BTC"))
+        assert exc.value.reason == PREDICATE_INVALID_TEXT
+
+
+def test_context_rejects_non_tuple_and_wrong_arity_and_non_text_observed_forgery():
+    valid_root = _root("hl", "BTC")
     for bad in (["hl", "BTC"], ("hl",), ("hl", "BTC", "x"), ("hl", 7)):
         forged = _forge(sep.ScoreContextProjection, score_inputs_summary=bad)
         with pytest.raises(ClassificationPredicateError) as exc:
-            context_equals(root_context=forged, observed_context=valid)
+            context_equals(root_context=valid_root, observed_context=forged)
         assert exc.value.reason == PREDICATE_INVALID_TEXT
 
 
 def test_context_preserves_valid_verbatim_text_with_internal_or_edge_nonblank():
     # a trailing-space-but-nonblank scalar is VALID and preserved verbatim (no trim/repair).
-    a = _forge(sep.ScoreContextProjection, score_inputs_summary=("hl ", "BTC"))
-    b = _forge(sep.ScoreContextProjection, score_inputs_summary=("hl ", "BTC"))
-    assert context_equals(root_context=a, observed_context=b) is True
+    root_edge = _root("hl ", "BTC")                 # genuine self-validating root with trailing space
+    obs_edge = _forge(sep.ScoreContextProjection, score_inputs_summary=("hl ", "BTC"))
+    assert context_equals(root_context=root_edge, observed_context=obs_edge) is True
     c = _context("hl", "BTC")                       # genuine "hl" (no trailing space)
-    assert context_equals(root_context=a, observed_context=c) is False   # byte-exact, not trimmed
+    assert context_equals(root_context=root_edge, observed_context=c) is False   # byte-exact, not trimmed
 
 
 def test_magnitude_rejects_text_value_disagreement_forgery():
@@ -576,3 +653,49 @@ def test_slice_e_f_targets_not_created():
     package = _module_path().parent
     for absent in ("atomic_replay_step.py", "reconstruction.py"):
         assert not (package / absent).exists(), absent
+
+
+# --- asymmetric-correction AST locks (ratified b874ec0 as corrected by 8fc292e) --------------------
+
+def test_timestamp_anchor_has_no_carrier_branch_static():
+    # The scalar anchor flows directly through the single canonical validator: no carrier-type guard,
+    # no slot read, no provenance attribute read, and no second _require_carrier on the anchor.
+    src = inspect.getsource(cp.classify_timestamp_window)
+    assert "_require_carrier(anchor" not in src
+    assert "_slot(anchor" not in src
+    assert "anchor.provenance_timestamp" not in src
+    assert "_require_canonical_timestamp(anchor)" in src
+    # the comparison carrier is the ONLY exact-carrier guard in the function.
+    assert src.count("_require_carrier(") == 1
+
+
+def test_timestamp_anchor_no_isinstance_or_type_special_case_on_anchor():
+    # Static AST proof: no branch special-cases ScoreTimestampProjection (or any carrier) as a legal anchor.
+    tree = ast.parse(inspect.getsource(cp.classify_timestamp_window))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "isinstance":
+            for arg in node.args:
+                assert not (isinstance(arg, ast.Name) and arg.id == "anchor"), "isinstance(anchor, ...)"
+        # no attribute read off the anchor (e.g. anchor.provenance_timestamp).
+        if isinstance(node, ast.Attribute):
+            assert not (isinstance(node.value, ast.Name) and node.value.id == "anchor"), "anchor.<attr>"
+        # no `type(anchor) is <Carrier>` comparison.
+        if isinstance(node, ast.Compare):
+            left = node.left
+            if (isinstance(left, ast.Call) and isinstance(left.func, ast.Name)
+                    and left.func.id == "type" and left.args
+                    and isinstance(left.args[0], ast.Name) and left.args[0].id == "anchor"):
+                raise AssertionError("type(anchor) is <...> branch is forbidden")
+
+
+def test_context_root_uses_established_root_not_score_context_static():
+    src = inspect.getsource(cp.context_equals)
+    assert "_require_carrier(root_context, ScoreContextProjection)" not in src
+    assert "EstablishedRootContext" in src
+
+
+def test_module_has_no_private_maker_overload_or_synthetic_row():
+    text = _module_path().read_text(encoding="utf-8")
+    for forbidden in ("_make_score_context", "_make_score_timestamp", "row_factory", "fetchone",
+                      "connect(", "@overload", "typing.overload"):
+        assert forbidden not in text, forbidden

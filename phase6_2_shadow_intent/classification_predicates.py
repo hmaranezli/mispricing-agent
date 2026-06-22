@@ -34,6 +34,7 @@ from phase6_2_shadow_intent.logical_model import (
     MIN_HYPOTHETICAL_WINDOW_DURATION_MS,
     MAX_HYPOTHETICAL_WINDOW_DURATION_MS,
     OpaqueSilverPairKey,
+    EstablishedRootContext,
 )
 from phase6_2_shadow_intent.s1_evidence_projection import (
     SilverPairProjection,
@@ -207,13 +208,33 @@ def silver_pair_intersects(*, manifest_key, observed_silver_pair):
 
 
 def context_equals(*, root_context, observed_context):
-    """Exact two-scalar context equality, byte-exact with no normalization. Both inputs are Slice-C
-    :class:`ScoreContextProjection` carriers; compares their ``score_inputs_summary`` element-wise."""
-    _require_carrier(root_context, ScoreContextProjection)
+    """Exact two-scalar context equality, byte-exact with no normalization. **Asymmetric operands:** the
+    ``root_context`` is the Slice-A :class:`EstablishedRootContext` carrier the lifecycle slot already
+    stores (two opaque scalar fields ``source_venue_context_text`` / ``source_pair_context_text``); the
+    ``observed_context`` is a Slice-C :class:`ScoreContextProjection` (a two-element
+    ``score_inputs_summary`` tuple). Compares them position-exact: venue<->[0], pair<->[1]. Precedence:
+    root operand revalidated first, then the observed carrier."""
+    root_venue, root_pair = _require_root_context_scalars(root_context)
     _require_carrier(observed_context, ScoreContextProjection)
-    root_summary = _require_context_tuple(_slot(root_context, "score_inputs_summary"))
     observed_summary = _require_context_tuple(_slot(observed_context, "score_inputs_summary"))
-    return root_summary[0] == observed_summary[0] and root_summary[1] == observed_summary[1]
+    return root_venue == observed_summary[0] and root_pair == observed_summary[1]
+
+
+def _require_root_context_scalars(root_context):
+    # Full consumer-boundary revalidation of the Slice-A root carrier (guards object.__new__ populated /
+    # missing-slot forgeries). Wrong type -> PREDICATE_WRONG_CARRIER_TYPE (reserved to the exact root
+    # carrier); missing slot -> PREDICATE_FORGED_OR_MISSING_SLOT; non-str / blank scalar ->
+    # PREDICATE_INVALID_TEXT. Blankness is Python str.strip() == "" (so U+200B is non-blank and accepted),
+    # mirroring the Slice-A logical_model rule; the accepted scalar is preserved verbatim (no trim/repair).
+    _require_carrier(root_context, EstablishedRootContext)
+    venue = _slot(root_context, "source_venue_context_text")
+    pair = _slot(root_context, "source_pair_context_text")
+    if (type(venue) is not str or type(pair) is not str
+            or venue.strip() == "" or pair.strip() == ""):
+        raise ClassificationPredicateError(
+            PREDICATE_INVALID_TEXT,
+            "root context scalars must be exactly two non-blank text scalars")
+    return venue, pair
 
 
 def _require_context_tuple(value):
@@ -231,12 +252,15 @@ def _require_context_tuple(value):
 def classify_timestamp_window(*, anchor, comparison, duration_ms):
     """Classify a comparison timestamp relative to an anchor and an exact integer window duration:
     ``delta < 0`` -> ``WINDOW_NON_COMPARABLE``; ``0 <= delta <= duration`` -> ``WINDOW_IN_WINDOW``;
-    ``delta > duration`` -> ``WINDOW_EXPIRED``. ``anchor`` / ``comparison`` are Slice-C
-    :class:`ScoreTimestampProjection` carriers; arithmetic is exact lexical/digit arithmetic (no
-    ``int()``/float/Decimal)."""
-    _require_carrier(anchor, ScoreTimestampProjection)
+    ``delta > duration`` -> ``WINDOW_EXPIRED``. **Asymmetric operands:** the ``anchor`` is a bare canonical
+    non-negative-integer ``str`` (``"0" | [1-9][0-9]*``) — every non-``str`` value (including the old
+    symmetric :class:`ScoreTimestampProjection` carrier and ``str`` subclasses) maps to
+    ``PREDICATE_INVALID_CANONICAL_TIMESTAMP`` through the single canonical validator, with no carrier
+    branch; the ``comparison`` remains a Slice-C :class:`ScoreTimestampProjection` carrier. Arithmetic is
+    exact lexical/digit arithmetic (no ``int()``/float/Decimal). Precedence: anchor -> comparison carrier
+    -> duration -> arithmetic."""
+    anchor_text = _require_canonical_timestamp(anchor)
     _require_carrier(comparison, ScoreTimestampProjection)
-    anchor_text = _require_canonical_timestamp(_slot(anchor, "provenance_timestamp"))
     comparison_text = _require_canonical_timestamp(_slot(comparison, "provenance_timestamp"))
     if type(duration_ms) is not int or type(duration_ms) is bool:
         raise ClassificationPredicateError(
