@@ -25,6 +25,7 @@ deferred at 0 emit sites; production / live / paper / canary / execution / routi
 forbidden.
 """
 import decimal
+import re
 
 from phase6_2_shadow_intent.logical_model import (
     POSITIVE_EXPOSURE,
@@ -106,28 +107,17 @@ def _require_finite_decimal(value):
     return value
 
 
+# The EXACT ratified Phase-5 S1 magnitude lexis (`phase5/net_edge_calculator_boundary.py`), replicated
+# verbatim and applied via fullmatch. `\d` is Python's Unicode-decimal-digit class (NOT rewritten as
+# `[0-9]` and NOT compiled with re.ASCII), so Unicode decimal-digit evidence is accepted exactly as Phase 5
+# and `Decimal()` accept it. This is NOT the stricter Gate-B grammar.
+_PHASE5_DECIMAL = re.compile(r"-?\d+(\.\d+)?")
+
+
 def _is_phase5_decimal_text(text):
-    """The exact Phase-5 S1 magnitude lexis ``^-?\\d+(\\.\\d+)?$`` (ASCII digits), scanned manually so no
-    new import is needed and Gate-B grammar is never applied. Leading/trailing zeros and ``-0`` are valid."""
-    if type(text) is not str:
-        return False
-    length = len(text)
-    index = 0
-    if index < length and text[index] == "-":
-        index += 1
-    integer_start = index
-    while index < length and "0" <= text[index] <= "9":
-        index += 1
-    if index == integer_start:                 # at least one integer digit required
-        return False
-    if index < length and text[index] == ".":
-        index += 1
-        fraction_start = index
-        while index < length and "0" <= text[index] <= "9":
-            index += 1
-        if index == fraction_start:            # a point requires at least one fractional digit
-            return False
-    return index == length
+    """``True`` iff ``text`` is an exact ``str`` matching the ratified Phase-5 lexis. Leading/trailing zeros,
+    ``-0``, and Unicode decimal digits are valid; historical text is never normalized/transliterated."""
+    return type(text) is str and _PHASE5_DECIMAL.fullmatch(text) is not None
 
 
 def _require_validated_magnitude(observed_magnitude):

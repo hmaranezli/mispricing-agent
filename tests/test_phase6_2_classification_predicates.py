@@ -473,15 +473,37 @@ def test_magnitude_rejects_non_str_text_and_missing_slot_and_nonfinite_value():
 
 
 def test_magnitude_accepts_valid_lexical_distinctions_via_forgery():
-    # 007 / 1.50 / -0 are Phase-5-valid with Decimal(text) == stored value.
+    # 007 / 1.50 / -0 are Phase-5-valid with Decimal(text) == stored value (Gate-B would reject all three).
     for text in ("007", "1.50", "-0"):
         carrier = _forge(sep.ScoreMagnitudeProjection,
                          passive_score_magnitude_text=text, passive_score_magnitude=Decimal(text))
-        # POSITIVE vs a boundary at/below the value -> a clean bool, no error.
         result = classify_directional_crossing(
             exposure_orientation=lm.POSITIVE_EXPOSURE,
             boundary_magnitude=Decimal(text), observed_magnitude=carrier)
         assert result is True
+
+
+@pytest.mark.parametrize("text", ["١", "-١.٥", "७", "007", "1.50", "-0"])
+def test_magnitude_accepts_phase5_unicode_decimal_digits_verbatim(text):
+    # Python's `\d` (the ratified Phase-5 contract) accepts Unicode decimal digits, and so does Decimal.
+    carrier = _forge(sep.ScoreMagnitudeProjection,
+                     passive_score_magnitude_text=text, passive_score_magnitude=Decimal(text))
+    assert carrier.passive_score_magnitude_text == text          # lexical text preserved verbatim
+    result = classify_directional_crossing(exposure_orientation=lm.POSITIVE_EXPOSURE,
+                                           boundary_magnitude=Decimal(text), observed_magnitude=carrier)
+    assert result is True
+
+
+@pytest.mark.parametrize("text", ["Ⅻ", "garbage", "+1", "1e3", " 1 ", "", "1.", "٤2x", "1٫5"])
+def test_magnitude_rejects_non_phase5_text_including_unicode_nondigit(text):
+    # Unicode numeric symbols Python's `\d` does NOT accept (Roman numeral, Arabic decimal separator,
+    # mixed garbage) are rejected; the stored Decimal is irrelevant — lexis is checked first.
+    forged = _forge(sep.ScoreMagnitudeProjection,
+                    passive_score_magnitude_text=text, passive_score_magnitude=Decimal("1"))
+    with pytest.raises(ClassificationPredicateError) as exc:
+        classify_directional_crossing(exposure_orientation=lm.POSITIVE_EXPOSURE,
+                                      boundary_magnitude=Decimal("1"), observed_magnitude=forged)
+    assert exc.value.reason == PREDICATE_INVALID_DECIMAL_LEXIS
 
 
 def test_orientation_requires_exact_str_type_rejecting_subclass():
@@ -531,6 +553,7 @@ def test_dependency_direction_only_siblings_and_stdlib():
         elif isinstance(node, ast.ImportFrom):
             imports.add(("." * node.level) + (node.module or ""))
     allowed = {
+        "re",
         "decimal",
         "phase6_2_shadow_intent.logical_model",
         "phase6_2_shadow_intent.s1_evidence_projection",
