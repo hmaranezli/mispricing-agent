@@ -216,8 +216,8 @@ class AtomicReplayStepResult:
     fields (incl. populated / missing-slot forgeries) through the closed publication-invariant reason.
     Identity preservation is a Step postcondition, NOT a constructor invariant."""
 
-    next_lifecycle_snapshot: object
-    next_seen_target_pairs: object
+    next_lifecycle_snapshot: ShadowLifecycleSnapshot
+    next_seen_target_pairs: SeenTargetPairsSnapshot
 
     def __post_init__(self):
         _revalidate_lifecycle_snapshot(self.next_lifecycle_snapshot, STEP_PUBLICATION_INVARIANT_VIOLATION)
@@ -228,11 +228,11 @@ class AtomicReplayStepResult:
 
 def execute_atomic_replay_step(
     *,
-    current_lifecycle_snapshot,
-    current_seen_pairs,
-    raw_evidence_row,
-    frozen_manifest_projection,
-):
+    current_lifecycle_snapshot: ShadowLifecycleSnapshot,
+    current_seen_pairs: SeenTargetPairsSnapshot,
+    raw_evidence_row: object,
+    frozen_manifest_projection: ShadowIntentDefinitionArtifact,
+) -> AtomicReplayStepResult:
     """Apply one atomic replay step. Returns a fresh :class:`AtomicReplayStepResult` on success (both
     inputs preserved by identity on a true no-op; only the changed snapshot rebuilt on a partial change),
     or raises exactly one :class:`AtomicReplayStepError`. Inputs are never mutated; failure publishes

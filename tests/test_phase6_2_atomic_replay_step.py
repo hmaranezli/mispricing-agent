@@ -49,6 +49,7 @@ from phase6_2_shadow_intent.atomic_replay_step import (
 )
 import phase6_2_shadow_intent.logical_model as lm
 import phase6_2_shadow_intent.s1_evidence_projection as sep
+from phase6_2_shadow_intent.classification_predicates import context_equals
 
 _UNSET = object()
 
@@ -181,6 +182,60 @@ def test_no_frozen_manifest_projection_or_role_alias_symbols():
     for forbidden in ("RowStartShadowSnapshot", "NextShadowSnapshot",
                       "RowStartSeenTargetPairs", "NextSeenTargetPairs"):
         assert not hasattr(ars, forbidden), forbidden
+
+
+def test_callable_annotations_are_exact_class_identities():
+    sig = inspect.signature(execute_atomic_replay_step)
+    assert sig.parameters["current_lifecycle_snapshot"].annotation is lm.ShadowLifecycleSnapshot
+    assert sig.parameters["current_seen_pairs"].annotation is lm.SeenTargetPairsSnapshot
+    assert sig.parameters["raw_evidence_row"].annotation is object
+    assert sig.parameters["frozen_manifest_projection"].annotation is lm.ShadowIntentDefinitionArtifact
+    assert sig.return_annotation is AtomicReplayStepResult
+    # no string annotations (no `from __future__ import annotations`), no object-widening of the manifest.
+    for p in sig.parameters.values():
+        assert not isinstance(p.annotation, str), p.name
+    assert not isinstance(sig.return_annotation, str)
+    assert sig.parameters["frozen_manifest_projection"].annotation is not object
+
+
+def test_result_field_annotations_are_exact_class_identities():
+    anns = AtomicReplayStepResult.__annotations__
+    assert anns["next_lifecycle_snapshot"] is lm.ShadowLifecycleSnapshot
+    assert anns["next_seen_target_pairs"] is lm.SeenTargetPairsSnapshot
+    # cross-check via dataclass field metadata (real class objects, never strings/aliases).
+    fields = AtomicReplayStepResult.__dataclass_fields__
+    assert fields["next_lifecycle_snapshot"].type is lm.ShadowLifecycleSnapshot
+    assert fields["next_seen_target_pairs"].type is lm.SeenTargetPairsSnapshot
+    for name in ("next_lifecycle_snapshot", "next_seen_target_pairs"):
+        assert not isinstance(anns[name], str), name
+
+
+# --- direct behavioral error-mapping proofs (private normalizers; no monkeypatch / no fabricated scenario)
+
+def test_predicate_normalizer_maps_classification_predicate_error():
+    # the real Slice-D context_equals predicate, given contract-invalid operands, raises
+    # ClassificationPredicateError; the private _predicate normalizer maps it to the closed Slice-E reason.
+    with pytest.raises(AtomicReplayStepError) as exc:
+        ars._predicate(context_equals, root_context="not-a-root", observed_context="not-a-context")
+    assert exc.value.reason == STEP_CLASSIFICATION_PREDICATE_REJECTED
+
+
+def test_require_legal_transition_illegal_edge_maps_and_legal_edges_accepted():
+    with pytest.raises(AtomicReplayStepError) as exc:
+        ars._require_legal_transition(lm.AUDIT_REPLAYED, lm.INTENT_EXPIRED)
+    assert exc.value.reason == STEP_INVALID_LIFECYCLE_TRANSITION
+    # legal self-loops are accepted no-ops at every state.
+    for state in (lm.AUDIT_REPLAYED, lm.INTENT_RECORDED, lm.HYPOTHETICAL_CONDITION_MET,
+                  lm.INTENT_EXPIRED, lm.INTENT_RETIRED):
+        assert ars._require_legal_transition(state, state) is None
+    # sealed forward edges remain accepted (e9995e7 §4).
+    for old, new in ((lm.AUDIT_REPLAYED, lm.INTENT_RECORDED),
+                     (lm.INTENT_RECORDED, lm.HYPOTHETICAL_CONDITION_MET),
+                     (lm.INTENT_RECORDED, lm.INTENT_EXPIRED),
+                     (lm.INTENT_RECORDED, lm.INTENT_RETIRED),
+                     (lm.HYPOTHETICAL_CONDITION_MET, lm.INTENT_EXPIRED),
+                     (lm.HYPOTHETICAL_CONDITION_MET, lm.INTENT_RETIRED)):
+        assert ars._require_legal_transition(old, new) is None
 
 
 # --- AtomicReplayStepResult exact shape -----------------------------------------------------------
