@@ -538,19 +538,51 @@ Pinned **shape only** of the future one-shot runtime (built only after independe
 
 ## 4B. Idempotent Initialization & Schema Fingerprint (RV-9; runs before any network I/O)
 
-Before **every** request, the runtime must, in order, **fail before network I/O** on any mismatch:
+Before **every** request, the runtime must, in order, **fail before network I/O** on any mismatch. **There is no
+universal "run `CREATE … IF NOT EXISTS` then fingerprint" step**: the candidate is probed **empty-vs-existing first**,
+and DDL executes **only** on a proven-empty candidate.
 
 1. **path validation + S1 isolation** (caller-injected `raw_ledger_path` and `s1_ledger_path`): reject empty/NUL
    paths; canonicalize each path **and** its resolved parent / final-component target; when **both** paths exist,
    additionally apply **same-file / device+inode** equivalence; **reject** equality, symlink alias, canonical
    collision, or same-file identity ⇒ `RawLedgerPathError`. **S1 is never opened — only compared as a path.**
    (`raw_ledger_path` must also be creatable for the raw ledger itself.)
-2. **database open**;
-3. **PRAGMA verification** (`journal_mode=WAL`, `synchronous=FULL`, `foreign_keys=ON` actually in effect);
-4. **idempotent initialization** (the `CREATE … IF NOT EXISTS` DDL of §4 / §4A);
-5. **exact reference-catalog comparison** (§4B.1 — no normalization; exact-shape contract; RV-9);
-6. **foreign-key verification** (`PRAGMA foreign_key_check` returns no rows);
-7. **transaction-readiness preflight** (a no-op `BEGIN IMMEDIATE` / `ROLLBACK` succeeds, confirming writability).
+2. **database open**.
+3. **candidate-catalog probe — BEFORE executing any schema DDL.** Run the exact closed catalog query (§4B.1 step 2)
+   against the candidate to count its non-internal objects.
+4. **empty-vs-existing decision:**
+   - **`FIRST_INITIALIZATION`** (candidate has **zero** non-internal objects): apply the required **new-ledger
+     PRAGMAs**; **in one local transaction** execute the **complete pinned DDL once** (the immutable `CREATE … IF NOT
+     EXISTS` constants of §4 / §4A / §4.5); run the exact §4B.1 catalog + structural-PRAGMA + FK verification and the
+     connection-state PRAGMA check (§4B.1 step 5); **commit initialization only if everything matches**, otherwise
+     **roll back and claim no valid ledger** (`RawLedgerSchemaFingerprintError`).
+   - **`EXISTING_LEDGER`** (candidate contains **any** non-internal object): execute **NO** `CREATE TABLE` / `CREATE
+     INDEX` / `CREATE TRIGGER` statement; compare its **existing** exact catalog and structural-PRAGMA outputs against
+     the fresh reference DB (§4B.1); **exact match may proceed**; **partial / stale / extra / missing / text-different
+     ⇒ `RawLedgerSchemaFingerprintError` immediately** (the existing partial schema is **never completed or repaired
+     by `IF NOT EXISTS`**).
+5. **connection-state PRAGMA verification** (§4B.1 step 5): `journal_mode=wal`, `synchronous=2`, `foreign_keys=1`, and
+   `PRAGMA foreign_key_check` returns no rows — checked against **literal required values**, not the reference DB.
+6. **transaction-readiness preflight** (a no-op `BEGIN IMMEDIATE` / `ROLLBACK` succeeds, confirming writability).
+
+`IF NOT EXISTS` may remain in the immutable DDL constants as **defensive syntax**, but those constants **execute only
+in the proven-empty `FIRST_INITIALIZATION` branch**. A failed first initialization **rolls back without claiming a
+valid ledger**.
+
+### 4B.0 Path-isolation threat model (forensic limitation — binding)
+
+The `s1_ledger_path` dependency injection and all stable-path checks (§4B step 1) are preserved. Their guarantee is
+**explicitly scoped**:
+
+- The path-isolation proof **assumes caller-owned, stable paths in the intended offline, single-tenant execution
+  context**.
+- A **privileged actor concurrently replacing path components, symlinks, mounts, files, or inodes between validation
+  and the SQLite open** is **outside this charter's threat model** (a classic TOCTOU window).
+- **No atomic OS-level lock, sandbox, anti-TOCTOU mechanism, or privileged-attacker resistance is claimed.** This is
+  **not** described as protection against hostile concurrent filesystem mutation, and is **consistent** with the
+  existing statement (§4A) that privileged raw-file / schema manipulation is outside the tamper guarantee.
+- **Under stable paths**, equality, `realpath` alias, existing same-file / device+inode identity, and resolved-parent
+  / final-component collision remain **fail-closed before network I/O**.
 
 ### 4B.1 Exact reference-catalog comparison algorithm (binding)
 
@@ -565,11 +597,19 @@ There is **no** "normalized schema set." The comparison is exact and text-litera
    table/index/trigger/view, ordered by `(type, name, tbl_name)`. Exclude **only** names beginning with `sqlite_`.
 4. Perform **no** whitespace, case, SQL-text, token, or AST normalization. **Reject** every **extra, missing,
    NULL-different, or text-different** tuple ⇒ `RawLedgerSchemaFingerprintError`.
-5. **Separately** compare, per pinned table, the **exact ordered outputs** of `PRAGMA table_xinfo(<table>)`,
-   `PRAGMA foreign_key_list(<table>)`, `PRAGMA index_list(<table>)` + `PRAGMA index_xinfo(<index>)`, and the
-   **required `PRAGMA` values** (`journal_mode=wal`, `synchronous=2` [FULL], `foreign_keys=1`) — any difference ⇒
-   `RawLedgerSchemaFingerprintError` / `RawLedgerPragmaError`.
-6. **Reject unknown views or any other non-internal object** present in the candidate but absent from the reference.
+5. **Structural reference comparison vs the in-memory reference DB** applies **only** to: the closed `sqlite_master`
+   catalog tuples (step 2–3) and, per pinned table, the **exact ordered outputs** of `PRAGMA table_xinfo(<table>)`,
+   `PRAGMA foreign_key_list(<table>)`, and `PRAGMA index_list(<table>)` + `PRAGMA index_xinfo(<index>)` — any
+   difference ⇒ `RawLedgerSchemaFingerprintError`.
+6. **Connection / database-state PRAGMAs are NOT compared against the private in-memory reference database.** The
+   candidate is checked **directly against literal required values**: `journal_mode = wal`, `synchronous = 2`,
+   `foreign_keys = 1`, and `PRAGMA foreign_key_check` returns **zero rows** — any difference ⇒ `RawLedgerPragmaError`
+   (or, for `foreign_key_check` rows, `RawLedgerReadinessError`). **The private in-memory reference DB may report
+   `journal_mode=memory`; that is irrelevant and is NEVER used as the expected-WAL authority.** For a **new empty**
+   ledger, WAL is established during `FIRST_INITIALIZATION`; for an **existing** ledger, a **non-WAL durable mode is
+   rejected**, never silently converted as schema repair. Connection-local `synchronous` and `foreign_keys` must be
+   applied and verified **for the active connection**.
+7. **Reject unknown views or any other non-internal object** present in the candidate but absent from the reference.
 
 A semantically equivalent but **text-different** external schema is **intentionally rejected** — this is an
 **exact-shape contract**, not a semantic-equivalence contract.
@@ -578,11 +618,13 @@ A semantically equivalent but **text-different** external schema is **intentiona
 
 | Situation | Pinned behavior |
 |---|---|
-| First initialization | DDL creates all objects; fingerprint then matches; proceed. |
-| Repeated initialization | `IF NOT EXISTS` no-ops; fingerprint matches; proceed. |
-| Partially initialized schema | After idempotent DDL the fingerprint is recomputed; if any object is still missing/different ⇒ `RawLedgerSchemaFingerprintError`; **fail before network**, no repair. |
-| Stale schema (older/different ratified shape) | Fingerprint mismatch ⇒ `RawLedgerSchemaFingerprintError`; **no migration**. |
-| Extra / missing column, index, or trigger | Fingerprint mismatch ⇒ `RawLedgerSchemaFingerprintError`. |
+| First initialization (probe finds **zero** non-internal objects) | `FIRST_INITIALIZATION`: new-ledger PRAGMAs + complete pinned DDL once **in one transaction**; §4B.1 verification; commit only if all matches, else roll back with **no valid-ledger claim**. |
+| Repeated initialization (candidate already exact) | `EXISTING_LEDGER`: **no DDL executed**; §4B.1 exact comparison matches; proceed. |
+| Partially initialized schema | `EXISTING_LEDGER` (non-empty): **no DDL executed**, **never completed/repaired by `IF NOT EXISTS`**; §4B.1 mismatch ⇒ `RawLedgerSchemaFingerprintError`; **fail before network**. |
+| Stale schema (older/different ratified shape) | `EXISTING_LEDGER`: comparison mismatch ⇒ `RawLedgerSchemaFingerprintError`; **no migration**. |
+| Extra / missing / text-different column, index, or trigger | `EXISTING_LEDGER`: comparison mismatch ⇒ `RawLedgerSchemaFingerprintError`. |
+| Existing non-WAL durable journal mode | `RawLedgerPragmaError`; **rejected**, never silently converted as repair. |
+| Failed first initialization | Roll back; **no valid ledger claimed**; `RawLedgerSchemaFingerprintError`. |
 | S1-schema collision (path resolves to / aliases the S1 DB) | `RawLedgerPathError`; **fail before network**; never write into S1. |
 | Path alias / canonical-path collision | `RawLedgerPathError`; **fail before network**. |
 
@@ -639,12 +681,39 @@ For a **completed HTTP response** (status `100..599`):
 1. capture exact headers/body (§4.1/§4.2);
 2. compute the body integrity digest (`response_body_sha256` over the exact stored bytes; RV-1);
 3. **begin one local raw-ledger transaction**;
-4. append exactly one `raw_capture_log` row;
+4. append exactly one `raw_capture_log` row; retain its `current_capture_sequence` (= `lastrowid`);
 5. append exactly one `RAW_COMMITTED` `raw_fetch_attempt_log` row referencing it (composite provenance FK, §4.3);
-6. **RV-10 in-transaction reconciliation** — before commit, query **inside the same transaction** and prove
-   **exactly one** capture row and **exactly one** provenance-matching `RAW_COMMITTED` attempt row; on **any** mismatch
-   **roll back** and raise `RawLedgerCommitError` (no RAW_CAPTURED, no silent orphan accepted by the conforming
-   runtime; a privileged direct SQL writer bypassing RV-10 is out of scope);
+   retain its `current_attempt_sequence` (= `lastrowid`);
+6. **RV-10 in-transaction reconciliation** — **inside the same transaction**, execute these **exact scoped
+   parameterized** queries (no database-wide unscoped `COUNT` is permitted):
+
+   ```sql
+   SELECT COUNT(*)
+   FROM raw_capture_log
+   WHERE capture_sequence = ?
+     AND source_authority = ?
+     AND request_target = ?
+     AND collector_commit_sha = ?;
+   -- params (exact): (current_capture_sequence, current_source_authority,
+   --                   current_request_target, current_collector_commit_sha)
+
+   SELECT COUNT(*)
+   FROM raw_fetch_attempt_log
+   WHERE attempt_sequence = ?
+     AND capture_sequence = ?
+     AND source_authority = ?
+     AND request_target = ?
+     AND collector_commit_sha = ?
+     AND outcome = 'RAW_COMMITTED'
+     AND failure_code IS NULL
+     AND failure_payload IS NULL;
+   -- params (exact): (current_attempt_sequence, current_capture_sequence, current_source_authority,
+   --                  current_request_target, current_collector_commit_sha)
+   ```
+
+   **Both scalar results must equal the exact integer `1`.** Anything else ⇒ **roll back**, raise
+   `RawLedgerCommitError`, **no durable claim**, **no `RawCaptureCommitted` result**, **no retry** (no silent orphan
+   accepted by the conforming runtime; a privileged direct SQL writer bypassing RV-10 is out of scope).
 7. **commit**;
 8. **only after successful commit** may the result be called **RAW_CAPTURED** and `RawCaptureCommitted` returned.
 
