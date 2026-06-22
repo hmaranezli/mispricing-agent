@@ -1,197 +1,230 @@
 # Post-Phase 6.2 — Public Source-Authority & Raw-Capture-Ledger Exact-Shape Charter
 
-> **This is a docs-only exact-shape charter.** It pins the closed public-source authority allowlist, the exact
-> one-shot transport contract, the isolated raw-ledger storage medium, and the exact append-only ledger/journal
-> schemas + recovery law for the **future, separately-authorized** raw-only one-shot acquisition runtime. It **builds
-> nothing and authorizes nothing executable**: no runtime code, no collector, no tests, no fixtures, no adapter, no
-> config, no locks, no package exports, no tracking files, no generated files, no pytest, no graphify, and **no
-> network call**. Committing it performs **no data acquisition** and builds **no collector**. It is the single next
-> docs-only gate named by
-> `docs/handoff/post_phase6_2_read_only_real_world_evidence_acquisition_boundary_charter.md` (§8 step 2) and is
-> subordinate to that charter, the Phase 6.2 Slice-G closeout charter, the Phase 6.1 / Phase 5 chain, and
-> `CLAUDE.md`; where any conflict arises, those govern. **This is not a Phase 6.3 work item and bears no Phase 6.3
-> label.**
+> **This is a docs-only exact-shape charter** (corrective revision over base `fa12d4a`, created as a normal
+> follow-up commit — no amend/rebase/squash/force-push). It pins the closed public-source authority allowlist, the
+> exact one-shot transport contract, the isolated raw-ledger medium, **complete executable SQLite DDL with enforced
+> invariants and append-only triggers**, the **docs-only future runtime API shape**, the **idempotent
+> initialization + schema-fingerprint law**, the **request grammar + header-ownership law**, the **forensic clock
+> law**, and the **journal-coherence law**. It **builds nothing and authorizes nothing executable**: no runtime
+> code, no collector, no tests, no fixtures, no adapter, no config, no locks, no package exports, no tracking files,
+> no generated files, no pytest, no graphify, and **no network call**. Committing it performs **no data
+> acquisition** and builds **no collector**. It is the single next docs-only gate named by
+> `docs/handoff/post_phase6_2_read_only_real_world_evidence_acquisition_boundary_charter.md`. **This is not a Phase
+> 6.3 work item and bears no Phase 6.3 label.**
 
-**Base:** `2617852fefbce64a0576f36730a828c426c6bc13`
+**Base:** `fa12d4a6f99e964ad1a9e9ba43c66680c7f959b3`
+
+---
+
+## 0. Enforcement Model & SQLite-Limit Disclosures
+
+Every invariant below is enforced by **executable schema** (CHECK / FOREIGN KEY / partial UNIQUE index / predecessor
+trigger) **except** the following, which **SQLite cannot enforce** and are therefore **assigned to fail-fast runtime
+validation** (named here, never silently assumed):
+
+- **RV-1** `response_body_sha256` equals the actual SHA-256 of `response_body` (SQLite has no `sha256()`); DDL checks
+  only shape.
+- **RV-2** `response_headers_payload` internal length-prefixed binary structure (§4.2) is well-formed (SQLite cannot
+  parse BLOB structure).
+- **RV-3** exact `slug` / `token_id` full-match grammar and percent/Unicode/oversize rejection (§5) — DDL applies
+  only a coarse target-prefix check.
+- **RV-4** `retrieval_elapsed_monotonic_ns` originates from a genuine monotonic clock (§8); DDL checks only
+  non-negativity.
+- **RV-5** `clock_anomaly_evidence` derivation correctness beyond the stored epoch coupling (§8).
+- **RV-6** `failure_payload` canonical address-free exact-type+string-args form (§5/§4).
+- **RV-7** `attempt_ordinal` gapless retry-law progression (ordinal *N* opened only under §9 retry law) — DDL checks
+  only `>= 1` and per-triple uniqueness.
+- **RV-8** TLS/cert verification, redirect refusal, decompression-disabled, timeouts, ≤16 MiB cap, one-request-per-call
+  (§2) — transport-layer, not schema.
+- **RV-9** schema-fingerprint + PRAGMA + path-isolation preflight (§4) — runtime-computed before any network I/O.
+
+No prose invariant is claimed that the DDL silently accepts in violation **unless** it appears in RV-1…RV-9 with an
+explicit runtime owner.
 
 ---
 
 ## 1. Closed Public-Source Authority (exactly three variants)
 
-The acquisition runtime may issue requests to **exactly three** closed source-authority variants. No fourth variant,
-no free-form URI/host/path/method/query-name/request-body, ever.
+Exactly **three** closed source-authority variants; no fourth; no free-form URI/host/path/method/query-name/body.
 
-### `POLYMARKET_GAMMA_MARKET_BY_SLUG_V1`
-- **Method:** `GET`
-- **Scheme:** `https`
-- **Host:** `gamma-api.polymarket.com`
-- **Path:** `/markets`
-- **Query:** exactly one caller-supplied `slug` parameter.
-- **No wall-clock slug generation.**
-- **No closed-market / resolution authority** — that requires a later HYPOTHETICAL_OUTCOME source amendment (§9).
+| Token | Method | Scheme | Host | Path | Query / Body |
+|---|---|---|---|---|---|
+| `POLYMARKET_GAMMA_MARKET_BY_SLUG_V1` | GET | https | `gamma-api.polymarket.com` | `/markets` | exactly one caller-supplied `slug`; empty body |
+| `POLYMARKET_CLOB_BOOK_BY_TOKEN_V1` | GET | https | `clob.polymarket.com` | `/book` | exactly one caller-supplied `token_id`; empty body |
+| `HYPERLIQUID_META_AND_ASSET_CTXS_V1` | POST | https | `api.hyperliquid.xyz` | `/info` | body bytes exactly `b'{"type":"metaAndAssetCtxs"}'` (`X'7b2274797065223a226d657461416e64417373657443747873227d'`, 27 bytes) |
 
-### `POLYMARKET_CLOB_BOOK_BY_TOKEN_V1`
-- **Method:** `GET`
-- **Scheme:** `https`
-- **Host:** `clob.polymarket.com`
-- **Path:** `/book`
-- **Query:** exactly one caller-supplied `token_id` parameter.
-
-### `HYPERLIQUID_META_AND_ASSET_CTXS_V1`
-- **Method:** `POST`
-- **Scheme:** `https`
-- **Host:** `api.hyperliquid.xyz`
-- **Path:** `/info`
-- **Request body bytes (exact):** `b'{"type":"metaAndAssetCtxs"}'`
-
-### Closed rules (binding)
-- **No** free-form URI, host, path, method, query name, or request body — each request is exactly one of the three
-  variants above.
-- Caller-supplied `slug` / `token_id` values must be **non-empty bounded ASCII** and must **reject** `/`, `?`, `&`,
-  `=`, `#`, `%`, control bytes, whitespace, and any Unicode (non-ASCII) byte.
-- **HTTPS and certificate verification are mandatory.**
-- **Redirects are forbidden** (no automatic following; a redirect status is a completed HTTP response, §2).
-- **Credential / auth / signing / cookie / session / private / account / order headers are forbidden.**
-- For **GET**, only `Accept: application/json` is allowed.
-- For **POST**, `Content-Type: application/json` is additionally required (with `Accept: application/json`).
-- **No** Data API, WebSocket, Chainlink, account endpoint, exchange (trading) endpoint, or authenticated CLOB
-  surface.
+- `POLYMARKET_GAMMA_MARKET_BY_SLUG_V1` carries **no closed-market / resolution authority** (deferred to a later
+  HYPOTHETICAL_OUTCOME source amendment, §11). No wall-clock slug generation.
+- HTTPS + certificate verification mandatory; redirects forbidden; credential/auth/signing/cookie/session/private/
+  account/order headers forbidden (§5). GET allows only `Accept: application/json`; POST additionally requires
+  `Content-Type: application/json`.
+- No Data API, WebSocket, Chainlink, account endpoint, exchange (trading) endpoint, or authenticated CLOB surface.
 - **No import or reuse of legacy `data/` modules** in the first runtime.
-- The runtime **captures response bytes only** — **no** JSON parsing, normalization, field mapping, event-time
-  extraction, gross-edge calculation, Option-B construction, or S1 writing.
+- Bytes-only capture: **no** JSON parsing, normalization, field mapping, event-time extraction, gross-edge
+  calculation, Option-B construction, or S1 writing.
 
 ---
 
-## 2. Exact Transport Contract
+## 2. Exact Transport Contract (runtime-owned, RV-8)
 
-- **One callable execution equals exactly one HTTP request.**
-- **Connect timeout:** `3000 ms`.
-- **Total timeout:** `10000 ms`.
-- **Maximum response entity:** `16 MiB` (16 × 1024 × 1024 = 16777216 bytes); exceeding it is `RESPONSE_TOO_LARGE`
-  (§5), not a partial-body success.
-- **TLS verification enabled.**
-- **Automatic content decompression disabled.**
+- **One callable execution = at most one HTTP request.**
+- Connect timeout **3000 ms**; total timeout **10000 ms**; max response entity **16 MiB** (`16777216` bytes;
+  exceeding ⇒ `RESPONSE_TOO_LARGE`, never partial-body success).
+- TLS verification **enabled**; automatic content decompression **disabled**.
 - **No** retry, fallback, cache, stale substitution, alternate endpoint, or partial-body success.
-- **Stored body** is the **exact response entity bytes after HTTP transfer framing removal but before** content
-  decoding, decompression, JSON decoding, Unicode decoding, or normalization.
-- **Every completed HTTP response, including non-2xx, may become RAW_CAPTURED** if its raw-ledger transaction commits.
-- **RAW_CAPTURED means only "exact response evidence durably committed"** — it does **not** mean HTTP success, valid
-  JSON, usable market data, or downstream eligibility.
-- **Transport failure before a completed response creates no raw-capture row.**
-- **Ledger-commit failure creates no RAW_CAPTURED claim.**
+- Stored body = exact response entity bytes after HTTP transfer-framing removal but **before** content decoding,
+  decompression, JSON/Unicode decoding, or normalization.
+- **Every completed HTTP response, including non-2xx**, may become **RAW_CAPTURED** *iff* its raw-ledger transaction
+  commits. **RAW_CAPTURED means only "exact response evidence durably committed"** — not HTTP success, valid JSON,
+  usable data, or downstream eligibility.
+- Transport failure before a completed response creates **no** `raw_capture_log` row. Ledger-commit failure creates
+  **no** RAW_CAPTURED claim (§7).
 
 ---
 
 ## 3. Isolated Storage Medium
 
-The raw ledger is a **separate caller-owned SQLite database path**, distinct from S1:
+A **separate caller-owned SQLite database path**, distinct from S1:
 
-- It **must not equal, alias, attach, replace, or share** the S1 database path.
-- `PRAGMA journal_mode=WAL`.
-- `PRAGMA synchronous=FULL`.
-- `PRAGMA foreign_keys=ON`.
-- **No** `ATTACH DATABASE`.
-- **No** `UPDATE`, `DELETE`, `REPLACE`, UPSERT, destructive DDL, vacuum-based rewriting, or any mutation of committed
-  evidence.
-- All connections / resources are **owned and closed by the one-shot acquisition boundary**.
-- **S1 remains frozen and untouched** (no field, schema, pragma, or path change to the S1 durable medium).
+- Must **not equal, alias, canonical-path-collide with, attach, replace, or share** the S1 database path (§4 preflight
+  enforces).
+- `PRAGMA journal_mode=WAL`; `PRAGMA synchronous=FULL`; `PRAGMA foreign_keys=ON`.
+- **No** `ATTACH DATABASE`; **no** `UPDATE`/`DELETE`/`REPLACE`/UPSERT/destructive DDL/vacuum-rewrite/mutation of
+  committed evidence (§2-trigger enforced + §0 bans).
+- All connections/resources owned and closed by the one-shot acquisition boundary.
+- **S1 remains frozen and untouched.**
 
 ---
 
-## 4. Exact `raw_capture_log` Schema
+## 4. Exact Executable DDL
+
+All objects are created with `IF NOT EXISTS` (idempotent init, §4.3). `PRAGMA foreign_keys=ON` is required for the
+foreign keys below to be enforced (verified in preflight, RV-9).
+
+### 4.1 `raw_capture_log`
 
 ```sql
-CREATE TABLE raw_capture_log (
-    capture_sequence            INTEGER PRIMARY KEY,
-    source_authority            TEXT    NOT NULL,
-    http_method                 TEXT    NOT NULL,
-    request_scheme              TEXT    NOT NULL,
-    request_host                TEXT    NOT NULL,
-    request_target              TEXT    NOT NULL,
-    request_body                BLOB    NOT NULL,
-    retrieval_started_epoch_ms  INTEGER NOT NULL,
+CREATE TABLE IF NOT EXISTS raw_capture_log (
+    capture_sequence             INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_authority             TEXT    NOT NULL,
+    http_method                  TEXT    NOT NULL,
+    request_scheme               TEXT    NOT NULL,
+    request_host                 TEXT    NOT NULL,
+    request_target               TEXT    NOT NULL,
+    request_body                 BLOB    NOT NULL,
+    retrieval_started_epoch_ms   INTEGER NOT NULL,
     retrieval_completed_epoch_ms INTEGER NOT NULL,
-    http_status                 INTEGER NOT NULL,
-    response_headers_payload    BLOB    NOT NULL,
-    response_body               BLOB    NOT NULL,
-    response_body_sha256        TEXT    NOT NULL,
-    collector_commit_sha        TEXT    NOT NULL
+    retrieval_elapsed_monotonic_ns INTEGER NOT NULL,
+    clock_anomaly_evidence       INTEGER NOT NULL,
+    http_status                  INTEGER NOT NULL,
+    response_headers_payload     BLOB    NOT NULL,
+    response_body                BLOB    NOT NULL,
+    response_body_sha256         TEXT    NOT NULL,
+    collector_commit_sha         TEXT    NOT NULL,
+
+    CHECK (typeof(request_body) = 'blob'),
+    CHECK (typeof(response_headers_payload) = 'blob'),
+    CHECK (typeof(response_body) = 'blob'),
+    CHECK (request_scheme = 'https'),
+    CHECK (http_method IN ('GET','POST')),
+    CHECK (retrieval_started_epoch_ms >= 0),
+    CHECK (retrieval_completed_epoch_ms >= 0),
+    CHECK (retrieval_elapsed_monotonic_ns >= 0),
+    CHECK (clock_anomaly_evidence IN (0,1)),
+    CHECK (http_status BETWEEN 100 AND 599),
+    -- forensic clock law (§8): never reject a backward wall-clock; record it as anomaly evidence instead.
+    CHECK (
+        (retrieval_completed_epoch_ms >= retrieval_started_epoch_ms AND clock_anomaly_evidence = 0)
+        OR (retrieval_completed_epoch_ms <  retrieval_started_epoch_ms AND clock_anomaly_evidence = 1)
+    ),
+    -- SHA shape only (actual digest equality is RV-1):
+    CHECK (length(response_body_sha256) = 64 AND response_body_sha256 NOT GLOB '*[^0-9a-f]*'),
+    CHECK (length(collector_commit_sha) = 40 AND collector_commit_sha NOT GLOB '*[^0-9a-f]*'),
+    -- closed source-authority <-> method/host/target/body coupling (exact GET/POST body compatibility):
+    CHECK (
+        (source_authority = 'POLYMARKET_GAMMA_MARKET_BY_SLUG_V1'
+            AND http_method = 'GET'  AND request_host = 'gamma-api.polymarket.com'
+            AND substr(request_target,1,14) = '/markets?slug=' AND length(request_target) > 14
+            AND length(request_body) = 0)
+        OR (source_authority = 'POLYMARKET_CLOB_BOOK_BY_TOKEN_V1'
+            AND http_method = 'GET'  AND request_host = 'clob.polymarket.com'
+            AND substr(request_target,1,15) = '/book?token_id=' AND length(request_target) > 15
+            AND length(request_body) = 0)
+        OR (source_authority = 'HYPERLIQUID_META_AND_ASSET_CTXS_V1'
+            AND http_method = 'POST' AND request_host = 'api.hyperliquid.xyz'
+            AND request_target = '/info'
+            AND request_body = X'7b2274797065223a226d657461416e64417373657443747873227d')
+    )
 );
 ```
 
-Columns are in **exactly** this order.
+`capture_sequence` is `AUTOINCREMENT` medium-local append order / reference **only** — never market/domain identity,
+never a deduplication key.
 
-### Required invariants
-- `source_authority` is **exactly one** of the three closed tokens (`POLYMARKET_GAMMA_MARKET_BY_SLUG_V1`,
-  `POLYMARKET_CLOB_BOOK_BY_TOKEN_V1`, `HYPERLIQUID_META_AND_ASSET_CTXS_V1`).
-- `http_method` / `request_scheme` / `request_host` / `request_target` (path + any query) / `request_body` **must
-  match** the variant pinned in §1 for that `source_authority`.
-- For a **GET** variant, `request_body` is **exact empty bytes** (`b''`).
-- `retrieval_started_epoch_ms` and `retrieval_completed_epoch_ms` are **exact non-negative integers**, with
-  `retrieval_completed_epoch_ms >= retrieval_started_epoch_ms`.
-- `http_status` is an integer in **`100..599`** inclusive.
-- `response_body` **may be empty** but is always **exact bytes** (no NULL).
-- `response_body_sha256` is the **lowercase 64-character SHA-256 hex** over the **exact stored `response_body`**.
-- `collector_commit_sha` is **lowercase 40-character Git SHA text**.
-- `capture_sequence` is **medium-local append order / reference only** — **never** market/domain identity and
-  **never** a deduplication key.
+### 4.2 `response_headers_payload` exact binary encoding (RV-2 validated at runtime)
 
-### `response_headers_payload` exact encoding
-A length-prefixed, order-preserving binary blob:
-- **unsigned 32-bit big-endian** header-pair **count**;
-- then, for **each** header in **received order**:
-  - **unsigned 32-bit big-endian** name-byte **length**, then the **exact name bytes**;
-  - **unsigned 32-bit big-endian** value-byte **length**, then the **exact value bytes**;
-- **duplicate headers and original order are preserved**;
-- **no** Unicode decoding, case folding, sorting, dictionary conversion, or comma joining.
+- unsigned 32-bit **big-endian** header-pair **count**;
+- then, per header in **received order**: u32-BE name length, exact name bytes, u32-BE value length, exact value
+  bytes;
+- duplicate headers and original order **preserved**; **no** Unicode decoding, case-folding, sorting, dict
+  conversion, or comma-joining.
 
----
-
-## 5. Separate Fetch-Attempt Ledger (`raw_fetch_attempt_log`)
-
-Downstream processing state is **not** overloaded into fetch attempts. Exact append-only table:
+### 4.3 `raw_fetch_attempt_log`
 
 ```sql
-CREATE TABLE raw_fetch_attempt_log (
-    attempt_sequence            INTEGER PRIMARY KEY,
-    source_authority            TEXT    NOT NULL,
-    request_target              TEXT    NOT NULL,
-    retrieval_started_epoch_ms  INTEGER NOT NULL,
+CREATE TABLE IF NOT EXISTS raw_fetch_attempt_log (
+    attempt_sequence             INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_authority             TEXT    NOT NULL,
+    request_target               TEXT    NOT NULL,
+    retrieval_started_epoch_ms   INTEGER NOT NULL,
     retrieval_completed_epoch_ms INTEGER NOT NULL,
-    outcome                     TEXT    NOT NULL,
-    capture_sequence            INTEGER,
-    failure_code                TEXT,
-    failure_payload             TEXT,
-    collector_commit_sha        TEXT    NOT NULL
+    retrieval_elapsed_monotonic_ns INTEGER NOT NULL,
+    clock_anomaly_evidence       INTEGER NOT NULL,
+    outcome                      TEXT    NOT NULL,
+    capture_sequence             INTEGER,
+    failure_code                 TEXT,
+    failure_payload              TEXT,
+    collector_commit_sha         TEXT    NOT NULL,
+
+    CHECK (source_authority IN (
+        'POLYMARKET_GAMMA_MARKET_BY_SLUG_V1',
+        'POLYMARKET_CLOB_BOOK_BY_TOKEN_V1',
+        'HYPERLIQUID_META_AND_ASSET_CTXS_V1')),
+    CHECK (outcome IN (
+        'RAW_COMMITTED','TRANSPORT_FAILED','TIMEOUT','RESPONSE_TOO_LARGE','HTTP_PROTOCOL_FAILED')),
+    CHECK (retrieval_started_epoch_ms >= 0),
+    CHECK (retrieval_completed_epoch_ms >= 0),
+    CHECK (retrieval_elapsed_monotonic_ns >= 0),
+    CHECK (clock_anomaly_evidence IN (0,1)),
+    CHECK (
+        (retrieval_completed_epoch_ms >= retrieval_started_epoch_ms AND clock_anomaly_evidence = 0)
+        OR (retrieval_completed_epoch_ms <  retrieval_started_epoch_ms AND clock_anomaly_evidence = 1)
+    ),
+    CHECK (length(collector_commit_sha) = 40 AND collector_commit_sha NOT GLOB '*[^0-9a-f]*'),
+    -- outcome-conditional nullability of capture_sequence / failure_code / failure_payload:
+    CHECK (
+        (outcome = 'RAW_COMMITTED'
+            AND capture_sequence IS NOT NULL AND failure_code IS NULL AND failure_payload IS NULL)
+        OR (outcome IN ('TRANSPORT_FAILED','TIMEOUT','RESPONSE_TOO_LARGE','HTTP_PROTOCOL_FAILED')
+            AND capture_sequence IS NULL AND failure_code IS NOT NULL AND failure_payload IS NOT NULL)
+    ),
+    FOREIGN KEY (capture_sequence) REFERENCES raw_capture_log (capture_sequence)
 );
+
+-- exactly one RAW_COMMITTED attempt per captured response:
+CREATE UNIQUE INDEX IF NOT EXISTS ux_attempt_committed_capture
+    ON raw_fetch_attempt_log (capture_sequence)
+    WHERE outcome = 'RAW_COMMITTED';
 ```
 
-### Closed `outcome` vocabulary
-`RAW_COMMITTED`, `TRANSPORT_FAILED`, `TIMEOUT`, `RESPONSE_TOO_LARGE`, `HTTP_PROTOCOL_FAILED`.
+`attempt_sequence` is ledger-local only — never market/domain identity. (A completed non-2xx response that commits is
+`RAW_COMMITTED`, **not** `TRANSPORT_FAILED`.)
 
-### Rules
-- `RAW_COMMITTED` requires a **non-null `capture_sequence`** referencing `raw_capture_log`.
-- **Every failure outcome** (`TRANSPORT_FAILED`, `TIMEOUT`, `RESPONSE_TOO_LARGE`, `HTTP_PROTOCOL_FAILED`) requires
-  **`capture_sequence` NULL**.
-- A completed HTTP response with **non-2xx** status is **`RAW_COMMITTED`** if its bytes commit — it is **not**
-  `TRANSPORT_FAILED`.
-- The successful `raw_capture_log` row and its `RAW_COMMITTED` `raw_fetch_attempt_log` row are written in **one local
-  SQLite transaction** (§7).
-- If the SQLite transaction itself **cannot commit**, **no durable attempt/capture claim is made**; the exception
-  **propagates fail-fast**.
-- `failure_payload` is a **canonical, address-free** representation of the **exact exception type plus its string
-  args** — **no** `repr`, traceback, memory address, secret, request header, or fabricated explanation.
-- `attempt_sequence` is **ledger-local only** — never market/domain identity.
-
----
-
-## 6. Separate Downstream Processing Journal (`raw_processing_journal`)
-
-Exact append-only table (shape only — **authorizes no projection or S1 runtime**):
+### 4.4 `raw_processing_journal`
 
 ```sql
-CREATE TABLE raw_processing_journal (
-    journal_sequence     INTEGER PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS raw_processing_journal (
+    journal_sequence     INTEGER PRIMARY KEY AUTOINCREMENT,
     capture_sequence     INTEGER NOT NULL,
     stage                TEXT    NOT NULL,
     attempt_ordinal      INTEGER NOT NULL,
@@ -199,127 +232,393 @@ CREATE TABLE raw_processing_journal (
     recorded_at_epoch_ms INTEGER NOT NULL,
     failure_code         TEXT,
     failure_payload      TEXT,
+
+    CHECK (stage IN ('OPTION_B_PROJECTION','S1_INGESTION')),
+    CHECK (event_kind IN (
+        'STARTED','SUCCEEDED','FAILED',
+        'RECONCILIATION_REQUIRED','RECONCILED_SUCCEEDED','RECONCILED_FAILED')),
+    CHECK (attempt_ordinal >= 1),
+    CHECK (recorded_at_epoch_ms >= 0),
+    CHECK (
+        (event_kind IN ('FAILED','RECONCILED_FAILED')
+            AND failure_code IS NOT NULL AND failure_payload IS NOT NULL)
+        OR (event_kind IN ('STARTED','SUCCEEDED','RECONCILIATION_REQUIRED','RECONCILED_SUCCEEDED')
+            AND failure_code IS NULL AND failure_payload IS NULL)
+    ),
     FOREIGN KEY (capture_sequence) REFERENCES raw_capture_log (capture_sequence)
 );
+
+-- journal cardinality (§9): partial UNIQUE indexes per (capture, stage, attempt):
+CREATE UNIQUE INDEX IF NOT EXISTS ux_journal_started
+    ON raw_processing_journal (capture_sequence, stage, attempt_ordinal)
+    WHERE event_kind = 'STARTED';
+CREATE UNIQUE INDEX IF NOT EXISTS ux_journal_ordinary_terminal
+    ON raw_processing_journal (capture_sequence, stage, attempt_ordinal)
+    WHERE event_kind IN ('SUCCEEDED','FAILED');
+CREATE UNIQUE INDEX IF NOT EXISTS ux_journal_reconciliation_required
+    ON raw_processing_journal (capture_sequence, stage, attempt_ordinal)
+    WHERE event_kind = 'RECONCILIATION_REQUIRED';
+CREATE UNIQUE INDEX IF NOT EXISTS ux_journal_reconciled_terminal
+    ON raw_processing_journal (capture_sequence, stage, attempt_ordinal)
+    WHERE event_kind IN ('RECONCILED_SUCCEEDED','RECONCILED_FAILED');
 ```
 
-### Closed `stage` vocabulary
-`OPTION_B_PROJECTION`, `S1_INGESTION`.
+### 4.5 Journal transition-order triggers (predecessor validation — CHECK/UNIQUE cannot enforce order)
 
-### Stored `event_kind` vocabulary
-`STARTED`, `SUCCEEDED`, `FAILED`, `RECONCILIATION_REQUIRED`, `RECONCILED_SUCCEEDED`, `RECONCILED_FAILED`.
+```sql
+-- any terminal or reconciliation requires a prior STARTED for the same (capture, stage, attempt):
+CREATE TRIGGER IF NOT EXISTS trg_journal_requires_started
+BEFORE INSERT ON raw_processing_journal
+WHEN NEW.event_kind IN
+    ('SUCCEEDED','FAILED','RECONCILIATION_REQUIRED','RECONCILED_SUCCEEDED','RECONCILED_FAILED')
+ AND NOT EXISTS (
+    SELECT 1 FROM raw_processing_journal
+    WHERE capture_sequence = NEW.capture_sequence AND stage = NEW.stage
+      AND attempt_ordinal = NEW.attempt_ordinal AND event_kind = 'STARTED')
+BEGIN
+    SELECT RAISE(ABORT, 'raw_processing_journal: event requires a prior STARTED');
+END;
 
-### Rules
-- `capture_sequence` is a **foreign key** to `raw_capture_log` and remains **ledger-local** (never domain identity).
-- `attempt_ordinal` is an integer **`>= 1`**.
-- Every stage attempt **begins with exactly one `STARTED` event**.
-- **At most one** ordinary terminal `SUCCEEDED` **or** `FAILED` event exists per `(capture_sequence, stage,
-  attempt_ordinal)`.
-- A `STARTED` without a terminal event **after restart** is evaluated as the **derived** status `OUTCOME_UNKNOWN`.
-- **`OUTCOME_UNKNOWN` is never written** as if the crashed process observed its own crash (it is a derived read-time
-  status, not a stored event).
-- Recovery appends **`RECONCILIATION_REQUIRED`**.
-- **Automatic retry is forbidden while reconciliation is unresolved.**
-- Projection retry must **consume the same stored `response_body` bytes** — **no network refetch substitution**.
-- **S1-commit uncertainty cannot be automatically retried** because S1 is frozen and **no distributed transaction /
-  exactly-once key exists**.
-- Reconciliation outcome is appended as **`RECONCILED_SUCCEEDED`** or **`RECONCILED_FAILED`**.
-- **No row is updated or deleted.**
-- This charter defines the **journal shape only**; it **does not authorize** projection or S1 runtime.
+-- RECONCILIATION_REQUIRED only on an unresolved STARTED (no ordinary terminal present):
+CREATE TRIGGER IF NOT EXISTS trg_journal_reconreq_requires_unresolved
+BEFORE INSERT ON raw_processing_journal
+WHEN NEW.event_kind = 'RECONCILIATION_REQUIRED'
+ AND EXISTS (
+    SELECT 1 FROM raw_processing_journal
+    WHERE capture_sequence = NEW.capture_sequence AND stage = NEW.stage
+      AND attempt_ordinal = NEW.attempt_ordinal AND event_kind IN ('SUCCEEDED','FAILED'))
+BEGIN
+    SELECT RAISE(ABORT, 'raw_processing_journal: RECONCILIATION_REQUIRED forbidden after an ordinary terminal');
+END;
+
+-- reconciled terminal only after RECONCILIATION_REQUIRED:
+CREATE TRIGGER IF NOT EXISTS trg_journal_reconciled_requires_reconreq
+BEFORE INSERT ON raw_processing_journal
+WHEN NEW.event_kind IN ('RECONCILED_SUCCEEDED','RECONCILED_FAILED')
+ AND NOT EXISTS (
+    SELECT 1 FROM raw_processing_journal
+    WHERE capture_sequence = NEW.capture_sequence AND stage = NEW.stage
+      AND attempt_ordinal = NEW.attempt_ordinal AND event_kind = 'RECONCILIATION_REQUIRED')
+BEGIN
+    SELECT RAISE(ABORT, 'raw_processing_journal: reconciled terminal requires prior RECONCILIATION_REQUIRED');
+END;
+
+-- nothing may follow a final reconciled terminal:
+CREATE TRIGGER IF NOT EXISTS trg_journal_no_event_after_reconciled_terminal
+BEFORE INSERT ON raw_processing_journal
+WHEN EXISTS (
+    SELECT 1 FROM raw_processing_journal
+    WHERE capture_sequence = NEW.capture_sequence AND stage = NEW.stage
+      AND attempt_ordinal = NEW.attempt_ordinal
+      AND event_kind IN ('RECONCILED_SUCCEEDED','RECONCILED_FAILED'))
+BEGIN
+    SELECT RAISE(ABORT, 'raw_processing_journal: no event may follow a reconciled terminal');
+END;
+```
+
+`OUTCOME_UNKNOWN` is a **derived read-time status** for a `STARTED` with no terminal after restart; it is **never
+stored** (a crashed process cannot observe its own crash).
 
 ---
 
-## 7. Exact Raw-Capture Transaction Law
+## 4A. Append-Only Enforcement Triggers (§2)
 
-For a **completed HTTP response** (any status `100..599`):
+```sql
+CREATE TRIGGER IF NOT EXISTS trg_raw_capture_log_no_update
+BEFORE UPDATE ON raw_capture_log
+BEGIN SELECT RAISE(ABORT, 'raw_capture_log is append-only: UPDATE forbidden'); END;
+CREATE TRIGGER IF NOT EXISTS trg_raw_capture_log_no_delete
+BEFORE DELETE ON raw_capture_log
+BEGIN SELECT RAISE(ABORT, 'raw_capture_log is append-only: DELETE forbidden'); END;
 
-1. capture the **exact headers / body** (§2/§4 encodings);
-2. compute the **body integrity digest** (`response_body_sha256` over the exact stored `response_body`);
+CREATE TRIGGER IF NOT EXISTS trg_raw_fetch_attempt_log_no_update
+BEFORE UPDATE ON raw_fetch_attempt_log
+BEGIN SELECT RAISE(ABORT, 'raw_fetch_attempt_log is append-only: UPDATE forbidden'); END;
+CREATE TRIGGER IF NOT EXISTS trg_raw_fetch_attempt_log_no_delete
+BEFORE DELETE ON raw_fetch_attempt_log
+BEGIN SELECT RAISE(ABORT, 'raw_fetch_attempt_log is append-only: DELETE forbidden'); END;
+
+CREATE TRIGGER IF NOT EXISTS trg_raw_processing_journal_no_update
+BEFORE UPDATE ON raw_processing_journal
+BEGIN SELECT RAISE(ABORT, 'raw_processing_journal is append-only: UPDATE forbidden'); END;
+CREATE TRIGGER IF NOT EXISTS trg_raw_processing_journal_no_delete
+BEFORE DELETE ON raw_processing_journal
+BEGIN SELECT RAISE(ABORT, 'raw_processing_journal is append-only: DELETE forbidden'); END;
+```
+
+`REPLACE`, UPSERT, `ATTACH`, destructive migration, and silent rewriting remain banned (§0/§3).
+
+**These triggers are NOT tamper-proof and NOT tamper-evident against a privileged database owner.** They are
+**fail-closed enforcement inside the conforming, ratified schema only**: any writer using the ratified schema with
+`foreign_keys=ON` is prevented from mutating committed evidence. A privileged owner who drops triggers, opens a raw
+connection, rewrites the file, or bypasses the schema is **outside this guarantee**; external privileged modification
+is not defended against here.
+
+---
+
+## 5. Request Grammar & Header Ownership
+
+### 5.1 Bounded full-match grammars (RV-3; rejected **before** network I/O)
+
+- **`slug`** — full match `^[0-9a-z][0-9a-z-]{0,254}$` (1–255 bytes, lowercase ASCII alnum + hyphen, leading
+  alphanumeric).
+- **`token_id`** — full match `^[0-9]{1,80}$` (1–80 ASCII decimal digits).
+
+Both must **reject** empty values, any Unicode/non-ASCII byte, whitespace, control bytes, the reserved delimiters
+`/ ? & = # %`, **any** percent-encoding, and oversized input, **before** the request is constructed. (These charter
+grammars are conservative bounded forms; the runtime full-match is authoritative and runs pre-network.)
+
+### 5.2 Header ownership (no false "only application headers" claim)
+
+- **Application-owned request headers:** `Accept: application/json` (GET and POST); `Content-Type: application/json`
+  (POST only). These are the **only** headers the application sets.
+- **Protocol-required, transport-generated headers** — e.g. `Host` and, for POST, `Content-Length` (and any
+  framing/`Connection` header the HTTP client library emits) — are produced by the transport layer and appear on the
+  wire. **The complete wire request is NOT only application-owned headers**; this charter does not claim otherwise.
+- **Forbidden everywhere:** credentials, `Authorization`, `Cookie`, session state, authenticated CLOB, redirects,
+  decompression, retry, fallback, and cache substitution. No credential/auth/signing/cookie header is ever set by the
+  application or required by the allowlisted endpoints.
+
+---
+
+## 6. `collector_commit_sha` — Caller-Supplied Opaque Provenance
+
+- Defined **only** as **caller-supplied opaque provenance**: it satisfies the exact **lowercase-40-hex** shape (§4
+  CHECK), is **stored verbatim**, and carries **no** cryptographic trust, code-authenticity, deployment-authenticity,
+  or self-verification claim.
+- It is **not** sourced from environment variables, Git subprocesses, network metadata, or self-referential runtime
+  discovery; the caller passes it in as an argument (§7 API).
+- **Independent artifact / build attestation is outside this charter.**
+
+---
+
+## 7. Future Runtime API Shape (docs-only; implements nothing)
+
+Pinned **shape only** of the future one-shot runtime (built only after independent ratification, §10):
+
+- **Module path (future):** `raw_acquisition/public_raw_capture.py` (new quarantined package; no Phase 6.3 label).
+- **One public async acquisition callable (future):**
+
+  ```python
+  async def acquire_public_raw_capture(
+      *,
+      request: PublicSourceRequest,
+      raw_ledger_path: str,
+      collector_commit_sha: str,
+  ) -> RawCaptureCommitted:
+      ...
+  ```
+
+- **Frozen, slotted, keyword-only request variants** (the three allowlisted authorities; closed sum
+  `PublicSourceRequest`):
+
+  ```python
+  @dataclass(frozen=True, slots=True, kw_only=True)
+  class PolymarketGammaMarketBySlugV1Request:   # GET gamma-api.polymarket.com/markets?slug=<slug>
+      slug: str
+
+  @dataclass(frozen=True, slots=True, kw_only=True)
+  class PolymarketClobBookByTokenV1Request:      # GET clob.polymarket.com/book?token_id=<token_id>
+      token_id: str
+
+  @dataclass(frozen=True, slots=True, kw_only=True)
+  class HyperliquidMetaAndAssetCtxsV1Request:    # POST api.hyperliquid.xyz/info  (fixed body)
+      pass
+  ```
+
+- **Exact frozen result carrier** (RAW_CAPTURED handle; available **only after** successful local ledger commit):
+
+  ```python
+  @dataclass(frozen=True, slots=True, kw_only=True)
+  class RawCaptureCommitted:
+      capture_sequence: int
+      attempt_sequence: int
+      source_authority: str
+      http_status: int
+      response_body_sha256: str
+  ```
+
+- **Exact argument types:** `request` is exactly one of the three frozen variant types; `raw_ledger_path` is `str`;
+  `collector_commit_sha` is `str`.
+- **Exact guard order (all guards run before any network I/O):**
+  1. `type(request)` is one of the three exact variant classes — else
+     `TypeError("request must be an exact PublicSourceRequest variant")`.
+  2. `type(raw_ledger_path) is str` and `type(collector_commit_sha) is str` — else
+     `TypeError("raw_ledger_path and collector_commit_sha must be exact str")`.
+  3. `collector_commit_sha` matches `^[0-9a-f]{40}$` — else
+     `ValueError("collector_commit_sha must be exactly 40 lowercase hex characters")`.
+  4. variant payload grammar (§5.1): `slug` / `token_id` full-match — else
+     `ValueError("slug must match ^[0-9a-z][0-9a-z-]{0,254}$")` /
+     `ValueError("token_id must match ^[0-9]{1,80}$")`.
+  5. ledger preflight (§4 / §4B): path isolation + open + PRAGMA + init + fingerprint + FK + transaction-readiness —
+     else a `RawLedgerPreflightError`.
+- **Closed acquisition/ledger exception hierarchy:**
+
+  ```
+  RawAcquisitionError                      (base)
+  ├── RawLedgerPreflightError              (pre-network; NO attempt row; NO result; fail-fast)
+  │     ├── RawLedgerPathError             (path missing/invalid OR S1 alias/canonical collision)
+  │     ├── RawLedgerPragmaError           (WAL/FULL/foreign_keys mismatch)
+  │     ├── RawLedgerSchemaFingerprintError(stale / extra / missing column/index/trigger)
+  │     └── RawLedgerReadinessError        (FK off / not transaction-ready)
+  ├── RawTransportError                    (attempt began; commits a TRANSPORT_FAILED attempt row; NO result)
+  ├── RawTimeoutError                      (commits a TIMEOUT attempt row; NO result)
+  ├── RawResponseTooLargeError             (commits a RESPONSE_TOO_LARGE attempt row; NO result)
+  ├── RawHttpProtocolError                 (commits an HTTP_PROTOCOL_FAILED attempt row; NO result)
+  └── RawLedgerCommitError                 (success-transaction commit failed; NO durable row; NO result; fail-fast)
+  ```
+
+- **Which failures append a `raw_fetch_attempt_log` row:** `RawTransportError` / `RawTimeoutError` /
+  `RawResponseTooLargeError` / `RawHttpProtocolError` (a single committed **failure** attempt row with
+  `capture_sequence` NULL).
+- **Which failures append no row:** all `RawLedgerPreflightError` subtypes and the input-guard `TypeError`/`ValueError`
+  (raised before any network attempt); and `RawLedgerCommitError` (the transaction could not commit, so nothing is
+  durable).
+- **Which failures return no result:** **all** of them — `RawCaptureCommitted` is returned **only** after a
+  successful local ledger commit (RAW_CAPTURED).
+- The callable exposes **no** custom URL, arbitrary headers, retry count, timeout override, projection, S1 write,
+  parser, scheduler, or authenticated input. **One invocation = at most one network request.**
+
+---
+
+## 4B. Idempotent Initialization & Schema Fingerprint (RV-9; runs before any network I/O)
+
+Before **every** request, the runtime must, in order, **fail before network I/O** on any mismatch:
+
+1. **raw-ledger path validation** (exists/creatable; canonicalized; **not equal/alias/canonical-collision with the S1
+   path**);
+2. **database open**;
+3. **PRAGMA verification** (`journal_mode=WAL`, `synchronous=FULL`, `foreign_keys=ON` actually in effect);
+4. **idempotent initialization** (the `CREATE … IF NOT EXISTS` DDL of §4 / §4A);
+5. **exact schema fingerprint comparison** — the normalized set of `sqlite_master (type, name, sql)` rows for the
+   pinned tables/indexes/triggers must equal the pinned expected fingerprint (runtime-computed; RV-9);
+6. **foreign-key verification** (`PRAGMA foreign_key_check` returns no rows);
+7. **transaction-readiness preflight** (a no-op `BEGIN IMMEDIATE` / `ROLLBACK` succeeds, confirming writability).
+
+**No automatic migration, repair, downgrade, or permissive compatibility mode is allowed.** Exact behaviors:
+
+| Situation | Pinned behavior |
+|---|---|
+| First initialization | DDL creates all objects; fingerprint then matches; proceed. |
+| Repeated initialization | `IF NOT EXISTS` no-ops; fingerprint matches; proceed. |
+| Partially initialized schema | After idempotent DDL the fingerprint is recomputed; if any object is still missing/different ⇒ `RawLedgerSchemaFingerprintError`; **fail before network**, no repair. |
+| Stale schema (older/different ratified shape) | Fingerprint mismatch ⇒ `RawLedgerSchemaFingerprintError`; **no migration**. |
+| Extra / missing column, index, or trigger | Fingerprint mismatch ⇒ `RawLedgerSchemaFingerprintError`. |
+| S1-schema collision (path resolves to / aliases the S1 DB) | `RawLedgerPathError`; **fail before network**; never write into S1. |
+| Path alias / canonical-path collision | `RawLedgerPathError`; **fail before network**. |
+
+---
+
+## 8. Forensic Clock Law
+
+- **UTC wall-clock epoch** values (`retrieval_started_epoch_ms`, `retrieval_completed_epoch_ms`) carry **retrieval
+  provenance only**.
+- **Monotonic time** (`retrieval_elapsed_monotonic_ns`) is the **sole** authority for elapsed-duration measurement
+  (RV-4).
+- **The schema does NOT require `retrieval_completed_epoch_ms >= retrieval_started_epoch_ms`.** A backward wall-clock
+  observation is **legal evidence**: it sets `clock_anomaly_evidence = 1` (the §4 CHECK couples the two). Both original
+  epoch readings are preserved **verbatim** — never rewritten, clamped, sorted, or fabricated.
+- The timing law applies **consistently** to successful captures (`raw_capture_log`) **and** to recorded failed
+  attempts (`raw_fetch_attempt_log`), both of which always carry started/completed/elapsed/anomaly fields.
+
+---
+
+## 9. Journal Coherence & Retry Law
+
+Enforced by §4.4 partial UNIQUE indexes + §4.5 predecessor triggers:
+
+- exactly one `STARTED` per `(capture_sequence, stage, attempt_ordinal)`;
+- at most one ordinary terminal (`SUCCEEDED`|`FAILED`); at most one `RECONCILIATION_REQUIRED`; at most one reconciled
+  terminal (`RECONCILED_SUCCEEDED`|`RECONCILED_FAILED`);
+- no terminal/reconciliation before `STARTED`; no `RECONCILIATION_REQUIRED` once an ordinary terminal exists; no
+  reconciled terminal before `RECONCILIATION_REQUIRED`; no event after a reconciled terminal.
+- `attempt_ordinal` begins at **1** (CHECK `>= 1`) and **progresses only under the pinned retry law** (a new ordinal is
+  opened only after the prior attempt's reconciliation resolves) — gapless progression is **RV-7** (runtime fail-fast,
+  since SQLite cannot enforce inter-ordinal ordering).
+
+Preserved: raw-evidence immutability; **no** distributed raw-to-S1 transaction; **no** automatic retry under S1-commit
+uncertainty (S1 is frozen, no exactly-once key); projection / S1 / HYPOTHETICAL_OUTCOME runtime remains
+**unauthorized** (the journal pins shape only).
+
+---
+
+## 10. Exact Raw-Capture Transaction Law & Pre-Commit Loss Window
+
+For a **completed HTTP response** (status `100..599`):
+
+1. capture exact headers/body (§4.1/§4.2);
+2. compute the body integrity digest (`response_body_sha256` over the exact stored bytes; RV-1);
 3. **begin one local raw-ledger transaction**;
-4. append **exactly one** `raw_capture_log` row;
-5. append **exactly one** `RAW_COMMITTED` `raw_fetch_attempt_log` row referencing it (`capture_sequence` non-null);
+4. append exactly one `raw_capture_log` row;
+5. append exactly one `RAW_COMMITTED` `raw_fetch_attempt_log` row referencing it;
 6. **commit**;
-7. **only after successful commit** may the result be called **RAW_CAPTURED**.
+7. **only after successful commit** may the result be called **RAW_CAPTURED** and `RawCaptureCommitted` returned.
 
-- **Raw capture is permanent and is never rolled back** because any future projection, S1, outcome, calibration, or
-  paper step fails.
-- **No raw↔S1 distributed transaction and no exactly-once claim exists.**
-- A **transport failure before a completed response** or a **failed ledger commit** yields **no RAW_CAPTURED** (a
-  failure attempt row with `capture_sequence` NULL on a committed transaction, or a fail-fast propagated exception if
-  the transaction itself cannot commit).
+**This is NOT exactly-once acquisition.** Precisely:
 
----
-
-## 8. Runtime & Roadmap Status
-
-**This docs charter builds no collector and performs no network call.**
-
-After commit, before external review:
-
-- **Charter:** BUILT / RATIFIABLE / **UNRATIFIED**.
-- **Raw acquisition runtime:** **BLOCKED.**
-- **Data collection:** **NOT STARTED.**
-- **Option-B projection / S1 ingestion:** **BLOCKED.**
-- **HYPOTHETICAL_OUTCOME:** **BLOCKED.**
-- **Calibration:** **BLOCKED.**
-- **Phase 7.1 / 7.2 / 8.1:** **BLOCKED.**
-- **Capacity:** **0.**
-
-**Only after independent Gemini + Codex ratification** may **one** raw-only, one-shot acquisition runtime/TDD slice
-become **ELIGIBLE**. That future runtime may implement **only**:
-
-```
-public request -> exact raw bytes -> isolated raw ledger
-```
-
-It **may not** implement projection, S1, outcomes, calibration, paper, execution, routing, wallet, orders, or
-capacity.
+- The ledger is initialized, fingerprint-verified, path-isolated from S1, writable, and transaction-ready **before**
+  network I/O (§4B), **but** network response receipt and ledger commit are **not one atomic operation**.
+- A process/OS failure **after response receipt but before commit** can leave **no durable `raw_capture_log` row and
+  no durable `raw_fetch_attempt_log` row**.
+- **No RAW_CAPTURED claim exists without commit.** This **unobservable pre-commit loss window is acknowledged**; the
+  system makes **no exhaustive-capture and no exactly-once claim**.
+- A later refetch **must never be represented as the lost original response** (it is a new observation with its own
+  capture row).
+- **Reconciliation (§9) applies only where durable evidence exists.** An entirely uncommitted response **cannot** be
+  reconciled — there is nothing durable to reconcile.
+- Raw capture, once committed, is **permanent** and is never rolled back because any future projection, S1, outcome,
+  calibration, or paper step fails. **No raw↔S1 distributed transaction or exactly-once claim exists.**
 
 ---
 
-## 9. Explicit Unresolved Boundaries (preserved as BLOCKED)
+## 11. Explicit Unresolved Boundaries (preserved as BLOCKED)
 
-- **B-1** — `gross_magnitude` / `unit` authority.
-- **B-2** — event-time authority.
-- **B-3** — `venue` / `pair` canonical mapping.
-- **B-4** — real fee / cost / slippage authority.
-- **Polymarket resolved-market / outcome source authority** (the later HYPOTHETICAL_OUTCOME source amendment).
+- **B-1** `gross_magnitude` / `unit` authority; **B-2** event-time authority; **B-3** `venue` / `pair` canonical
+  mapping; **B-4** real fee/cost/slippage authority.
+- **Polymarket resolved-market / outcome source authority** (later HYPOTHETICAL_OUTCOME source amendment).
 - **Cross-ledger S1 idempotency / exactly-once.**
 - **Automated scheduler / poller / daemon.**
 - **Chainlink / source-basis alignment.**
 
 ---
 
-## 10. Frozen / Unchanged Surfaces
+## 12. Status, Scope & Post-State
 
-This charter changes **none** of: `phase6_1/`; `phase6_1_s1_storage/` and the S1 medium; `phase6_2_shadow_intent/`;
-S1 / S5; the frozen DTOs; `config.py`; any `data/` module; existing charters; lock tests; capacity boundaries;
-analytics/export boundaries. It adds **only** the single new docs file
-`docs/handoff/post_phase6_2_public_source_authority_raw_capture_ledger_exact_shape_charter.md`.
+This docs charter builds no collector and performs no network call. After commit, before external review:
 
----
+- **Charter:** BUILT / RATIFIABLE / **UNRATIFIED**, pending independent Gemini and Codex review.
+- **Raw acquisition runtime:** **BLOCKED.**
+- **Data collection:** **NOT STARTED.**
+- **Option-B projection / S1 ingestion:** **BLOCKED.**
+- **HYPOTHETICAL_OUTCOME:** **UNBUILT + BLOCKED.**
+- **Calibration:** **BLOCKED.** **Phase 7.1 / 7.2 / 8.1:** **BLOCKED.**
+- **Capacity:** **0.**
 
-**Conclusion:** the public source authority is a **closed allowlist of exactly three variants**
-(`POLYMARKET_GAMMA_MARKET_BY_SLUG_V1` GET `https://gamma-api.polymarket.com/markets?slug=…`;
-`POLYMARKET_CLOB_BOOK_BY_TOKEN_V1` GET `https://clob.polymarket.com/book?token_id=…`;
-`HYPERLIQUID_META_AND_ASSET_CTXS_V1` POST `https://api.hyperliquid.xyz/info` with body
-`b'{"type":"metaAndAssetCtxs"}'`), HTTPS+cert-verified, redirect-free, credential-free, JSON-`Accept`-only (POST adds
-`Content-Type: application/json`), with bounded-ASCII slug/token rejection of `/ ? & = # %`, control, whitespace, and
-Unicode — and **no** legacy `data/` reuse, **no** parsing, and **bytes-only** capture. One callable execution is one
-HTTP request (connect 3000 ms, total 10000 ms, ≤16 MiB, TLS on, auto-decompress off, no retry/fallback/cache);
-**every completed response including non-2xx may become RAW_CAPTURED only on raw-ledger commit**, where RAW_CAPTURED
-means only durably-committed exact-byte evidence. Storage is an **isolated WAL/FULL/foreign_keys SQLite medium**
-disjoint from S1, with **no** UPDATE/DELETE/REPLACE/UPSERT/ATTACH/vacuum mutation. The exact append-only schemas are
-`raw_capture_log` (14 ordered columns incl. length-prefixed order-preserving `response_headers_payload`,
-lowercase-64 `response_body_sha256`, lowercase-40 `collector_commit_sha`, `capture_sequence` append-order-only),
-`raw_fetch_attempt_log` (closed outcomes `RAW_COMMITTED` / `TRANSPORT_FAILED` / `TIMEOUT` / `RESPONSE_TOO_LARGE` /
-`HTTP_PROTOCOL_FAILED`; `RAW_COMMITTED`⇒non-null `capture_sequence`, failures⇒NULL; non-2xx-on-commit is
-`RAW_COMMITTED`; address-free `failure_payload`), and `raw_processing_journal` (closed stages `OPTION_B_PROJECTION` /
-`S1_INGESTION`; event kinds `STARTED` / `SUCCEEDED` / `FAILED` / `RECONCILIATION_REQUIRED` / `RECONCILED_SUCCEEDED` /
-`RECONCILED_FAILED`; derived-only `OUTCOME_UNKNOWN`; no-auto-retry-while-unreconciled; same-bytes replay; no S1
-auto-retry; append-only). The raw-capture transaction law writes one capture row + one `RAW_COMMITTED` attempt row in
-one local transaction, names RAW_CAPTURED only post-commit, keeps raw evidence permanent, and claims **no** raw↔S1
-distributed transaction or exactly-once. **Charter BUILT / RATIFIABLE / UNRATIFIED; raw acquisition runtime, Option-B
-projection, S1 ingestion, HYPOTHETICAL_OUTCOME, calibration, and Phases 7.1/7.2/8.1 all BLOCKED; data collection NOT
-STARTED; capacity 0. Committing this charter builds no collector and acquires no data; only independent Gemini +
-Codex ratification makes one raw-only one-shot acquisition slice eligible.**
+**Only after independent Gemini + Codex ratification** may **one** raw-only, one-shot acquisition runtime/TDD slice
+become **ELIGIBLE**, implementing only `public request → exact raw bytes → isolated raw ledger`. The system and data
+collection are **not** called ready. This charter modifies **only** the single existing docs file
+`docs/handoff/post_phase6_2_public_source_authority_raw_capture_ledger_exact_shape_charter.md`; it changes no
+`phase6_1/`, `phase6_1_s1_storage/`, `phase6_2_shadow_intent/`, S1/S5, frozen DTOs, `config.py`, `data/`, other
+charter, or lock test.
+
+**Conclusion:** the public source authority is the closed three-variant allowlist with HTTPS/cert-verified,
+redirect-free, credential-free, bytes-only one-shot transport; the raw ledger is an S1-isolated WAL/FULL/foreign_keys
+SQLite medium whose **executable DDL** enforces (via CHECK/FK/partial-UNIQUE/predecessor-trigger) the closed
+source-authority/method/host/target/body coupling and exact Hyperliquid body bytes, GET-empty-body, `http_status`
+`100..599`, lowercase-64/40 SHA shapes, BLOB storage classes, outcome-conditional `capture_sequence`/`failure_*`
+nullability, both capture/attempt foreign keys, non-negative sequences/ordinals/timestamps/durations, and the full
+journal cardinality + transition order — with the residue (digest equality, header-blob structure, exact slug/token
+grammar, monotonic-source genuineness, anomaly-derivation, address-free payloads, gapless ordinals, transport limits,
+and the schema-fingerprint/PRAGMA/path-isolation preflight) explicitly assigned to **fail-fast runtime validation
+(RV-1…RV-9)**; append-only `BEFORE UPDATE`/`BEFORE DELETE` triggers fail-closed **inside the conforming schema only
+(not tamper-proof, not tamper-evident against a privileged owner)**; the future runtime API is a docs-only one-shot
+async callable over three frozen kw-only request variants returning a frozen `RawCaptureCommitted` only after local
+commit, with a closed exception hierarchy distinguishing pre-network preflight (no row), committed failure attempts
+(one failure row), and commit failure (no durable claim); the forensic clock law records backward wall-clocks as
+anomaly evidence without rejection while monotonic ns measures duration; `collector_commit_sha` is caller-supplied
+opaque lowercase-40-hex provenance with no authenticity claim and no env/subprocess/network sourcing (build
+attestation out of scope); and the law explicitly **disclaims exactly-once**, acknowledges the unobservable
+pre-commit loss window, forbids refetch-as-original, and confines reconciliation to durable evidence. **Charter BUILT
+/ RATIFIABLE / UNRATIFIED; raw acquisition, projection, S1 ingestion, HYPOTHETICAL_OUTCOME, calibration, and Phases
+7.1/7.2/8.1 all BLOCKED; data collection NOT STARTED; capacity 0; only independent ratification makes one raw-only
+one-shot slice eligible — the system is not ready.**
