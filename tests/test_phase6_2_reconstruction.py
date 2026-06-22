@@ -168,6 +168,61 @@ def _empty_seen():
     return lm.make_seen_target_pairs_snapshot(members=())
 
 
+# --- genuine state-changing evidence: two valid lines -> two SCORE rows, manifest targets the first
+# Pinned expected Silver-pair coordinates of the first adapter-produced replay row; the genuine adapter
+# row is asserted to match these (never derived from a fabricated row).
+_GENUINE_FIRST_LOCATOR = "loc"
+_GENUINE_FIRST_POSITION = "0"
+
+
+def _genuine_two_score_rows(tmp_path, name="s1_stateful.db"):
+    """Return the genuine immutable replay tuple of two SCORE rows from two valid pipeline lines.
+
+    Both rows share locator ``loc`` with distinct physical_record_positions, so a manifest targeting the
+    first row establishes one shadow intent while the second row stays a non-targeted Slice-E no-op.
+    """
+    mem = S1InMemoryObservationSink()
+    run_in_memory_shadow_pipeline(
+        text_stream=io.StringIO(_PASS_LINE + _PASS_LINE),
+        artifact_locator="loc",
+        market_provenance_context=_provenance(),
+        gross_edge_binding_label_context=_label(),
+        evidence_epoch_tolerance_ms=0,
+        observation_sink=mem,
+    )
+    score_first, score_second = mem.snapshot()
+    sink = S1DurableSqliteSink(database_path=str(tmp_path / name))
+    try:
+        sink.record_observation(score_first)
+        sink.record_observation(score_second)
+        rows = sink.replay()
+    finally:
+        sink.close()
+    return rows
+
+
+def _verified_manifest_targeting_first_genuine_row():
+    """A genuine verified manifest (Slice-B output) whose single directional definition targets the first
+    adapter-produced SCORE row (locator ``loc`` / position ``0``)."""
+    definition = {
+        "definition_kind": "DIRECTIONAL_SHADOW_INTENT_DEFINITION",
+        "silver_artifact_locator_text": _GENUINE_FIRST_LOCATOR,
+        "silver_physical_record_position_text": _GENUINE_FIRST_POSITION,
+        "exposure_orientation": "POSITIVE_EXPOSURE",
+        "passive_boundary_magnitude": "1.5",
+        "boundary_unit_context": "proportion",
+        "hypothetical_window_duration_ms": "840000",
+    }
+    return _verified_manifest(definitions=(definition,))
+
+
+def _expected_genuine_key():
+    return lm.make_opaque_silver_pair_key(
+        silver_artifact_locator_text=_GENUINE_FIRST_LOCATOR,
+        silver_physical_record_position_text=_GENUINE_FIRST_POSITION,
+    )
+
+
 # === 1. EXACT PUBLIC API ==========================================================================
 
 def test_reconstruction_module_and_callable_exist():
@@ -410,6 +465,74 @@ def test_fold_does_not_inspect_rows_or_use_sqlite(tmp_path):
     assert type(final) is AtomicReplayStepResult
 
 
+def test_targeted_multi_row_success_grows_state_and_threads_changed_snapshots(tmp_path, monkeypatch):
+    rows = _genuine_two_score_rows(tmp_path)
+    assert len(rows) == 2
+    # the genuine first replay row really carries the pinned Silver-pair coordinates (not fabricated)
+    assert rows[0]["artifact_locator"] == _GENUINE_FIRST_LOCATOR
+    assert rows[0]["physical_record_position"] == _GENUINE_FIRST_POSITION
+    manifest = _verified_manifest_targeting_first_genuine_row()
+    expected_key = _expected_genuine_key()
+    records = []
+
+    def _spy(**kwargs):
+        result = execute_atomic_replay_step(**kwargs)
+        records.append((kwargs, result))
+        return result
+
+    monkeypatch.setattr(recon, "execute_atomic_replay_step", _spy)
+    final = reconstruct_shadow_intent_state(ordered_replay_rows=rows, verified_manifest_artifact=manifest)
+
+    assert len(records) == 2
+    first_kwargs, first_result = records[0]
+    second_kwargs, _second_result = records[1]
+
+    # first Slice-E call starts empty and changes state into a non-empty, targeted reconstruction
+    assert first_kwargs["current_lifecycle_snapshot"] == _empty_lifecycle()
+    assert first_kwargs["current_seen_pairs"] == _empty_seen()
+    assert len(first_result.next_lifecycle_snapshot.slots_by_identity) == 1
+    assert len(first_result.next_seen_target_pairs.seen_target_pairs) == 1
+    assert first_result.next_lifecycle_snapshot != _empty_lifecycle()
+    assert expected_key in first_result.next_lifecycle_snapshot.slots_by_identity
+    assert expected_key in first_result.next_seen_target_pairs.seen_target_pairs
+
+    # second Slice-E call receives the first result's CHANGED snapshots by identity
+    assert second_kwargs["current_lifecycle_snapshot"] is first_result.next_lifecycle_snapshot
+    assert second_kwargs["current_seen_pairs"] is first_result.next_seen_target_pairs
+
+    # every genuine row passed once, by identity, in tuple order; same manifest identity every call
+    for index, (kwargs, _result) in enumerate(records):
+        assert kwargs["raw_evidence_row"] is rows[index]
+        assert kwargs["frozen_manifest_projection"] is manifest
+
+    # final reconstruction is the exact final Slice-E carrier, unwrapped, with non-empty retained state
+    assert final is records[-1][1]
+    assert len(final.next_lifecycle_snapshot.slots_by_identity) == 1
+    assert len(final.next_seen_target_pairs.seen_target_pairs) == 1
+    assert expected_key in final.next_lifecycle_snapshot.slots_by_identity
+    assert expected_key in final.next_seen_target_pairs.seen_target_pairs
+
+
+def test_stateful_cross_execution_distinct_but_equal_nonempty(tmp_path):
+    manifest = _verified_manifest_targeting_first_genuine_row()
+    expected_key = _expected_genuine_key()
+    result_a = reconstruct_shadow_intent_state(
+        ordered_replay_rows=_genuine_two_score_rows(tmp_path, name="exec_a.db"),
+        verified_manifest_artifact=manifest)
+    result_b = reconstruct_shadow_intent_state(
+        ordered_replay_rows=_genuine_two_score_rows(tmp_path, name="exec_b.db"),
+        verified_manifest_artifact=manifest)
+    # both alive simultaneously
+    assert result_a is not result_b
+    assert result_a.next_lifecycle_snapshot is not result_b.next_lifecycle_snapshot
+    assert result_a.next_seen_target_pairs is not result_b.next_seen_target_pairs
+    assert result_a == result_b
+    for result in (result_a, result_b):
+        assert len(result.next_lifecycle_snapshot.slots_by_identity) == 1
+        assert expected_key in result.next_lifecycle_snapshot.slots_by_identity
+        assert expected_key in result.next_seen_target_pairs.seen_target_pairs
+
+
 # === 7. RESULT, FAILURE, AND EXCEPTION SURFACES ==================================================
 
 def test_failing_row_propagates_same_exception_and_stops_fold(monkeypatch):
@@ -523,9 +646,56 @@ def test_runtime_uses_no_growing_collection_literals():
         assert not isinstance(node, (ast.List, ast.Set, ast.Dict))
 
 
+def test_runtime_has_no_builtin_rematerialization():
+    # no tuple(...)/list(...)/dict(...)/set(...) rematerialization of the input or any working state
+    banned = {"tuple", "list", "dict", "set"}
+    tree = _runtime_ast()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            assert node.func.id not in banned, node.func.id
+
+
+def test_runtime_has_no_module_or_global_state():
+    tree = _runtime_ast()
+    # no module-level mutable binding / accumulator / cache / singleton / registry
+    for node in tree.body:
+        assert not isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign))
+    # no global/nonlocal escape anywhere
+    for node in ast.walk(tree):
+        assert not isinstance(node, (ast.Global, ast.Nonlocal))
+
+
+def test_runtime_raw_evidence_row_is_strictly_whitelisted():
+    tree = _runtime_ast()
+    parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+
+    # the for-loop target is exactly the local raw_evidence_row iterating directly over the input tuple
+    for_loops = [n for n in ast.walk(tree) if isinstance(n, ast.For)]
+    assert len(for_loops) == 1
+    loop = for_loops[0]
+    assert isinstance(loop.target, ast.Name) and loop.target.id == "raw_evidence_row"
+    assert isinstance(loop.target.ctx, ast.Store)
+    assert isinstance(loop.iter, ast.Name) and loop.iter.id == "ordered_replay_rows"
+    assert isinstance(loop.iter.ctx, ast.Load)
+
+    # exactly one Load use of raw_evidence_row, and it is the value of the keyword argument
+    # raw_evidence_row in the single execute_atomic_replay_step(...) call — nothing else
+    loads = [n for n in ast.walk(tree)
+             if isinstance(n, ast.Name) and n.id == "raw_evidence_row" and isinstance(n.ctx, ast.Load)]
+    assert len(loads) == 1
+    load = loads[0]
+    keyword = parents[load]
+    assert isinstance(keyword, ast.keyword) and keyword.arg == "raw_evidence_row"
+    call = parents[keyword]
+    assert isinstance(call, ast.Call)
+    assert isinstance(call.func, ast.Name) and call.func.id == "execute_atomic_replay_step"
+    # the load IS the keyword value (not buried inside attribute/subscript/call/compare/collection)
+    assert keyword.value is load
+
+
 # === 10. EXACT DEPENDENCY AND PURITY BOUNDARY ====================================================
 
-def test_runtime_imports_only_two_allowed_modules():
+def test_runtime_imports_exactly_two_allowed_modules():
     tree = _runtime_ast()
     modules = set()
     for node in ast.walk(tree):
@@ -534,7 +704,8 @@ def test_runtime_imports_only_two_allowed_modules():
                 modules.add(alias.name)
         elif isinstance(node, ast.ImportFrom):
             modules.add(node.module)
-    assert modules <= {
+    # exact equality: no missing and no additional runtime dependency may pass
+    assert modules == {
         "phase6_2_shadow_intent.atomic_replay_step",
         "phase6_2_shadow_intent.logical_model",
     }
