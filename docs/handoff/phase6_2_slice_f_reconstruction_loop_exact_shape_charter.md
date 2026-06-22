@@ -3,7 +3,8 @@
 > **This is a docs-only field-shape / API charter.** It pins the **previously-deferred concrete Slice-F
 > reconstruction-fold decisions** — the exact public callable, its two mandatory keyword-only inputs, the exact
 > validation order and literal `TypeError` messages, the empty / non-empty result semantics, the identity-pass-through
-> rule, the O(1) auxiliary-memory bound, the no-error-class / no-`try`/`except` exception discipline, and the
+> rule, the K-based memory model (O(K) evolving payload, O(1) Slice-F overhead), the no-error-class /
+> no-`try`/`except` exception discipline, and the
 > superseding runtime dependency shape. It **implements nothing and authorizes nothing executable**: no runtime code,
 > no tests, no fixtures, no `reconstruction.py`, no stale-lock edits, no prior-charter edits, no generated files, no
 > pytest, no graphify, and no commit beyond this single docs file. It defines **no Step algorithm behavior** — the
@@ -32,8 +33,9 @@ The reconstruction-runtime planning charter (`457d279` §4/§5) named Slice F a 
 verified artifact projection + ordered S1 rows"** and **deferred** its concrete callable, input materialization,
 result semantics, and exception discipline to the slice charter. This charter closes exactly those deferred
 fold-boundary decisions — the exact public callable, the two mandatory keyword-only inputs, the literal validation
-order and `TypeError` messages, empty/non-empty result semantics, the by-identity pass-through rule, the O(1)
-auxiliary-memory bound, the no-error-class exception discipline, and the superseding runtime dependency shape — and
+order and `TypeError` messages, empty/non-empty result semantics, the by-identity pass-through rule, the K-based
+memory model (O(K) evolving payload, O(1) Slice-F overhead), the no-error-class exception discipline, and the
+superseding runtime dependency shape — and
 **nothing else**. It defines **no** per-row behavior: every classification decision belongs to the sealed Slice-E
 `execute_atomic_replay_step`.
 
@@ -80,9 +82,15 @@ def reconstruct_shadow_intent_state(
   **opaque and never inspects them** (§9).
 - `verified_manifest_artifact` is the **exact** Slice-A `ShadowIntentDefinitionArtifact` produced by the sealed
   Slice-B `verify_artifact`. Slice F **does not** re-verify it (§8).
-- The callable returns **exactly one** `AtomicReplayStepResult` (§5) on success, or **propagates exactly one**
-  `AtomicReplayStepError` raised by Slice E (§7), or raises **exactly one** native `TypeError` from the two input
-  guards (§4) / the call-binding contract. **There is no third outcome, no `None`, no sentinel, no partial result.**
+- **Domain-authored outcome surface (Slice-F-owned):** on success the callable returns an `AtomicReplayStepResult`
+  (§5); on a row's contract failure it **propagates** the `AtomicReplayStepError` raised by Slice E (§7); and it raises
+  one of the **two exact Slice-F `TypeError` input guards** (§4) for a non-exact-`tuple` rows argument or a
+  non-exact-type artifact argument.
+- The **Python argument-binding `TypeError`** (positional / missing / extra / misnamed call) belongs to the
+  **keyword-only signature contract**, not to the domain-authored surface.
+- **Factory / system exceptions, `BaseException`, and any unexpected fault remain OUTSIDE the closed domain surface**
+  and **propagate unchanged** (§7); Slice F neither catches nor reclassifies them.
+- **`None`, any sentinel, a wrapped error object, and any partial-success return remain FORBIDDEN.**
 
 ---
 
@@ -172,22 +180,33 @@ def reconstruct_shadow_intent_state(*, ordered_replay_rows, verified_manifest_ar
 - **Each row is passed to Slice E by exact identity** (`raw_evidence_row is ordered_replay_rows[i]`), in tuple order,
   exactly once; **the same `verified_manifest_artifact` object is passed by identity on every call** (one shared
   constant, never copied, never re-projected, never re-keyed by Slice F).
-- **Determinism / idempotency.** Identical `(ordered_replay_rows, verified_manifest_artifact)` inputs produce a result
-  equal by content with the identical identity pattern every time — no clock, no randomness, no global or
-  iteration-order dependence beyond the fixed tuple order. Re-executing the whole replay is a pure function of its two
-  inputs.
+- **Determinism / idempotency (relational identity).** Repeated identical
+  `(ordered_replay_rows, verified_manifest_artifact)` inputs produce **content-equal** results and the **same
+  within-execution relational-identity guarantees**. Within a single execution, the row/artifact pass-through identity
+  (above) and unchanged-snapshot identity (Slice-E §5) are preserved; **changed snapshots and the seed/result objects
+  follow the existing factory and Slice-E freshness contracts**. **No cross-execution object-identity equality is
+  claimed** — distinct executions allocate distinct objects. The empty seeds and the empty-replay result carrier are
+  **fresh per execution**, and **no cache or singleton is permitted**. Subject to that, re-executing the whole replay
+  is a pure function of its two inputs (no clock, no randomness, no global or iteration-order dependence beyond the
+  fixed tuple order).
 
 ---
 
-## 6. Memory / Streaming Bound (binding)
+## 6. Memory Model (binding)
 
-- **O(1) auxiliary fold memory** over the **already-materialized** `ordered_replay_rows` tuple: the fold keeps only the
-  two current snapshots and the latest result carrier; it accumulates **no** per-row history, **no** growing list/dict/
-  set, **no** buffer, **no** running log, **no** index map. Auxiliary memory is constant in the number of rows; total
-  memory is dominated by the caller-materialized input tuple plus the single threaded snapshot pair.
-- **No end-to-end streaming claim is made.** The input is a fully-materialized tuple supplied by the caller; Slice F is
-  **not** a streaming/lazy/generator pipeline and does not promise bounded memory over an unbounded source. The O(1)
-  bound is **auxiliary** (the fold's own working set), explicitly **excluding** the pre-materialized input tuple.
+Let **K** = the number of retained lifecycle-slot entries **plus** seen-target-pair members in the current
+reconstruction state, and **N** = the number of rows in `ordered_replay_rows`.
+
+- **Evolving output payload is O(K).** The threaded lifecycle/seen-pairs snapshots (and the result carrier wrapping
+  them) grow with the retained slot-entry + seen-pair population, which is **worst-case O(N)** over N rows (every row
+  could establish/retain state).
+- **The materialized replay tuple is O(N)** — caller-supplied, fully materialized before the call.
+- **Slice F adds only O(1) loop / reference / carrier overhead** beyond the input tuple and the evolving output
+  payload: the loop variable, the two threaded snapshot references, and the latest result reference. It accumulates
+  **no** per-row history, **no** growing list/dict/set, **no** buffer, **no** running log, and **no** index map.
+- **No streaming and no globally bounded-memory claim is made.** The input is a fully-materialized tuple supplied by
+  the caller; Slice F is **not** a streaming/lazy/generator pipeline and does not promise bounded memory over an
+  unbounded source.
 
 ---
 
@@ -246,7 +265,7 @@ following are **forbidden** in `reconstruction.py`:
 - **Copying / buffering:** no `tuple(...)`, `list(...)`, `copy`/`deepcopy`, re-materialization, or staging buffer of the
   rows or snapshots.
 - **History accumulation:** no per-row result list, running log, audit trail, counter map, or growing accumulator
-  (O(1) auxiliary memory, §6).
+  (only O(1) Slice-F overhead beyond the input tuple and the evolving output payload, §6).
 - **Manifest lookup / projection:** no `definitions_by_silver_pair[...]` read, no manifest keying, no projection, no
   re-keying — manifest access is **exclusively** Slice E's.
 - **Slice-B verification:** no canonical-byte / digest / provenance re-verification (§8).
@@ -335,19 +354,26 @@ The Slice-F implementation task (separately authorized) must prove, RED→GREEN,
    partial result** is returned; the fold stops at the failing row; Slice F contains no `try`/`except` (AST-asserted).
 7. **No error class / no catch:** `reconstruction.py` defines no exception type and contains no `try`/`except`/
    `finally`/`suppress` (AST-asserted); the only Slice-F raises are the two native `TypeError` guards.
-8. **Memory bound:** O(1) auxiliary fold memory — no per-row accumulator/buffer/history (AST-asserted absence of
-   growing collections); no end-to-end streaming claim.
-9. **Determinism / idempotency:** repeated whole-replay execution of identical inputs yields content-equal results with
-   the identical identity pattern; no clock/random/global dependence.
+8. **Memory model:** only O(1) Slice-F loop/reference/carrier overhead beyond the O(N) input tuple and the O(K)
+   (worst-case O(N)) evolving output payload — no per-row accumulator/buffer/history (AST-asserted absence of growing
+   collections); no streaming / globally bounded-memory claim.
+9. **Determinism / idempotency (relational identity):** repeated whole-replay execution of identical inputs yields
+   **content-equal** results and the **same within-execution relational-identity guarantees** — within an execution,
+   row/artifact pass-through identity and unchanged-snapshot identity are preserved, while changed snapshots and the
+   seed/result objects follow the existing factory + Slice-E freshness contracts; **no cross-execution object-identity
+   equality** is claimed; the empty seeds and the empty-replay result carrier are **fresh per execution**; **no cache
+   or singleton** is permitted; no clock/random/global dependence.
 10. **Dependency / purity AST locks:** runtime imports are **exactly** `atomic_replay_step` and `logical_model` (no
     `artifact_verifier`, no `s1_evidence_projection`, no `sqlite3`, no I/O, no clock, no threads, no cache/global, no
     persistence/export/execution/routing/actionability/capacity); no direct row inspection/indexing; no manifest
     lookup/projection; no Slice-B verification; no underscore-prefixed/private callee — only the public factories,
     public step, and public result fields.
-11. **Absence-lock transition:** the surgical Slice-F-only → Slice-G absence-lock handling — the
-    `test_slice_f_target_not_created` locks (currently `("reconstruction.py",)` in
-    `tests/test_phase6_2_s1_evidence_projection.py` and `tests/test_phase6_2_classification_predicates.py`) are
-    retired/relaxed to admit the now-created `reconstruction.py` **only** in that implementation task, never here.
+11. **Absence-lock transition (singular ownership):** this docs task changes **no** locks. The **future Slice-F
+    runtime/TDD task exclusively owns** the surgical relaxation of the two `test_slice_f_target_not_created`
+    `reconstruction.py` absence assertions (currently `("reconstruction.py",)` in
+    `tests/test_phase6_2_s1_evidence_projection.py` and `tests/test_phase6_2_classification_predicates.py`), performed
+    **when `reconstruction.py` is created**, never in this docs task. **Slice G does NOT repeat or own that
+    transition;** it owns only its own later closeout/integration locks.
 
 ---
 
@@ -373,11 +399,14 @@ negative branches remain gated.
   their `ordered_replay_rows` through the ratified S1 adapter per the negative-evidence fixture-boundary charter (no
   hand-rolled successful rows, no intent-state fabrication). The exact fixture-construction recipe is owned by that
   fixture charter and the future Slice-F TDD task, **not** invented here.
-- **Slice-G closeout transition:** the precise relaxation of the two `test_slice_f_target_not_created` absence locks and
-  the Slice-G integration/lock scope are deferred to Slice G; this charter only records the obligation (§13.11).
+- **Absence-lock relaxation ownership (recorded, not an open item):** the relaxation of the two
+  `test_slice_f_target_not_created` `reconstruction.py` absence assertions is **owned exclusively by the future Slice-F
+  runtime/TDD task** that creates `reconstruction.py` (§13.11) — **not** by Slice G. Slice G owns only its own later
+  closeout/integration lock scope. This docs task changes no locks.
 - **No other unresolved items.** The callable, the two keyword-only inputs, the literal guard order/messages, the
-  empty/non-empty result semantics, the by-identity pass-through, the O(1) auxiliary-memory bound, the no-error-class /
-  no-`try`/`except` discipline, the Slice-B external-precondition boundary, and the superseded two-import dependency
+  empty/non-empty result semantics, the by-identity pass-through, the K-based memory model (O(K) evolving payload,
+  O(1) Slice-F overhead), the no-error-class / no-`try`/`except` discipline, the Slice-B external-precondition
+  boundary, and the superseded two-import dependency
   shape are all pinned and source-anchored. No wrapping carrier, fold-level error class, reordering, dedup, buffer, or
   manifest access is invented.
 
@@ -405,7 +434,8 @@ order and passing every row and the single `verified_manifest_artifact` to Slice
 buffering, history accumulation, manifest lookup, Slice-B verification, and private-revalidation calls; **manifest
 lookup and per-step manifest revalidation remain exclusively Slice E's**. **Slice-B provenance is an external
 precondition** — an exact-type forged artifact is **not detected by Slice F**, most starkly on empty replay.
-Auxiliary fold memory is **O(1)** over the already-materialized tuple with **no end-to-end streaming claim**. **Empty
+Memory is the **O(N)** input tuple plus an **O(K) (worst-case O(N)) evolving output payload**, with Slice F adding
+only **O(1)** loop/reference/carrier overhead and making **no streaming or globally bounded-memory claim**. **Empty
 replay** returns a **fresh** `AtomicReplayStepResult` of fresh empty snapshots; **non-empty replay** returns the exact
 final Slice-E `AtomicReplayStepResult` **unwrapped**. Slice F **defines no error class and contains no
 `try`/`except`**: `AtomicReplayStepError` and all factory/system exceptions **propagate unchanged**, and only the two
