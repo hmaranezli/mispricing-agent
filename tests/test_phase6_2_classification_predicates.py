@@ -739,44 +739,106 @@ def test_timestamp_anchor_no_isinstance_or_type_special_case_on_anchor():
                 raise AssertionError("type(anchor) is <...> branch is forbidden")
 
 
-def test_context_root_is_slot_guarded_no_direct_attribute_read_static():
-    # Genuine AST lock (not docstring/string matching): neither context_equals nor
-    # _require_root_context_scalars may read a root-context carrier field via attribute access — both root
-    # fields must be read through _slot. Attribute reads off root_context or any local alias bound to it
-    # are rejected; the proof depends on AST node shapes, never on string occurrences.
+# --- closed AST usage whitelist for the root_context carrier (no alias vocabulary) -----------------
+#
+# Instead of blacklisting attribute/alias shapes, every `Load` of the name `root_context` in a function
+# body must be the FIRST positional argument of one exact whitelisted call shape, with NO keywords. Any
+# other AST parent shape — Attribute, getattr/vars call, Subscript, Assign, AnnAssign, NamedExpr, container
+# capture, Return, Lambda, or forwarding into an unlisted callable — has a non-whitelisted parent and is
+# rejected. Alias creation is therefore impossible: the `root_context` Load that would feed an alias is
+# itself not whitelisted, so no alias vocabulary is maintained or needed.
+
+def _root_context_use_tags(fn_source, *, legal_shape):
+    """Return a tag for every `root_context` Load in ``fn_source`` (each must be the sole/first positional
+    arg of a whitelisted call), raising AssertionError on the first non-whitelisted use."""
     import textwrap
-    sources = {
-        "context_equals": inspect.getsource(cp.context_equals),
-        "_require_root_context_scalars": inspect.getsource(cp._require_root_context_scalars),
-    }
-    slot_field_reads = set()
-    for fn_name, src in sources.items():
-        tree = ast.parse(textwrap.dedent(src))
-        # local names that alias the root carrier: root_context plus any `name = root_context` (or
-        # `name = <alias>`) binding, so an alias cannot smuggle a direct attribute read past the lock.
-        aliases = {"root_context"}
-        changed = True
-        while changed:
-            changed = False
-            for node in ast.walk(tree):
-                if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Name)
-                        and node.value.id in aliases):
-                    for tgt in node.targets:
-                        if isinstance(tgt, ast.Name) and tgt.id not in aliases:
-                            aliases.add(tgt.id)
-                            changed = True
-        for node in ast.walk(tree):
-            if (isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load)
-                    and isinstance(node.value, ast.Name) and node.value.id in aliases):
-                raise AssertionError(
-                    "{}: forbidden direct attribute read off root carrier: .{}".format(fn_name, node.attr))
-            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "_slot"
-                    and len(node.args) == 2 and isinstance(node.args[0], ast.Name)
-                    and node.args[0].id in aliases and isinstance(node.args[1], ast.Constant)
-                    and isinstance(node.args[1].value, str)):
-                slot_field_reads.add(node.args[1].value)
-    # both root fields are read, and ONLY through _slot.
-    assert slot_field_reads == {"source_venue_context_text", "source_pair_context_text"}, slot_field_reads
+    tree = ast.parse(textwrap.dedent(fn_source))
+    parents = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+    tags = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Name) and node.id == "root_context"
+                and isinstance(node.ctx, ast.Load)):
+            continue
+        parent = parents.get(node)
+        tag = legal_shape(parent, node) if isinstance(parent, ast.Call) else None
+        if tag is None:
+            raise AssertionError("non-whitelisted root_context use; parent={}".format(
+                type(parent).__name__))
+        tags.append(tag)
+    return tags
+
+
+def _legal_context_equals_use(call, name):
+    # the ONLY legal use: _require_root_context_scalars(root_context)  (sole positional arg, no keywords).
+    if (isinstance(call.func, ast.Name) and call.func.id == "_require_root_context_scalars"
+            and len(call.args) == 1 and call.args[0] is name and not call.keywords):
+        return "scalars_helper"
+    return None
+
+
+def _legal_helper_use(call, name):
+    # legal uses inside _require_root_context_scalars: the carrier guard and the two declared _slot reads,
+    # always with root_context as the FIRST positional arg and no keywords.
+    if not (isinstance(call.func, ast.Name) and call.args and call.args[0] is name and not call.keywords):
+        return None
+    if (call.func.id == "_require_carrier" and len(call.args) == 2
+            and isinstance(call.args[1], ast.Name) and call.args[1].id == "EstablishedRootContext"):
+        return "carrier"
+    if (call.func.id == "_slot" and len(call.args) == 2
+            and isinstance(call.args[1], ast.Constant) and isinstance(call.args[1].value, str)):
+        return "slot:" + call.args[1].value
+    return None
+
+
+def test_context_root_uses_are_closed_whitelist_real_runtime():
+    # context_equals uses root_context exactly once: forwarded to _require_root_context_scalars.
+    ce_tags = _root_context_use_tags(inspect.getsource(cp.context_equals),
+                                     legal_shape=_legal_context_equals_use)
+    assert ce_tags == ["scalars_helper"], ce_tags
+    # _require_root_context_scalars uses root_context exactly thrice: one carrier guard + the two _slot
+    # field reads — nothing else, no rebinding, no extra use.
+    helper_tags = _root_context_use_tags(inspect.getsource(cp._require_root_context_scalars),
+                                         legal_shape=_legal_helper_use)
+    assert sorted(helper_tags) == sorted(
+        ["carrier", "slot:source_venue_context_text", "slot:source_pair_context_text"]), helper_tags
+
+
+@pytest.mark.parametrize("body", [
+    "    return root_context.source_venue_context_text\n",          # direct attribute access
+    "    return getattr(root_context, 'source_venue_context_text')\n",  # getattr access
+    "    rc = root_context\n    return rc\n",                        # Assign alias
+    "    rc: object = root_context\n    return rc\n",                # AnnAssign alias
+    "    return (rc := root_context)\n",                            # NamedExpr (walrus) alias
+    "    return [root_context]\n",                                  # container capture
+    "    return root_context\n",                                    # bare return forwarding
+    "    return _slot(root_context, 'source_venue_context_text', extra)\n",  # wrong arity
+    "    return _slot(root_context, field_name)\n",                 # non-constant field
+])
+def test_root_context_whitelist_rejects_non_whitelisted_shapes(body):
+    src = "def f(root_context, field_name=None, extra=None):\n" + body
+    with pytest.raises(AssertionError):
+        _root_context_use_tags(src, legal_shape=_legal_helper_use)
+
+
+def test_root_context_whitelist_accepts_only_exact_legal_call_shapes():
+    helper_src = (
+        "def f(root_context):\n"
+        "    _require_carrier(root_context, EstablishedRootContext)\n"
+        "    a = _slot(root_context, 'source_venue_context_text')\n"
+        "    b = _slot(root_context, 'source_pair_context_text')\n"
+        "    return a, b\n"
+    )
+    assert sorted(_root_context_use_tags(helper_src, legal_shape=_legal_helper_use)) == sorted(
+        ["carrier", "slot:source_venue_context_text", "slot:source_pair_context_text"])
+    ce_src = "def f(root_context):\n    return _require_root_context_scalars(root_context)\n"
+    assert _root_context_use_tags(ce_src, legal_shape=_legal_context_equals_use) == ["scalars_helper"]
+    # a keyword-form call is NOT the whitelisted positional shape and is rejected.
+    kw_src = "def f(root_context):\n    return _slot(root_context, name='source_venue_context_text')\n"
+    with pytest.raises(AssertionError):
+        _root_context_use_tags(kw_src, legal_shape=_legal_helper_use)
 
 
 def test_module_has_no_private_maker_overload_or_synthetic_row():
