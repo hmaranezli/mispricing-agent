@@ -22,9 +22,13 @@ zero-field slotted variant; and ``ShadowIntentDefinitionArtifact`` is **factory-
 construction with any args fails). All instances are slotted (no ``__dict__``). Structural-validation
 failures surface as a single closed ``LogicalModelError``.
 
-The shadow-intent *slot* / *snapshot* CONTAINER shape is deliberately absent: no ratified charter pins its
-exact field set, so per Slice A's "invent nothing" rule only the source-proven closed lifecycle-state
-**vocabulary** value type is provided here; the container DTO awaits its own field-shape charter.
+The shadow-intent lifecycle-slot / root-evidence / dual-snapshot value types are now implemented by the
+Slice-A runtime extension at the bottom of this module — ``EstablishedRootContext``,
+``EstablishedRootEvidence``, ``NoRootEvidence``, ``ShadowIntentLifecycleSlot``, the factory-only
+``ShadowLifecycleSnapshot``, and the factory-only ``SeenTargetPairsSnapshot`` — per the ratified
+field-shape charter chain (``85de568`` as superseded by ``38eccce`` / ``9fc7749`` / ``01331ec``). They are
+passive Slice-A carriers only: no ``Step`` algorithm, lifecycle application, or replay-loop behavior lives
+here (those remain Slice E/F).
 """
 import decimal
 import re
@@ -128,6 +132,23 @@ def validate_lifecycle_state(value):
     if type(value) is not str or value not in CLOSED_LIFECYCLE_STATES:
         raise LogicalModelError("invalid lifecycle state: {!r}".format(value))
     return value
+
+
+def _slot_value(carrier, slot_name):
+    """Read one declared slot, surfacing a *missing-slot* forgery as the closed ``LogicalModelError``.
+
+    An ``object.__new__(Cls)`` forgery that never populated ``slot_name`` raises a raw
+    ``AttributeError`` on attribute access. Defensive revalidation must not let that escape; this
+    helper converts **only** that exact ``AttributeError`` into ``LogicalModelError``. It deliberately
+    catches **nothing else** — never ``BaseException``, ``MemoryError``, ``KeyboardInterrupt``, or any
+    unrelated exception — so genuine faults are never masked.
+    """
+    try:
+        return getattr(carrier, slot_name)
+    except AttributeError:
+        raise LogicalModelError(
+            "forged or missing slot {!r} on {}".format(slot_name, type(carrier).__name__)
+        )
 
 
 # --- OpaqueSilverPairKey (5dc757c §2 / 474cc6f §2) -----------------------------------------------
@@ -244,8 +265,10 @@ def _revalidate_silver_pair_key(key):
         raise LogicalModelError(
             "definition entry key must be an exact OpaqueSilverPairKey, not {}".format(type(key).__name__)
         )
-    _require_opaque_text("silver_artifact_locator_text", key.silver_artifact_locator_text)
-    _require_opaque_text("silver_physical_record_position_text", key.silver_physical_record_position_text)
+    _require_opaque_text("silver_artifact_locator_text", _slot_value(key, "silver_artifact_locator_text"))
+    _require_opaque_text(
+        "silver_physical_record_position_text", _slot_value(key, "silver_physical_record_position_text")
+    )
 
 
 def _revalidate_definition(definition):
@@ -420,8 +443,8 @@ def _revalidate_established_root_context(ctx):
         raise LogicalModelError(
             "root_context must be an exact EstablishedRootContext, not {}".format(type(ctx).__name__)
         )
-    _require_nonblank_context_text("source_venue_context_text", ctx.source_venue_context_text)
-    _require_nonblank_context_text("source_pair_context_text", ctx.source_pair_context_text)
+    _require_nonblank_context_text("source_venue_context_text", _slot_value(ctx, "source_venue_context_text"))
+    _require_nonblank_context_text("source_pair_context_text", _slot_value(ctx, "source_pair_context_text"))
 
 
 # --- closed root-evidence option-sum (NoRootEvidence | EstablishedRootEvidence) -------------------
@@ -447,8 +470,8 @@ def _require_root_evidence_option(value):
     if type(value) is NoRootEvidence:
         return value
     if type(value) is EstablishedRootEvidence:
-        _revalidate_established_root_context(value.root_context)
-        _require_canonical_anchor_timestamp_text(value.provenance_anchor_timestamp_text)
+        _revalidate_established_root_context(_slot_value(value, "root_context"))
+        _require_canonical_anchor_timestamp_text(_slot_value(value, "provenance_anchor_timestamp_text"))
         return value
     raise LogicalModelError(
         "root_evidence must be NoRootEvidence or EstablishedRootEvidence, not {}".format(type(value).__name__)
@@ -499,10 +522,13 @@ def _revalidate_lifecycle_slot(slot):
         raise LogicalModelError(
             "snapshot entry value must be an exact ShadowIntentLifecycleSlot, not {}".format(type(slot).__name__)
         )
-    _revalidate_silver_pair_key(slot.shadow_intent_identity_reference)
-    validate_lifecycle_state(slot.lifecycle_state)
-    _require_root_evidence_option(slot.root_evidence)
-    _require_slot_state_root_invariant(slot.lifecycle_state, slot.root_evidence)
+    identity = _slot_value(slot, "shadow_intent_identity_reference")
+    state = _slot_value(slot, "lifecycle_state")
+    root = _slot_value(slot, "root_evidence")
+    _revalidate_silver_pair_key(identity)
+    validate_lifecycle_state(state)
+    _require_root_evidence_option(root)
+    _require_slot_state_root_invariant(state, root)
 
 
 # --- shadow snapshot (one type for both RowStartShadowSnapshot / NextShadowSnapshot roles) --------
@@ -543,7 +569,7 @@ def make_shadow_lifecycle_snapshot(*, slot_entries):
         key, slot = entry
         _revalidate_silver_pair_key(key)
         _revalidate_lifecycle_slot(slot)
-        if key != slot.shadow_intent_identity_reference:
+        if key != _slot_value(slot, "shadow_intent_identity_reference"):
             raise LogicalModelError("snapshot key must equal slot.shadow_intent_identity_reference")
         if key in built:
             raise LogicalModelError("duplicate Silver-pair key in slot_entries is structurally invalid")

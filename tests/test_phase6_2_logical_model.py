@@ -625,6 +625,138 @@ def test_seen_pairs_snapshot_equality_is_set_content_order_independent():
     assert a != c
 
 
+# --- Missing-slot object.__new__ forgery: every guarded slot read => LogicalModelError -----------
+# A pytest.raises(lm.LogicalModelError) inherently proves NO raw AttributeError escaped (AttributeError
+# is not a subclass of LogicalModelError). Each carrier is forged via object.__new__ WITHOUT populating
+# the named slot, then routed through the public surface that revalidates it.
+
+def _new(cls):
+    return object.__new__(cls)  # bypass __init__/__post_init__; leaves declared slots UNSET
+
+
+def _valid_slot_for(key):
+    return lm.ShadowIntentLifecycleSlot(
+        shadow_intent_identity_reference=key, lifecycle_state=lm.AUDIT_REPLAYED,
+        root_evidence=lm.NoRootEvidence(),
+    )
+
+
+def test_forged_missing_slot_silver_key_via_revalidate_paths():
+    # _revalidate_silver_pair_key reaches: artifact entries, shadow-snapshot key, seen members
+    forged = _new(lm.OpaqueSilverPairKey)  # neither slot set
+    with pytest.raises(lm.LogicalModelError):
+        lm.make_shadow_intent_definition_artifact(
+            artifact_field_shape_version_reference="v", artifact_version_reference="v",
+            declarer_opaque_reference="d", predecessor_artifact_version_reference=lm.NoPredecessor(),
+            definition_entries=((forged, _inert()),),
+        )
+    with pytest.raises(lm.LogicalModelError):
+        lm.make_shadow_lifecycle_snapshot(slot_entries=((forged, _valid_slot_for(_silver())),))
+    with pytest.raises(lm.LogicalModelError):
+        lm.make_seen_target_pairs_snapshot(members=(forged,))
+
+
+def test_forged_missing_slot_silver_key_partial_second_slot():
+    # locator set, position slot UNSET => guarded read of the second slot must raise LogicalModelError
+    forged = _new(lm.OpaqueSilverPairKey)
+    object.__setattr__(forged, "silver_artifact_locator_text", "loc")
+    with pytest.raises(lm.LogicalModelError):
+        lm.make_seen_target_pairs_snapshot(members=(forged,))
+
+
+def test_forged_missing_slot_established_context_via_root_evidence():
+    # _revalidate_established_root_context reached through EstablishedRootEvidence construction
+    forged_ctx = _new(lm.EstablishedRootContext)  # neither scalar set
+    with pytest.raises(lm.LogicalModelError):
+        lm.EstablishedRootEvidence(root_context=forged_ctx, provenance_anchor_timestamp_text="1")
+    # pair scalar UNSET (venue set) => guarded read of the second scalar raises
+    forged_ctx2 = _new(lm.EstablishedRootContext)
+    object.__setattr__(forged_ctx2, "source_venue_context_text", "venue")
+    with pytest.raises(lm.LogicalModelError):
+        lm.EstablishedRootEvidence(root_context=forged_ctx2, provenance_anchor_timestamp_text="1")
+
+
+def test_forged_missing_slot_established_root_evidence_via_option():
+    # _require_root_evidence_option reads root_context / provenance_anchor_timestamp_text
+    forged_ev = _new(lm.EstablishedRootEvidence)  # neither slot set
+    with pytest.raises(lm.LogicalModelError):
+        lm.ShadowIntentLifecycleSlot(
+            shadow_intent_identity_reference=_silver(), lifecycle_state=lm.INTENT_RECORDED,
+            root_evidence=forged_ev,
+        )
+    # root_context set (forged but valid), anchor slot UNSET => guarded anchor read raises
+    forged_ev2 = _new(lm.EstablishedRootEvidence)
+    object.__setattr__(forged_ev2, "root_context", _ctx())
+    with pytest.raises(lm.LogicalModelError):
+        lm.ShadowIntentLifecycleSlot(
+            shadow_intent_identity_reference=_silver(), lifecycle_state=lm.INTENT_RECORDED,
+            root_evidence=forged_ev2,
+        )
+
+
+def test_forged_missing_slot_lifecycle_slot_each_field_via_snapshot():
+    k = _silver("a", "0")
+    # (i) identity slot UNSET
+    s_no_id = _new(lm.ShadowIntentLifecycleSlot)
+    object.__setattr__(s_no_id, "lifecycle_state", lm.AUDIT_REPLAYED)
+    object.__setattr__(s_no_id, "root_evidence", lm.NoRootEvidence())
+    with pytest.raises(lm.LogicalModelError):
+        lm.make_shadow_lifecycle_snapshot(slot_entries=((k, s_no_id),))
+    # (ii) lifecycle_state slot UNSET
+    s_no_state = _new(lm.ShadowIntentLifecycleSlot)
+    object.__setattr__(s_no_state, "shadow_intent_identity_reference", k)
+    object.__setattr__(s_no_state, "root_evidence", lm.NoRootEvidence())
+    with pytest.raises(lm.LogicalModelError):
+        lm.make_shadow_lifecycle_snapshot(slot_entries=((k, s_no_state),))
+    # (iii) root_evidence slot UNSET
+    s_no_root = _new(lm.ShadowIntentLifecycleSlot)
+    object.__setattr__(s_no_root, "shadow_intent_identity_reference", k)
+    object.__setattr__(s_no_root, "lifecycle_state", lm.AUDIT_REPLAYED)
+    with pytest.raises(lm.LogicalModelError):
+        lm.make_shadow_lifecycle_snapshot(slot_entries=((k, s_no_root),))
+    # (iv) wholly-empty forged slot
+    with pytest.raises(lm.LogicalModelError):
+        lm.make_shadow_lifecycle_snapshot(slot_entries=((k, _new(lm.ShadowIntentLifecycleSlot)),))
+
+
+# --- Exact-API proofs: keyword-only factories, pinned names only, forbidden aliases absent --------
+
+def test_snapshot_factories_reject_positional_and_misnamed_arguments():
+    k = _silver("a", "0")
+    with pytest.raises(TypeError):
+        lm.make_shadow_lifecycle_snapshot(((k, _valid_slot_for(k)),))   # positional
+    with pytest.raises(TypeError):
+        lm.make_shadow_lifecycle_snapshot(entries=())                   # misnamed kwarg
+    with pytest.raises(TypeError):
+        lm.make_seen_target_pairs_snapshot((k,))                        # positional
+    with pytest.raises(TypeError):
+        lm.make_seen_target_pairs_snapshot(items=())                    # misnamed kwarg
+
+
+def test_only_charter_pinned_names_resolve():
+    for name in (
+        "EstablishedRootContext", "EstablishedRootEvidence", "NoRootEvidence",
+        "ShadowIntentLifecycleSlot", "ShadowLifecycleSnapshot", "SeenTargetPairsSnapshot",
+        "make_shadow_lifecycle_snapshot", "make_seen_target_pairs_snapshot",
+    ):
+        assert hasattr(lm, name), name
+    # exact single field names
+    assert tuple(f.name for f in dataclasses.fields(lm.ShadowLifecycleSnapshot)) == ("slots_by_identity",)
+    assert tuple(f.name for f in dataclasses.fields(lm.SeenTargetPairsSnapshot)) == ("seen_target_pairs",)
+
+
+def test_forbidden_role_aliases_and_alternative_names_do_not_resolve():
+    for forbidden in (
+        # 457d279 §3 Step role names must NOT be class/alias names in Slice A
+        "RowStartShadowSnapshot", "NextShadowSnapshot", "RowStartSeenTargetPairs", "NextSeenTargetPairs",
+        # alternative representation / factory / field names rejected by the charter ambiguity ban
+        "ShadowSnapshot", "ShadowState", "SeenTargetPairs", "SeenPairsSnapshot",
+        "make_shadow_snapshot", "make_seen_pairs", "make_seen_target_pairs",
+        "slots", "seen_pairs",
+    ):
+        assert not hasattr(lm, forbidden), forbidden
+
+
 # --- Slice-A ownership: logical_model remains an intra-package leaf ------------------------------
 
 def test_logical_model_is_intra_package_leaf_stdlib_only():
