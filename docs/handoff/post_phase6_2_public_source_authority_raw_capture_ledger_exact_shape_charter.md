@@ -33,8 +33,10 @@ validation** (named here, never silently assumed):
   only non-negativity.
 - **RV-5** `clock_anomaly_evidence` is the exact §8.3 derivation (`1` iff `retrieval_completed_epoch_ms <
   retrieval_started_epoch_ms`, else `0`) from the §8.1/§8.2 epoch samples — beyond the stored §4 epoch coupling.
-- **RV-6** `failure_payload` exact UTF-8 JSON encoding law (§5.3): parse-then-re-encode byte-for-byte equality
-  before INSERT; SQLite cannot validate the JSON shape/redaction.
+- **RV-6** `failure_payload` exact UTF-8 JSON encoding law (§5.3): the INSERT text must equal an
+  `expected_failure_payload` **derived directly from the current caught exception** (`type(exc).__name__` + ordered
+  `exc.args`) byte-for-byte — candidate re-encoding is at most an extra shape check, never sufficient provenance;
+  SQLite cannot validate this.
 - **RV-7** — a **deferred downstream validation boundary** (§9): inter-ordinal retry authorization / gapless
   progression is **not implemented or claimed here**; it is owned by the future projection/S1 charter. DDL checks only
   `attempt_ordinal >= 1` and per-triple uniqueness/transition order.
@@ -455,8 +457,22 @@ raw-fetch failure payloads; the future processing-journal failure taxonomy remai
   `json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)`; store the resulting
   **exact JSON text** directly in `failure_payload`, with **no trailing newline and no surrounding whitespace**.
 - The serialization is **deterministic across repeated construction** from equal exception type/args.
-- **RV-6 runtime validation** must, before INSERT, **parse the stored text, re-encode it under this exact law, and
-  require byte-for-byte UTF-8 equality** — otherwise fail-fast (no attempt row).
+**RV-6 validation provenance (binding — exception-derived, not candidate-reparse):**
+
+1. The runtime receives **no caller-supplied `failure_payload`**.
+2. **While the current caught exception `exc` is still in scope**, construct the logical payload **directly and
+   exclusively** from: exact `type(exc).__name__`; exact ordered `exc.args`; the already-pinned STRING / NON_STRING
+   encoding; and the already-pinned bounded memory-address sanitizer.
+3. Serialize that **directly-derived** payload **once** under the pinned `json.dumps` law; name the resulting UTF-8
+   text **`expected_failure_payload`**.
+4. The text proposed for INSERT must equal **`expected_failure_payload` byte-for-byte**.
+5. Parsing and canonical re-encoding of any candidate text **may be retained only as an additional closed-shape /
+   canonicality check** — it is **never** sufficient provenance validation by itself.
+6. A canonical JSON document **unrelated to the current caught exception is rejected** even if its schema, ordering,
+   and encoding are otherwise valid.
+7. **Any mismatch fails fast before INSERT:** no attempt row; no durable claim; no fabricated replacement payload.
+8. After successful equality validation, **INSERT exactly `expected_failure_payload`** — not a separately
+   reconstructed or caller-provided string.
 
 ---
 
