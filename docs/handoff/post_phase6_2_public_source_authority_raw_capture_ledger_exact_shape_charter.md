@@ -28,10 +28,13 @@ validation** (named here, never silently assumed):
   parse BLOB structure).
 - **RV-3** exact `slug` / `token_id` full-match grammar and percent/Unicode/oversize rejection (§5) — DDL applies
   only a coarse target-prefix check.
-- **RV-4** `retrieval_elapsed_monotonic_ns` originates from a genuine monotonic clock (§8); DDL checks only
-  non-negativity.
-- **RV-5** `clock_anomaly_evidence` derivation correctness beyond the stored epoch coupling (§8).
-- **RV-6** `failure_payload` canonical address-free exact-type+string-args form (§5/§4).
+- **RV-4** `retrieval_elapsed_monotonic_ns` is the exact `time.monotonic_ns()` completed−started delta sampled at the
+  §8.1/§8.2 hooks (genuine monotonic source; a negative delta is a fail-fast defect that writes no row); DDL checks
+  only non-negativity.
+- **RV-5** `clock_anomaly_evidence` is the exact §8.3 derivation (`1` iff `retrieval_completed_epoch_ms <
+  retrieval_started_epoch_ms`, else `0`) from the §8.1/§8.2 epoch samples — beyond the stored §4 epoch coupling.
+- **RV-6** `failure_payload` exact UTF-8 JSON encoding law (§5.3): parse-then-re-encode byte-for-byte equality
+  before INSERT; SQLite cannot validate the JSON shape/redaction.
 - **RV-7** — a **deferred downstream validation boundary** (§9): inter-ordinal retry authorization / gapless
   progression is **not implemented or claimed here**; it is owned by the future projection/S1 charter. DDL checks only
   `attempt_ordinal >= 1` and per-triple uniqueness/transition order.
@@ -418,6 +421,43 @@ grammars are conservative bounded forms; the runtime full-match is authoritative
   decompression, retry, fallback, and cache substitution. No credential/auth/signing/cookie header is ever set by the
   application or required by the allowlisted endpoints.
 
+### 5.3 `failure_payload` Exact Encoding Law (RV-6 — the single, exact encoding)
+
+`failure_payload` (the `raw_fetch_attempt_log` failure column) is **exactly** the deterministic UTF-8 JSON document
+below. This is the **only** `failure_payload` encoding law in this charter. The raw-only runtime owns **only**
+raw-fetch failure payloads; the future processing-journal failure taxonomy remains **separately blocked**.
+
+**Logical payload:**
+
+```json
+{
+  "exception_type": "<exact type(exc).__name__>",
+  "args": [
+    {"kind": "STRING", "value": "<sanitized exact string arg>"},
+    {"kind": "NON_STRING", "type": "<exact type(arg).__name__>"}
+  ]
+}
+```
+
+**Rules:**
+
+- `exception_type` is exactly `type(exc).__name__` — **never** module repr, object repr, traceback, cause (`__cause__`),
+  context (`__context__`), `__dict__`, `id`, or memory address.
+- Preserve exact **exception argument order**.
+- For each arg, if `type(arg) is str`, emit exactly `{"kind":"STRING","value":sanitized_arg}`; **otherwise** emit
+  **only** `{"kind":"NON_STRING","type":type(arg).__name__}`.
+- **Never call `str()` or `repr()` on non-string args** (only `type(arg).__name__` is read).
+- **Sanitize string args with one pinned substitution only** — the case-insensitive regex
+  `(?<=\bat )0x[0-9a-f]{6,}(?=>)` replaced with `<memory-address-redacted>`. This redacts Python object-repr forms
+  such as `object at 0xABCDEF>` **without** broadly deleting legitimate standalone hexadecimal evidence.
+  **Do not redact arbitrary `0x…` values outside that exact object-repr context.**
+- Serialize with exactly
+  `json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)`; store the resulting
+  **exact JSON text** directly in `failure_payload`, with **no trailing newline and no surrounding whitespace**.
+- The serialization is **deterministic across repeated construction** from equal exception type/args.
+- **RV-6 runtime validation** must, before INSERT, **parse the stored text, re-encode it under this exact law, and
+  require byte-for-byte UTF-8 equality** — otherwise fail-fast (no attempt row).
+
 ---
 
 ## 6. `collector_commit_sha` — Caller-Supplied Opaque Provenance
@@ -630,17 +670,71 @@ A semantically equivalent but **text-different** external schema is **intentiona
 
 ---
 
-## 8. Forensic Clock Law
+## 8. Forensic Clock Law & Exact Sampling Hooks
+
+**Purpose:** deterministic forensic **cross-execution comparability** of the network-operation interval (this is **not**
+"inter-ordinal timing consistency" — the raw-only runtime writes **no** processing-journal ordinal).
 
 - **UTC wall-clock epoch** values (`retrieval_started_epoch_ms`, `retrieval_completed_epoch_ms`) carry **retrieval
   provenance only**.
-- **Monotonic time** (`retrieval_elapsed_monotonic_ns`) is the **sole** authority for elapsed-duration measurement
-  (RV-4).
-- **The schema does NOT require `retrieval_completed_epoch_ms >= retrieval_started_epoch_ms`.** A backward wall-clock
-  observation is **legal evidence**: it sets `clock_anomaly_evidence = 1` (the §4 CHECK couples the two). Both original
-  epoch readings are preserved **verbatim** — never rewritten, clamped, sorted, or fabricated.
-- The timing law applies **consistently** to successful captures (`raw_capture_log`) **and** to recorded failed
-  attempts (`raw_fetch_attempt_log`), both of which always carry started/completed/elapsed/anomaly fields.
+- **Monotonic time** is the **sole** authority for elapsed-duration measurement; only the derived
+  `retrieval_elapsed_monotonic_ns` is stored (the start/completed monotonic samples are runtime-internal).
+
+### 8.1 Measured interval (binding)
+
+**Preconditions (all complete before sampling begins):** all input guards complete; path isolation, ledger
+initialization/fingerprint, and transaction-readiness preflight complete; the per-call transport/session object is
+successfully constructed; **no network request has yet been invoked.**
+
+**Start samples — in exact order, immediately before the single transport request invocation:**
+
+1. `retrieval_started_epoch_ms = time.time_ns() // 1_000_000`
+2. `retrieval_started_monotonic_ns = time.monotonic_ns()`
+3. invoke the single request.
+
+The measured interval **includes** DNS resolution, connect, TLS handshake, request transmission, response headers, and
+response-body streaming. It **excludes** input/ledger preflight, session construction, hashing, header serialization,
+and ledger writes.
+
+### 8.2 Completion samples (binding)
+
+**Successful / completed HTTP response** — after EOF confirms the final response entity byte has been read into the
+bounded in-memory body, and **before** hashing, header-payload encoding, response-context cleanup, or ledger work,
+sample in exact order:
+
+1. `retrieval_completed_monotonic_ns = time.monotonic_ns()`
+2. `retrieval_completed_epoch_ms = time.time_ns() // 1_000_000`
+
+**Mapped transport / timeout / protocol failure** — sample the **same** completion pair (monotonic then epoch)
+immediately upon entering the **first** mapped exception handler, **before** `failure_payload` construction or
+failure-attempt ledger writing.
+
+**`RESPONSE_TOO_LARGE`** — detection occurs when accepting the next chunk would make cumulative entity bytes exceed
+**exactly 16 MiB**; **retain no partial body as RAW_CAPTURED**; sample the completion pair **immediately at that
+detection point**, before discard/close/failure serialization.
+
+### 8.3 Exact derivations (binding)
+
+```
+retrieval_elapsed_monotonic_ns = retrieval_completed_monotonic_ns - retrieval_started_monotonic_ns
+clock_anomaly_evidence         = 1 if retrieval_completed_epoch_ms < retrieval_started_epoch_ms else 0
+```
+
+### 8.4 Rules (binding)
+
+- **No** clamp, `max()`, substitution, wall-clock duration, fabricated completion, or timestamp reordering. Both
+  original epoch readings are preserved **verbatim** (the §4 CHECK couples `clock_anomaly_evidence` to them; the schema
+  does **NOT** require `retrieval_completed_epoch_ms >= retrieval_started_epoch_ms`).
+- A **negative monotonic delta** is an unexpected **fail-fast runtime defect** and produces **no fabricated attempt
+  row**.
+- **Ledger / hash / header-encoding duration is NOT included** in the measured interval.
+- The total **10000 ms** transport timeout **starts at the single request invocation** and applies to the measured
+  network operation.
+- **Preflight / input failures occur before this interval and write no attempt row.**
+- An **unexpected session-construction failure before start sampling** remains **fail-fast and writes no invented
+  attempt evidence**.
+- The sampling law applies **consistently** to successful captures (`raw_capture_log`) **and** to recorded failed
+  attempts (`raw_fetch_attempt_log`), both of which carry started/completed-epoch + derived elapsed + anomaly fields.
 
 ---
 
@@ -771,7 +865,8 @@ source-authority/method/host/target/body coupling and exact Hyperliquid body byt
 `100..599`, lowercase-64/40 SHA shapes, BLOB storage classes, outcome-conditional `capture_sequence`/`failure_*`
 nullability, both capture/attempt foreign keys, non-negative sequences/ordinals/timestamps/durations, and the full
 journal cardinality + transition order — with the residue (digest equality, header-blob structure, exact slug/token
-grammar, monotonic-source genuineness, anomaly-derivation, address-free payloads, gapless ordinals, transport limits,
+grammar, monotonic-source genuineness, anomaly-derivation, the §5.3 exact `failure_payload` JSON encoding law,
+gapless ordinals, transport limits,
 and the schema-fingerprint/PRAGMA/path-isolation preflight) explicitly assigned to **fail-fast runtime validation
 (RV-1…RV-9)**; append-only `BEFORE UPDATE`/`BEFORE DELETE` triggers fail-closed **inside the conforming schema only
 (not tamper-proof, not tamper-evident against a privileged owner)**; the future runtime API is a docs-only one-shot
