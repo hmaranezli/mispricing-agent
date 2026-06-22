@@ -574,9 +574,3 @@ def test_runtime_has_no_test_or_fixture_awareness():
     for token in ("pytest", "monkeypatch", "conftest", "unittest",
                   "negative_evidence_rows", "import tests"):
         assert token not in text, token
-
-
-def test_slice_f_target_not_created():
-    # Slice E (atomic_replay_step.py) is now built; only the Slice-F reconstruction fold remains absent.
-    for absent in ("reconstruction.py",):
-        assert not (_package_dir() / absent).exists(), absent
