@@ -32,13 +32,22 @@ validation** (named here, never silently assumed):
   non-negativity.
 - **RV-5** `clock_anomaly_evidence` derivation correctness beyond the stored epoch coupling (§8).
 - **RV-6** `failure_payload` canonical address-free exact-type+string-args form (§5/§4).
-- **RV-7** `attempt_ordinal` gapless retry-law progression (ordinal *N* opened only under §9 retry law) — DDL checks
-  only `>= 1` and per-triple uniqueness.
+- **RV-7** — a **deferred downstream validation boundary** (§9): inter-ordinal retry authorization / gapless
+  progression is **not implemented or claimed here**; it is owned by the future projection/S1 charter. DDL checks only
+  `attempt_ordinal >= 1` and per-triple uniqueness/transition order.
 - **RV-8** TLS/cert verification, redirect refusal, decompression-disabled, timeouts, ≤16 MiB cap, one-request-per-call
   (§2) — transport-layer, not schema.
-- **RV-9** schema-fingerprint + PRAGMA + path-isolation preflight (§4) — runtime-computed before any network I/O.
+- **RV-9** exact reference-catalog comparison + PRAGMA + S1 path-isolation preflight (§4B/§4B.1) — runtime-computed
+  before any network I/O.
+- **RV-10** **capture/attempt commit reconciliation** (§10): SQLite cannot enforce the reverse "every capture row has
+  exactly one provenance-matching `RAW_COMMITTED` attempt at commit" under an append-only insertion model. After both
+  inserts and **before `COMMIT`**, the conforming runtime must query **inside the same transaction** and prove
+  **exactly one** `raw_capture_log` row and **exactly one** provenance-matching `RAW_COMMITTED` `raw_fetch_attempt_log`
+  row; **any mismatch rolls back and raises `RawLedgerCommitError`**, **no RAW_CAPTURED is claimed**, and **the
+  conforming runtime accepts no silent orphan**. A **privileged direct SQL writer is NOT prevented from bypassing
+  RV-10** (this is a conforming-runtime obligation, not a schema guarantee).
 
-No prose invariant is claimed that the DDL silently accepts in violation **unless** it appears in RV-1…RV-9 with an
+No prose invariant is claimed that the DDL silently accepts in violation **unless** it appears in RV-1…RV-10 with an
 explicit runtime owner.
 
 ---
@@ -86,8 +95,10 @@ Exactly **three** closed source-authority variants; no fourth; no free-form URI/
 
 A **separate caller-owned SQLite database path**, distinct from S1:
 
-- Must **not equal, alias, canonical-path-collide with, attach, replace, or share** the S1 database path (§4 preflight
-  enforces).
+- Must **not equal, alias, canonical-path-collide with, attach, replace, or share** the S1 database path. The S1 path
+  is supplied by the caller as the mandatory `s1_ledger_path` argument (§7) **only** for disjointness checking; raw
+  acquisition **never opens, reads, imports, attaches, queries, mutates, or initializes S1**, and uses no global
+  state, hidden config, environment lookup, or S1-package import (§4B step 1 enforces, before network I/O).
 - `PRAGMA journal_mode=WAL`; `PRAGMA synchronous=FULL`; `PRAGMA foreign_keys=ON`.
 - **No** `ATTACH DATABASE`; **no** `UPDATE`/`DELETE`/`REPLACE`/UPSERT/destructive DDL/vacuum-rewrite/mutation of
   committed evidence (§2-trigger enforced + §0 bans).
@@ -154,7 +165,10 @@ CREATE TABLE IF NOT EXISTS raw_capture_log (
             AND http_method = 'POST' AND request_host = 'api.hyperliquid.xyz'
             AND request_target = '/info'
             AND request_body = X'7b2274797065223a226d657461416e64417373657443747873227d')
-    )
+    ),
+    -- §3 parent key for the composite provenance FK from raw_fetch_attempt_log (trivially unique because
+    -- capture_sequence is already the primary key; declared so the composite FK has a valid parent target):
+    UNIQUE (capture_sequence, source_authority, request_target, collector_commit_sha)
 );
 ```
 
@@ -208,7 +222,19 @@ CREATE TABLE IF NOT EXISTS raw_fetch_attempt_log (
         OR (outcome IN ('TRANSPORT_FAILED','TIMEOUT','RESPONSE_TOO_LARGE','HTTP_PROTOCOL_FAILED')
             AND capture_sequence IS NULL AND failure_code IS NOT NULL AND failure_payload IS NOT NULL)
     ),
-    FOREIGN KEY (capture_sequence) REFERENCES raw_capture_log (capture_sequence)
+    -- closed outcome -> failure_code mapping (RAW_COMMITTED has NULL failure_code; failures map 1:1):
+    CHECK (
+        (outcome = 'RAW_COMMITTED'        AND failure_code IS NULL)
+        OR (outcome = 'TRANSPORT_FAILED'     AND failure_code = 'RAW_TRANSPORT_ERROR')
+        OR (outcome = 'TIMEOUT'              AND failure_code = 'RAW_TIMEOUT')
+        OR (outcome = 'RESPONSE_TOO_LARGE'   AND failure_code = 'RAW_RESPONSE_TOO_LARGE')
+        OR (outcome = 'HTTP_PROTOCOL_FAILED' AND failure_code = 'RAW_HTTP_PROTOCOL_ERROR')
+    ),
+    -- composite provenance FK: a RAW_COMMITTED attempt must reference the SAME-provenance capture row.
+    -- Failure attempts carry capture_sequence NULL; under MATCH SIMPLE a composite FK with any NULL
+    -- referencing column is not enforced, so failure attempts remain allowed.
+    FOREIGN KEY (capture_sequence, source_authority, request_target, collector_commit_sha)
+        REFERENCES raw_capture_log (capture_sequence, source_authority, request_target, collector_commit_sha)
 );
 
 -- exactly one RAW_COMMITTED attempt per captured response:
@@ -314,6 +340,19 @@ WHEN EXISTS (
 BEGIN
     SELECT RAISE(ABORT, 'raw_processing_journal: no event may follow a reconciled terminal');
 END;
+
+-- once reconciliation has begun, only a reconciled terminal may close the ordinal: an ordinary
+-- SUCCEEDED/FAILED is forbidden after RECONCILIATION_REQUIRED (closes the transition hole):
+CREATE TRIGGER IF NOT EXISTS trg_journal_no_ordinary_terminal_after_reconreq
+BEFORE INSERT ON raw_processing_journal
+WHEN NEW.event_kind IN ('SUCCEEDED','FAILED')
+ AND EXISTS (
+    SELECT 1 FROM raw_processing_journal
+    WHERE capture_sequence = NEW.capture_sequence AND stage = NEW.stage
+      AND attempt_ordinal = NEW.attempt_ordinal AND event_kind = 'RECONCILIATION_REQUIRED')
+BEGIN
+    SELECT RAISE(ABORT, 'raw_processing_journal: ordinary terminal forbidden after RECONCILIATION_REQUIRED');
+END;
 ```
 
 `OUTCOME_UNKNOWN` is a **derived read-time status** for a `STARTED` with no terminal after restart; it is **never
@@ -404,10 +443,19 @@ Pinned **shape only** of the future one-shot runtime (built only after independe
       *,
       request: PublicSourceRequest,
       raw_ledger_path: str,
+      s1_ledger_path: str,
       collector_commit_sha: str,
   ) -> RawCaptureCommitted:
       ...
   ```
+
+  `s1_ledger_path` is a **mandatory exact-`str`** argument that exists **solely for caller-injected path-isolation
+  checking**. Raw acquisition **never** opens, reads, imports, attaches, queries, mutates, or initializes S1; there is
+  **no** global state, hidden config, environment lookup, or S1-package import. The preflight (§4B step 1) uses both
+  paths only to **prove disjointness** before any network I/O: reject empty/NUL paths; canonicalize each path and its
+  resolved parent / final-component target; when **both** paths exist, additionally apply same-file / device+inode
+  equivalence; and reject equality, symlink alias, canonical collision, or same-file identity. S1 is never opened — it
+  is only compared as a path.
 
 - **Frozen, slotted, keyword-only request variants** (the three allowlisted authorities; closed sum
   `PublicSourceRequest`):
@@ -438,20 +486,23 @@ Pinned **shape only** of the future one-shot runtime (built only after independe
       response_body_sha256: str
   ```
 
-- **Exact argument types:** `request` is exactly one of the three frozen variant types; `raw_ledger_path` is `str`;
-  `collector_commit_sha` is `str`.
+- **Exact argument types:** `request` is exactly one of the three frozen variant types; `raw_ledger_path`,
+  `s1_ledger_path`, and `collector_commit_sha` are each exact `str`.
 - **Exact guard order (all guards run before any network I/O):**
   1. `type(request)` is one of the three exact variant classes — else
      `TypeError("request must be an exact PublicSourceRequest variant")`.
-  2. `type(raw_ledger_path) is str` and `type(collector_commit_sha) is str` — else
-     `TypeError("raw_ledger_path and collector_commit_sha must be exact str")`.
-  3. `collector_commit_sha` matches `^[0-9a-f]{40}$` — else
+  2. `type(raw_ledger_path) is str` and `type(s1_ledger_path) is str` and `type(collector_commit_sha) is str` — else
+     `TypeError("raw_ledger_path, s1_ledger_path, and collector_commit_sha must be exact str")`.
+  3. `raw_ledger_path` and `s1_ledger_path` are non-empty and contain no NUL byte — else
+     `ValueError("raw_ledger_path and s1_ledger_path must be non-empty NUL-free paths")`.
+  4. `collector_commit_sha` matches `^[0-9a-f]{40}$` — else
      `ValueError("collector_commit_sha must be exactly 40 lowercase hex characters")`.
-  4. variant payload grammar (§5.1): `slug` / `token_id` full-match — else
+  5. variant payload grammar (§5.1): `slug` / `token_id` full-match — else
      `ValueError("slug must match ^[0-9a-z][0-9a-z-]{0,254}$")` /
      `ValueError("token_id must match ^[0-9]{1,80}$")`.
-  5. ledger preflight (§4 / §4B): path isolation + open + PRAGMA + init + fingerprint + FK + transaction-readiness —
-     else a `RawLedgerPreflightError`.
+  6. ledger preflight (§4 / §4B): **S1 path-isolation** (`raw_ledger_path` vs `s1_ledger_path`: equality / symlink
+     alias / canonical collision / same-file identity) + open + PRAGMA + init + fingerprint + FK +
+     transaction-readiness — else a `RawLedgerPreflightError`.
 - **Closed acquisition/ledger exception hierarchy:**
 
   ```
@@ -465,15 +516,19 @@ Pinned **shape only** of the future one-shot runtime (built only after independe
   ├── RawTimeoutError                      (commits a TIMEOUT attempt row; NO result)
   ├── RawResponseTooLargeError             (commits a RESPONSE_TOO_LARGE attempt row; NO result)
   ├── RawHttpProtocolError                 (commits an HTTP_PROTOCOL_FAILED attempt row; NO result)
-  └── RawLedgerCommitError                 (success-transaction commit failed; NO durable row; NO result; fail-fast)
+  └── RawLedgerCommitError                 (a ledger transaction could not commit; NO durable row; NO result; fail-fast)
   ```
 
-- **Which failures append a `raw_fetch_attempt_log` row:** `RawTransportError` / `RawTimeoutError` /
-  `RawResponseTooLargeError` / `RawHttpProtocolError` (a single committed **failure** attempt row with
-  `capture_sequence` NULL).
-- **Which failures append no row:** all `RawLedgerPreflightError` subtypes and the input-guard `TypeError`/`ValueError`
-  (raised before any network attempt); and `RawLedgerCommitError` (the transaction could not commit, so nothing is
-  durable).
+- **`RawLedgerCommitError` covers BOTH** (a) the **successful-response** capture/RAW_COMMITTED transaction failing to
+  commit (§10 / RV-10) **and** (b) a **failure-attempt** transaction failing to commit: if committing a failure
+  attempt row fails, **no failure row is claimed durable**, `RawLedgerCommitError` is raised, **no acquisition
+  result** is returned, and **no retry occurs inside this callable**.
+- **Which failures append a durable `raw_fetch_attempt_log` row:** `RawTransportError` / `RawTimeoutError` /
+  `RawResponseTooLargeError` / `RawHttpProtocolError` — **iff** their single failure-attempt transaction commits (one
+  failure row, exact mapped `failure_code`, `capture_sequence` NULL).
+- **Which failures append no durable row:** all `RawLedgerPreflightError` subtypes and the input-guard
+  `TypeError`/`ValueError` (raised before any network attempt); and `RawLedgerCommitError` (any ledger transaction —
+  success or failure-attempt — that could not commit, so nothing is durable).
 - **Which failures return no result:** **all** of them — `RawCaptureCommitted` is returned **only** after a
   successful local ledger commit (RAW_CAPTURED).
 - The callable exposes **no** custom URL, arbitrary headers, retry count, timeout override, projection, S1 write,
@@ -485,15 +540,39 @@ Pinned **shape only** of the future one-shot runtime (built only after independe
 
 Before **every** request, the runtime must, in order, **fail before network I/O** on any mismatch:
 
-1. **raw-ledger path validation** (exists/creatable; canonicalized; **not equal/alias/canonical-collision with the S1
-   path**);
+1. **path validation + S1 isolation** (caller-injected `raw_ledger_path` and `s1_ledger_path`): reject empty/NUL
+   paths; canonicalize each path **and** its resolved parent / final-component target; when **both** paths exist,
+   additionally apply **same-file / device+inode** equivalence; **reject** equality, symlink alias, canonical
+   collision, or same-file identity ⇒ `RawLedgerPathError`. **S1 is never opened — only compared as a path.**
+   (`raw_ledger_path` must also be creatable for the raw ledger itself.)
 2. **database open**;
 3. **PRAGMA verification** (`journal_mode=WAL`, `synchronous=FULL`, `foreign_keys=ON` actually in effect);
 4. **idempotent initialization** (the `CREATE … IF NOT EXISTS` DDL of §4 / §4A);
-5. **exact schema fingerprint comparison** — the normalized set of `sqlite_master (type, name, sql)` rows for the
-   pinned tables/indexes/triggers must equal the pinned expected fingerprint (runtime-computed; RV-9);
+5. **exact reference-catalog comparison** (§4B.1 — no normalization; exact-shape contract; RV-9);
 6. **foreign-key verification** (`PRAGMA foreign_key_check` returns no rows);
 7. **transaction-readiness preflight** (a no-op `BEGIN IMMEDIATE` / `ROLLBACK` succeeds, confirming writability).
+
+### 4B.1 Exact reference-catalog comparison algorithm (binding)
+
+There is **no** "normalized schema set." The comparison is exact and text-literal:
+
+1. Build a **private in-memory reference SQLite database** by executing the **exact pinned DDL constants** of §4 / §4A
+   (and §4.5) under the **same `sqlite3` runtime** as the candidate ledger. The reference catalog is generated
+   **fresh from the immutable DDL constants, never from the candidate database**.
+2. Query **both** the reference and the candidate with the **exact same closed catalog query**:
+   `SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name, tbl_name`.
+3. Compare the resulting **exact ordered tuples `(type, name, tbl_name, sql)`** for every non-internal
+   table/index/trigger/view, ordered by `(type, name, tbl_name)`. Exclude **only** names beginning with `sqlite_`.
+4. Perform **no** whitespace, case, SQL-text, token, or AST normalization. **Reject** every **extra, missing,
+   NULL-different, or text-different** tuple ⇒ `RawLedgerSchemaFingerprintError`.
+5. **Separately** compare, per pinned table, the **exact ordered outputs** of `PRAGMA table_xinfo(<table>)`,
+   `PRAGMA foreign_key_list(<table>)`, `PRAGMA index_list(<table>)` + `PRAGMA index_xinfo(<index>)`, and the
+   **required `PRAGMA` values** (`journal_mode=wal`, `synchronous=2` [FULL], `foreign_keys=1`) — any difference ⇒
+   `RawLedgerSchemaFingerprintError` / `RawLedgerPragmaError`.
+6. **Reject unknown views or any other non-internal object** present in the candidate but absent from the reference.
+
+A semantically equivalent but **text-different** external schema is **intentionally rejected** — this is an
+**exact-shape contract**, not a semantic-equivalence contract.
 
 **No automatic migration, repair, downgrade, or permissive compatibility mode is allowed.** Exact behaviors:
 
@@ -532,9 +611,20 @@ Enforced by §4.4 partial UNIQUE indexes + §4.5 predecessor triggers:
   terminal (`RECONCILED_SUCCEEDED`|`RECONCILED_FAILED`);
 - no terminal/reconciliation before `STARTED`; no `RECONCILIATION_REQUIRED` once an ordinary terminal exists; no
   reconciled terminal before `RECONCILIATION_REQUIRED`; no event after a reconciled terminal.
-- `attempt_ordinal` begins at **1** (CHECK `>= 1`) and **progresses only under the pinned retry law** (a new ordinal is
-  opened only after the prior attempt's reconciliation resolves) — gapless progression is **RV-7** (runtime fail-fast,
-  since SQLite cannot enforce inter-ordinal ordering).
+- `attempt_ordinal` begins at **1** (CHECK `>= 1`) and every per-ordinal uniqueness/transition rule above holds
+  within each `(capture_sequence, stage, attempt_ordinal)`.
+
+**No inter-ordinal retry policy is defined or claimed here.** Specifically:
+
+- The **raw-only acquisition runtime authorized by this charter never writes `raw_processing_journal`** — that table
+  is written only by the **future, separately-authorized projection / S1-ingestion runtime**.
+- This charter enforces coherence **only within one `(capture, stage, attempt_ordinal)`**; it makes **no** claim about
+  when or whether ordinal *N+1* may open.
+- **Inter-ordinal retry authorization, known-`FAILED` retryability, S1-commit-uncertainty handling, and
+  stage-specific failure taxonomy remain BLOCKED** for a separate projection / S1 charter.
+- **No automatic or manual downstream retry is authorized here.**
+- **RV-7 is redefined as a deferred downstream validation boundary** (owned by the future projection/S1 charter),
+  **not** an implemented "gapless progression" claim.
 
 Preserved: raw-evidence immutability; **no** distributed raw-to-S1 transaction; **no** automatic retry under S1-commit
 uncertainty (S1 is frozen, no exactly-once key); projection / S1 / HYPOTHETICAL_OUTCOME runtime remains
@@ -550,9 +640,13 @@ For a **completed HTTP response** (status `100..599`):
 2. compute the body integrity digest (`response_body_sha256` over the exact stored bytes; RV-1);
 3. **begin one local raw-ledger transaction**;
 4. append exactly one `raw_capture_log` row;
-5. append exactly one `RAW_COMMITTED` `raw_fetch_attempt_log` row referencing it;
-6. **commit**;
-7. **only after successful commit** may the result be called **RAW_CAPTURED** and `RawCaptureCommitted` returned.
+5. append exactly one `RAW_COMMITTED` `raw_fetch_attempt_log` row referencing it (composite provenance FK, §4.3);
+6. **RV-10 in-transaction reconciliation** — before commit, query **inside the same transaction** and prove
+   **exactly one** capture row and **exactly one** provenance-matching `RAW_COMMITTED` attempt row; on **any** mismatch
+   **roll back** and raise `RawLedgerCommitError` (no RAW_CAPTURED, no silent orphan accepted by the conforming
+   runtime; a privileged direct SQL writer bypassing RV-10 is out of scope);
+7. **commit**;
+8. **only after successful commit** may the result be called **RAW_CAPTURED** and `RawCaptureCommitted` returned.
 
 **This is NOT exactly-once acquisition.** Precisely:
 
