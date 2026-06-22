@@ -1,8 +1,10 @@
 # Phase 6.2 — Slice-G Runtime Closeout & Ratification Charter
 
-> **This is a docs-only exact-scope closeout charter.** It closes and ratifies the **already-built** Phase 6.2
-> deterministic, replay-only, quarantined shadow-intent reconstruction runtime in its exact offline
-> audit-reconstruction scope. It **builds nothing and authorizes nothing executable**: no runtime code, no new
+> **This is a docs-only exact-scope closeout charter.** It **proposes** the closeout and ratification of the
+> **already-built** Phase 6.2 deterministic, replay-only, quarantined shadow-intent reconstruction runtime in its
+> exact offline audit-reconstruction scope; the proposed closeout becomes **effective only upon independent external
+> Gemini and Codex ratification of this committed charter** — never merely by existing or being committed. It
+> **builds nothing and authorizes nothing executable**: no runtime code, no new
 > module, no integration/façade/orchestrator/service/adapter/registry/resolver/export layer, no new callable, no
 > new result carrier, no tests, no fixtures, no `__init__.py` / package-export change, no prior-doc edit, no lock
 > edit, no config, no generated files, no pytest, and no graphify. It is subordinate to the full Phase 6.2 charter
@@ -54,7 +56,7 @@ charter**):
 
 ## 2. Exact Built Module Inventory (ratified)
 
-Phase 6.2 is exactly **six** quarantined runtime modules under `phase6_2_shadow_intent/`:
+Phase 6.2 is exactly **six behavior-bearing runtime modules** under `phase6_2_shadow_intent/`:
 
 1. `phase6_2_shadow_intent/logical_model.py`
 2. `phase6_2_shadow_intent/artifact_verifier.py`
@@ -63,8 +65,24 @@ Phase 6.2 is exactly **six** quarantined runtime modules under `phase6_2_shadow_
 5. `phase6_2_shadow_intent/atomic_replay_step.py`
 6. `phase6_2_shadow_intent/reconstruction.py`
 
-**No seventh runtime module is added** — no integration module, façade, orchestrator, service, adapter, registry,
-resolver, or export layer. The inventory is closed at these six.
+**Plus one inert / exportless package initializer** (physically present, not behavior-bearing):
+
+- `phase6_2_shadow_intent/__init__.py`
+
+Pinned (`__init__.py` tombstone — documentary only):
+
+- `__init__.py` **physically exists** but is **not a seventh behavior-bearing runtime component**.
+- It **exports no** Phase 6.2 façade, callable, carrier, coordinator, or integration API.
+- Its historical orientation wording — that the predicates, the atomic replay step, and the reconstruction fold are
+  "later, separately-authorized slices" — is now **stale** (Slices A–F are all built and sealed).
+- That stale orientation wording is **formally superseded / tombstoned by this Slice-G closeout charter**; the
+  initializer carries **no current-state or architectural authority** where it conflicts with this charter.
+- This tombstone is **documentary only**: **no physical `__init__.py` edit, package export, or API change is
+  authorized.**
+
+**No seventh behavior-bearing runtime module is added** — no integration module, façade, orchestrator, service,
+adapter, registry, resolver, or export layer. The behavior-bearing inventory is closed at these six; the package
+initializer remains inert.
 
 ---
 
@@ -112,15 +130,17 @@ Explicitly:
 
 **Slice G defines no new callable.** The existing two-stage trust-boundary workflow is ratified.
 
-**Stage 1 — artifact verification (Slice B):**
+**Stage 1 — artifact verification (Slice B) — exact live, unannotated signature:**
 
 ```python
-verify_artifact(
-    *,
-    reference,
-    binary_stream,
-) -> ShadowIntentDefinitionArtifact
+def verify_artifact(*, reference, binary_stream):
+    ...
 ```
+
+On successful verification, `verify_artifact` returns an exact `ShadowIntentDefinitionArtifact`. (The live runtime
+definition carries **no** Python parameter or return annotations; the successful return object is a **behavioral
+contract** — canonical bytes + detached SHA-256 digest under one-read discipline yielding the exact
+`ShadowIntentDefinitionArtifact` — **not** a Python annotation.)
 
 **Stage 2 — deterministic reconstruction (Slice F):**
 
@@ -254,14 +274,21 @@ Pinned lock state:
 
 ---
 
-## 10. Precise Completion Claim
+## 10. Proposed Completion Claim (conditional on external ratification)
 
-This charter declares **only**:
+This charter **proposes** the following exact, narrow completion claim — it is **not** self-effective and is **not**
+asserted as already-ratified:
 
-> **Phase 6.2 deterministic, replay-only, quarantined shadow-intent reconstruction runtime is COMPLETE + RATIFIED
-> in its exact offline audit-reconstruction scope.**
+> **Phase 6.2 deterministic, replay-only, quarantined shadow-intent reconstruction runtime becomes COMPLETE +
+> RATIFIED in its exact offline audit-reconstruction scope only upon independent external ratification of this
+> Slice-G charter.**
 
-That completion is defined **narrowly** as:
+Until that independent external Gemini and Codex review succeeds, this aggregate claim is **PENDING**. The existing
+Slice A–F ratified/sealed statuses (§1) remain **historical evidence and are NOT downgraded**, and the existing
+Slice-F ratification remains valid; **only** this new Slice-G closeout and the Phase 6.2 aggregate completion claim
+are **conditional**.
+
+That proposed completion is defined **narrowly** as:
 
 - sealed artifact verification;
 - deterministic append-order evidence projection / classification;
@@ -331,25 +358,31 @@ After Phase 6.2 closeout:
 
 - Docs-only: no runtime / tests / fixtures / package-export / `__init__.py` / prior-doc / lock / config edits; no
   seventh module; no new callable / carrier / façade; no generated files; no pytest; no graphify.
-- **Slice-G docs-only closeout charter:** BUILT / RATIFIABLE, **pending independent Gemini and Codex review**.
-- The **Phase 6.2 final COMPLETE + RATIFIED closeout claim** (§10) is **subject to review of this actual committed
-  charter** — it is asserted here as the closeout statement, not as an independent ratification.
+- **Slice-G docs-only closeout charter:** BUILT / RATIFIABLE / **UNRATIFIED**, **pending independent Gemini and Codex
+  review of this committed charter**. It does **not** become effective merely by existing or being committed.
+- The **Phase 6.2 aggregate COMPLETE + RATIFIED closeout claim** (§10) is **PENDING** — it becomes effective **only
+  upon** that independent external ratification, and is **proposed** here, not asserted as already-ratified.
 - **Capacity remains 0.** **No next executable scope is authorized.** Phase 6.1 frozen, COMPLETE + RATIFIED.
 
-**Conclusion:** the Phase 6.2 shadow-intent reconstruction runtime is exactly six quarantined modules
-(`logical_model`, `artifact_verifier`, `s1_evidence_projection`, `classification_predicates`, `atomic_replay_step`,
-`reconstruction`) under a one-way acyclic DAG whose `reconstruction` boundary imports **only** `atomic_replay_step`
-and `logical_model`; the public surface is the two-stage caller-owned workflow **`verify_artifact(*, reference,
-binary_stream) -> ShadowIntentDefinitionArtifact`** then **`reconstruct_shadow_intent_state(*, ordered_replay_rows:
-tuple[object, ...], verified_manifest_artifact: ShadowIntentDefinitionArtifact) -> AtomicReplayStepResult`**, with
-the caller owning sequencing and S1 replay acquisition, no façade, no re-export, and the direct
-**`AtomicReplayStepResult`** return (fresh empty on empty replay, final Slice-E carrier unwrapped otherwise). The
-planned Slice-G integration/lock evidence already lives in the sealed A–F chain (notably
-`tests/test_phase6_2_reconstruction.py`); no duplicate test or new lock is added, no lock is relaxed, and the two
-`reconstruction.py` absence assertions were already retired in `14e490e`. Memory (O(N) input, O(K)≤O(N) payload,
-O(1) overhead), identity (content-equal + cross-execution fresh; no `id`/cache/singleton), and failure
-(`AtomicReplayStepError` propagates unchanged; no partial result) seals stand. **Phase 6.2 deterministic,
-replay-only, quarantined shadow-intent reconstruction runtime is COMPLETE + RATIFIED in its exact offline
-audit-reconstruction scope** — not production / live / paper / canary / execution / routing / actionability /
-capacity / strategy / calibration / analytics / deployment ready. **Capacity stays 0; no adjacent or next-phase
-scope is authorized; this closeout charter is itself RATIFIABLE pending independent Gemini and Codex review.**
+**Conclusion:** the Phase 6.2 shadow-intent reconstruction runtime is exactly **six behavior-bearing quarantined
+modules** (`logical_model`, `artifact_verifier`, `s1_evidence_projection`, `classification_predicates`,
+`atomic_replay_step`, `reconstruction`) **plus one inert / exportless `phase6_2_shadow_intent/__init__.py`** (whose
+stale "later slices" orientation wording is tombstoned by this charter, documentary-only), under a one-way acyclic
+DAG whose `reconstruction` boundary imports **only** `atomic_replay_step` and `logical_model`; the public surface is
+the two-stage caller-owned workflow — Stage 1 the exact live, **unannotated** `def verify_artifact(*, reference,
+binary_stream):` which **on success returns an exact `ShadowIntentDefinitionArtifact`** (a behavioral contract, not a
+Python annotation), then Stage 2 **`reconstruct_shadow_intent_state(*, ordered_replay_rows: tuple[object, ...],
+verified_manifest_artifact: ShadowIntentDefinitionArtifact) -> AtomicReplayStepResult`** — with the caller owning
+sequencing and S1 replay acquisition, no façade, no re-export, and the direct **`AtomicReplayStepResult`** return
+(fresh empty on empty replay, final Slice-E carrier unwrapped otherwise). The planned Slice-G integration/lock
+evidence already lives in the sealed A–F chain (notably `tests/test_phase6_2_reconstruction.py`); no duplicate test
+or new lock is added, no lock is relaxed, and the two `reconstruction.py` absence assertions were already retired in
+`14e490e`. Memory (O(N) input, O(K)≤O(N) payload, O(1) overhead), identity (content-equal + cross-execution fresh;
+no `id`/cache/singleton), and failure (`AtomicReplayStepError` propagates unchanged; no partial result) seals stand.
+**Phase 6.2 deterministic, replay-only, quarantined shadow-intent reconstruction runtime becomes COMPLETE + RATIFIED
+in its exact offline audit-reconstruction scope only upon independent external ratification of this Slice-G charter**
+— and, even then, **not** production / live / paper / canary / execution / routing / actionability / capacity /
+strategy / calibration / analytics / deployment ready, nor feature-complete outside the exact reconstruction scope.
+**Capacity stays 0; no adjacent or next-phase scope is authorized; Slice A–F remain RATIFIED + SEALED; this Slice-G
+closeout charter is BUILT / RATIFIABLE / UNRATIFIED, pending independent Gemini and Codex review of the committed
+charter.**
