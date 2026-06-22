@@ -200,6 +200,23 @@ def test_context_rejects_root_missing_slot_forgery():
     assert exc.value.reason == PREDICATE_FORGED_OR_MISSING_SLOT
 
 
+def test_context_rejects_root_partial_slot_forgery_matrix():
+    # A PARTIALLY-populated EstablishedRootContext forgery (one slot set, the other slot left unset by
+    # object.__new__) must surface PREDICATE_FORGED_OR_MISSING_SLOT for EITHER missing slot — never a raw
+    # AttributeError (pytest.raises(ClassificationPredicateError) fails if AttributeError leaks instead).
+    venue_only = object.__new__(lm.EstablishedRootContext)        # pair slot MISSING
+    object.__setattr__(venue_only, "source_venue_context_text", "hl")
+    with pytest.raises(ClassificationPredicateError) as e_pair:
+        context_equals(root_context=venue_only, observed_context=_context("hl", "BTC"))
+    assert e_pair.value.reason == PREDICATE_FORGED_OR_MISSING_SLOT
+
+    pair_only = object.__new__(lm.EstablishedRootContext)         # venue slot MISSING
+    object.__setattr__(pair_only, "source_pair_context_text", "BTC")
+    with pytest.raises(ClassificationPredicateError) as e_venue:
+        context_equals(root_context=pair_only, observed_context=_context("hl", "BTC"))
+    assert e_venue.value.reason == PREDICATE_FORGED_OR_MISSING_SLOT
+
+
 def test_context_root_u200b_scalar_is_nonblank_and_accepted():
     # U+200B is non-blank under Python str.strip() and is accepted verbatim in the root scalars.
     zwsp = "​"
@@ -655,6 +672,40 @@ def test_slice_e_f_targets_not_created():
         assert not (package / absent).exists(), absent
 
 
+# --- deterministic simultaneous-invalid precedence locks ------------------------------------------
+
+def test_context_precedence_root_before_observed():
+    # invalid root + invalid observed -> ROOT reason (root operand revalidated first). Distinct reasons
+    # prove which fired: blank-forged root -> INVALID_TEXT; wrong-type observed -> WRONG_CARRIER_TYPE.
+    blank_root = _forge(lm.EstablishedRootContext,
+                        source_venue_context_text="", source_pair_context_text="BTC")
+    with pytest.raises(ClassificationPredicateError) as e_both:
+        context_equals(root_context=blank_root, observed_context="not-a-carrier")
+    assert e_both.value.reason == PREDICATE_INVALID_TEXT
+
+    # valid root + invalid observed -> OBSERVED reason.
+    with pytest.raises(ClassificationPredicateError) as e_obs:
+        context_equals(root_context=_root("hl", "BTC"), observed_context="not-a-carrier")
+    assert e_obs.value.reason == PREDICATE_WRONG_CARRIER_TYPE
+
+
+def test_timestamp_precedence_anchor_then_comparison_then_duration():
+    # invalid anchor + invalid comparison + invalid duration -> ANCHOR reason.
+    with pytest.raises(ClassificationPredicateError) as e_anchor:
+        classify_timestamp_window(anchor="x", comparison="not-a-carrier", duration_ms=-1)
+    assert e_anchor.value.reason == PREDICATE_INVALID_CANONICAL_TIMESTAMP
+
+    # valid anchor + invalid comparison + invalid duration -> COMPARISON reason.
+    with pytest.raises(ClassificationPredicateError) as e_cmp:
+        classify_timestamp_window(anchor="0", comparison="not-a-carrier", duration_ms=-1)
+    assert e_cmp.value.reason == PREDICATE_WRONG_CARRIER_TYPE
+
+    # valid anchor + valid comparison + invalid duration -> DURATION reason.
+    with pytest.raises(ClassificationPredicateError) as e_dur:
+        classify_timestamp_window(anchor="0", comparison=_timestamp("0"), duration_ms=-1)
+    assert e_dur.value.reason == PREDICATE_INVALID_DURATION
+
+
 # --- asymmetric-correction AST locks (ratified b874ec0 as corrected by 8fc292e) --------------------
 
 def test_timestamp_anchor_has_no_carrier_branch_static():
@@ -688,10 +739,44 @@ def test_timestamp_anchor_no_isinstance_or_type_special_case_on_anchor():
                 raise AssertionError("type(anchor) is <...> branch is forbidden")
 
 
-def test_context_root_uses_established_root_not_score_context_static():
-    src = inspect.getsource(cp.context_equals)
-    assert "_require_carrier(root_context, ScoreContextProjection)" not in src
-    assert "EstablishedRootContext" in src
+def test_context_root_is_slot_guarded_no_direct_attribute_read_static():
+    # Genuine AST lock (not docstring/string matching): neither context_equals nor
+    # _require_root_context_scalars may read a root-context carrier field via attribute access — both root
+    # fields must be read through _slot. Attribute reads off root_context or any local alias bound to it
+    # are rejected; the proof depends on AST node shapes, never on string occurrences.
+    import textwrap
+    sources = {
+        "context_equals": inspect.getsource(cp.context_equals),
+        "_require_root_context_scalars": inspect.getsource(cp._require_root_context_scalars),
+    }
+    slot_field_reads = set()
+    for fn_name, src in sources.items():
+        tree = ast.parse(textwrap.dedent(src))
+        # local names that alias the root carrier: root_context plus any `name = root_context` (or
+        # `name = <alias>`) binding, so an alias cannot smuggle a direct attribute read past the lock.
+        aliases = {"root_context"}
+        changed = True
+        while changed:
+            changed = False
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Name)
+                        and node.value.id in aliases):
+                    for tgt in node.targets:
+                        if isinstance(tgt, ast.Name) and tgt.id not in aliases:
+                            aliases.add(tgt.id)
+                            changed = True
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load)
+                    and isinstance(node.value, ast.Name) and node.value.id in aliases):
+                raise AssertionError(
+                    "{}: forbidden direct attribute read off root carrier: .{}".format(fn_name, node.attr))
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "_slot"
+                    and len(node.args) == 2 and isinstance(node.args[0], ast.Name)
+                    and node.args[0].id in aliases and isinstance(node.args[1], ast.Constant)
+                    and isinstance(node.args[1].value, str)):
+                slot_field_reads.add(node.args[1].value)
+    # both root fields are read, and ONLY through _slot.
+    assert slot_field_reads == {"source_venue_context_text", "source_pair_context_text"}, slot_field_reads
 
 
 def test_module_has_no_private_maker_overload_or_synthetic_row():
