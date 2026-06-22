@@ -253,8 +253,9 @@ before** sufficiency/calibration can use outcome-labelled cohorts.
   resolved source authority (B-1/B-2/B-3 closed); data-quality thresholds; outcome evidence
   (`HYPOTHETICAL_OUTCOME`); and an **independent sufficiency ratification** exist.
 
-**Current zero-cost Cell-3 output may reach RAW_CAPTURED / S1_AUDITED for structural observation only, and MUST NEVER
-be labeled CALIBRATION_ELIGIBLE.**
+Genuine raw network capture terminates strictly at RAW_CAPTURED. After separately authorized projection through
+Option-B and the zero-cost Cell-3 structural path, only the resulting genuine SCORE/HALT records may become
+S1_AUDITED; neither those records nor Cell-3 outputs are RAW_CAPTURED, and none is CALIBRATION_ELIGIBLE.
 
 ---
 
