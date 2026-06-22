@@ -83,10 +83,15 @@ class FakeResp:
 
 
 class FakeReqCM:
-    """What session.request(...) returns: an async context manager yielding the response (or raising)."""
-    def __init__(self, resp=None, request_raise=None):
+    """What session.request(...) returns: an async context manager yielding the response (or raising).
+
+    ``aexit_raise`` models a real aiohttp response-context teardown/cleanup error raised by the
+    request context manager's ``__aexit__`` after the body has already been consumed.
+    """
+    def __init__(self, resp=None, request_raise=None, aexit_raise=None):
         self._resp = resp
         self._raise = request_raise
+        self._aexit_raise = aexit_raise
 
     async def __aenter__(self):
         if self._raise is not None:
@@ -94,6 +99,8 @@ class FakeReqCM:
         return self._resp
 
     async def __aexit__(self, *a):
+        if self._aexit_raise is not None:
+            raise self._aexit_raise
         return False
 
 
@@ -115,12 +122,12 @@ class FakeSession:
         self.closed = True
 
 
-def _install_session(monkeypatch, resp=None, request_raise=None):
+def _install_session(monkeypatch, resp=None, request_raise=None, request_aexit_raise=None):
     FakeSession.instances = []
 
     def factory(**kwargs):
         s = FakeSession(**kwargs)
-        s._program = FakeReqCM(resp=resp, request_raise=request_raise)
+        s._program = FakeReqCM(resp=resp, request_raise=request_raise, aexit_raise=request_aexit_raise)
         return s
 
     monkeypatch.setattr(prc, "_client_session", factory)
@@ -790,3 +797,227 @@ def test_ddl_constant_matches_charter_byte_for_byte():
     ddl_blocks = [b for b in blocks if ("CREATE TABLE" in b or "CREATE TRIGGER" in b or "CREATE UNIQUE INDEX" in b)]
     for b in ddl_blocks:
         assert b.strip() in prc._RAW_LEDGER_DDL
+
+
+# === 8. CORRECTIVE FOLLOW-UP: DEFECTS A–F =========================================================
+
+def _seed_full_schema(raw, journal_mode):
+    seed = sqlite3.connect(raw, isolation_level=None)
+    try:
+        seed.execute("PRAGMA journal_mode=%s" % journal_mode)
+        seed.execute("PRAGMA foreign_keys=ON")
+        seed.executescript(prc._RAW_LEDGER_DDL)
+        catalog = seed.execute(_CATQ).fetchall()
+    finally:
+        seed.close()
+    return catalog
+
+
+def _journal_mode(raw):
+    c = sqlite3.connect(raw)
+    try:
+        return str(c.execute("PRAGMA journal_mode").fetchone()[0]).lower()
+    finally:
+        c.close()
+
+
+# --- A: existing non-WAL ledger must never be silently converted -----------------------------------
+
+def test_existing_non_wal_ledger_rejected_not_converted(monkeypatch, tmp_path):
+    raw, s1 = _paths(tmp_path)
+    before = _seed_full_schema(raw, "DELETE")
+    assert _journal_mode(raw) == "delete"
+    _install_session(monkeypatch, resp=_ok_resp())
+    _clock(monkeypatch)
+    with pytest.raises(RawLedgerPragmaError):
+        run(acquire_public_raw_capture(request=_gamma(), raw_ledger_path=raw,
+                                       s1_ledger_path=s1, collector_commit_sha=_CSHA))
+    assert FakeSession.instances == []                 # rejected before transport
+    assert _journal_mode(raw) == "delete"              # not converted/repaired
+    c = sqlite3.connect(raw)
+    try:
+        assert c.execute(_CATQ).fetchall() == before   # schema untouched, no DDL
+    finally:
+        c.close()
+
+
+# --- B: first initialization must verify BEFORE commit ---------------------------------------------
+
+def test_first_init_verification_failure_rolls_back_to_empty(monkeypatch, tmp_path):
+    raw, s1 = _paths(tmp_path)
+    # Force a structural/fingerprint mismatch during first initialization (after DDL, before COMMIT).
+    monkeypatch.setattr(prc, "_reference_catalog", lambda: ((("DIFFERENT",),), {}))
+    _install_session(monkeypatch, resp=_ok_resp())
+    _clock(monkeypatch)
+    with pytest.raises(RawLedgerSchemaFingerprintError):
+        run(acquire_public_raw_capture(request=_gamma(), raw_ledger_path=raw,
+                                       s1_ledger_path=s1, collector_commit_sha=_CSHA))
+    assert FakeSession.instances == []                 # rejected before transport
+    # The initialization transaction must have rolled back: zero non-internal schema objects remain.
+    c = sqlite3.connect(raw)
+    try:
+        assert c.execute(_CATQ).fetchall() == []
+    finally:
+        c.close()
+
+
+# --- C: charter-required index_xinfo fingerprint ---------------------------------------------------
+
+def _corrupt_one_index_xinfo(structural):
+    new = dict(structural)
+    for table, val in structural.items():
+        if len(val) >= 4 and val[3]:
+            table_xinfo, fk_list, index_list, index_xinfo = val[0], val[1], val[2], val[3]
+            name0, rows0 = index_xinfo[0]
+            corrupted = ((name0, tuple(rows0) + (("__sentinel__",),)),) + tuple(index_xinfo[1:])
+            new[table] = (table_xinfo, fk_list, index_list, corrupted)
+            return new, True
+    return structural, False
+
+
+def test_index_xinfo_mismatch_rejected_before_transport(monkeypatch, tmp_path):
+    raw, s1 = _paths(tmp_path)
+    base_catalog, base_structural = prc._reference_catalog()
+    corrupted, _did = _corrupt_one_index_xinfo(base_structural)
+    monkeypatch.setattr(prc, "_reference_catalog", lambda: (base_catalog, corrupted))
+    _install_session(monkeypatch, resp=_ok_resp())
+    _clock(monkeypatch)
+    with pytest.raises(RawLedgerSchemaFingerprintError):
+        run(acquire_public_raw_capture(request=_gamma(), raw_ledger_path=raw,
+                                       s1_ledger_path=s1, collector_commit_sha=_CSHA))
+    assert FakeSession.instances == []                 # rejected before transport
+
+
+# --- D: non-str request-field guard leakage --------------------------------------------------------
+
+def test_non_str_slug_raises_pinned_valueerror_before_open(monkeypatch, tmp_path):
+    raw, s1 = _paths(tmp_path)
+    _install_session(monkeypatch, resp=_ok_resp())
+    with pytest.raises(ValueError) as e:
+        run(acquire_public_raw_capture(request=PolymarketGammaMarketBySlugV1Request(slug=123),
+                                       raw_ledger_path=raw, s1_ledger_path=s1, collector_commit_sha=_CSHA))
+    assert str(e.value) == "slug must match ^[0-9a-z][0-9a-z-]{0,254}$"
+    assert FakeSession.instances == []
+    assert not os.path.exists(raw)
+
+
+def test_non_str_token_raises_pinned_valueerror_before_open(monkeypatch, tmp_path):
+    raw, s1 = _paths(tmp_path)
+    _install_session(monkeypatch, resp=_ok_resp())
+    with pytest.raises(ValueError) as e:
+        run(acquire_public_raw_capture(request=PolymarketClobBookByTokenV1Request(token_id=456),
+                                       raw_ledger_path=raw, s1_ledger_path=s1, collector_commit_sha=_CSHA))
+    assert str(e.value) == "token_id must match ^[0-9]{1,80}$"
+    assert FakeSession.instances == []
+    assert not os.path.exists(raw)
+
+
+# --- E: SQLite transaction error hierarchy ---------------------------------------------------------
+
+class _FailingConn:
+    """Delegates to a real connection but raises a chosen sqlite3.Error on a targeted statement.
+
+    A token prefixed with ``~`` matches by substring; otherwise it matches the exact (stripped)
+    statement, so control verbs like ``COMMIT`` cannot be confused with the ``RAW_COMMITTED``
+    literal embedded in the RV-10 reconciliation query.
+    """
+    def __init__(self, real, fail_on, error):
+        self._real = real
+        self._fail_on = fail_on
+        self._error = error
+
+    def execute(self, sql, *args):
+        token = self._fail_on
+        hit = (token[1:] in sql) if token.startswith("~") else (sql.strip() == token)
+        if hit:
+            raise self._error
+        return self._real.execute(sql, *args)
+
+
+def _ready_conn(tmp_path, name="raw.db"):
+    raw = str(tmp_path / name)
+    s1 = str(tmp_path / "s1.db")
+    return prc._preflight_open_raw_ledger(raw, s1), raw
+
+
+_CAPTURE_KW = dict(
+    source_authority="POLYMARKET_GAMMA_MARKET_BY_SLUG_V1", method="GET", scheme="https",
+    host="gamma-api.polymarket.com", target="/markets?slug=x", body=b"",
+    started_epoch_ms=0, completed_epoch_ms=0, elapsed_ns=0, anomaly=0, status=200,
+    headers_payload=b"", body_bytes=b"", sha="a" * 64, collector_commit_sha="b" * 40)
+
+_FAIL_KW = dict(
+    source_authority="POLYMARKET_GAMMA_MARKET_BY_SLUG_V1", target="/markets?slug=x",
+    started_epoch_ms=0, completed_epoch_ms=0, elapsed_ns=0, anomaly=0,
+    collector_commit_sha="b" * 40, outcome="TIMEOUT", failure_code="RAW_TIMEOUT")
+
+
+def _counts(raw):
+    c = sqlite3.connect(raw)
+    try:
+        return (c.execute("SELECT COUNT(*) FROM raw_capture_log").fetchone()[0],
+                c.execute("SELECT COUNT(*) FROM raw_fetch_attempt_log").fetchone()[0])
+    finally:
+        c.close()
+
+
+@pytest.mark.parametrize("fail_on", [
+    "BEGIN IMMEDIATE",
+    "~INTO raw_capture_log",
+    "~INTO raw_fetch_attempt_log",
+    "~COUNT(*) FROM raw_capture_log",
+    "COMMIT",
+])
+def test_commit_capture_sqlite_errors_mapped_and_rolled_back(tmp_path, fail_on):
+    conn, raw = _ready_conn(tmp_path)
+    try:
+        failing = _FailingConn(conn, fail_on, sqlite3.OperationalError("injected"))
+        with pytest.raises(RawLedgerCommitError):
+            prc._commit_capture(failing, **_CAPTURE_KW)
+    finally:
+        conn.close()
+    assert _counts(raw) == (0, 0)                       # explicit rollback, no durable row
+
+
+@pytest.mark.parametrize("fail_on", [
+    "BEGIN IMMEDIATE",
+    "~INTO raw_fetch_attempt_log",
+    "COMMIT",
+])
+def test_commit_failure_attempt_sqlite_errors_mapped_and_rolled_back(tmp_path, fail_on):
+    conn, raw = _ready_conn(tmp_path)
+    try:
+        failing = _FailingConn(conn, fail_on, sqlite3.OperationalError("injected"))
+        with pytest.raises(RawLedgerCommitError):
+            prc._commit_failure_attempt(failing, exc=RawTimeoutError("x"), **_FAIL_KW)
+    finally:
+        conn.close()
+    assert _counts(raw) == (0, 0)                       # explicit rollback, no durable row
+
+
+# --- F: RESPONSE_TOO_LARGE must have terminal priority ---------------------------------------------
+
+def test_response_too_large_supersedes_teardown_error(monkeypatch, tmp_path):
+    raw, s1 = _paths(tmp_path)
+    resp = FakeResp(200, (), [b"x" * _MAX, b"y"])
+    _install_session(monkeypatch, resp=resp,
+                     request_aexit_raise=aiohttp.ClientPayloadError("teardown after oversized chunk"))
+    # Provide extra clock values so the pre-fix path produces a *semantic* failure (a mapped
+    # protocol/teardown row) rather than merely exhausting the clock iterator.
+    eqs = iter([1000, 1007, 1009, 1011])
+    mos = iter([5000, 5009, 5011, 5013])
+    monkeypatch.setattr(prc, "_epoch_ms", lambda: next(eqs))
+    monkeypatch.setattr(prc, "_monotonic_ns", lambda: next(mos))
+    with pytest.raises(RawResponseTooLargeError):
+        run(acquire_public_raw_capture(request=_gamma(), raw_ledger_path=raw,
+                                       s1_ledger_path=s1, collector_commit_sha=_CSHA))
+    c = sqlite3.connect(raw)
+    try:
+        assert c.execute("SELECT COUNT(*) FROM raw_capture_log").fetchone()[0] == 0
+        rows = c.execute("SELECT outcome, failure_code, capture_sequence "
+                         "FROM raw_fetch_attempt_log").fetchall()
+        assert rows == [("RESPONSE_TOO_LARGE", "RAW_RESPONSE_TOO_LARGE", None)]
+        assert c.execute("SELECT COUNT(*) FROM raw_fetch_attempt_log WHERE outcome IN "
+                         "('HTTP_PROTOCOL_FAILED','TRANSPORT_FAILED','TIMEOUT')").fetchone()[0] == 0
+    finally:
+        c.close()

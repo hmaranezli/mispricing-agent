@@ -440,33 +440,37 @@ def _resolve_request(request):
 
 
 # --- ledger preflight (S1-isolated; empty-vs-existing; exact-shape) --------------------------------
+def _quote_ident(name):
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def _table_structural(conn, table):
+    table_xinfo = conn.execute("PRAGMA table_xinfo(%s)" % table).fetchall()
+    fk_list = conn.execute("PRAGMA foreign_key_list(%s)" % table).fetchall()
+    index_list = conn.execute("PRAGMA index_list(%s)" % table).fetchall()
+    # charter-required: pin the resolved structure of every index discovered through index_list,
+    # not only its index_list summary row, by capturing exact ordered PRAGMA index_xinfo results.
+    index_xinfo = tuple(
+        (row[1], tuple(conn.execute("PRAGMA index_xinfo(%s)" % _quote_ident(row[1])).fetchall()))
+        for row in index_list
+    )
+    return (table_xinfo, fk_list, index_list, index_xinfo)
+
+
 def _reference_catalog():
     ref = sqlite3.connect(":memory:")
     try:
         ref.execute("PRAGMA foreign_keys=ON")
         ref.executescript(_RAW_LEDGER_DDL)
         catalog = ref.execute(_CATALOG_QUERY).fetchall()
-        structural = {}
-        for table in _PINNED_TABLES:
-            structural[table] = (
-                ref.execute("PRAGMA table_xinfo(%s)" % table).fetchall(),
-                ref.execute("PRAGMA foreign_key_list(%s)" % table).fetchall(),
-                ref.execute("PRAGMA index_list(%s)" % table).fetchall(),
-            )
+        structural = {table: _table_structural(ref, table) for table in _PINNED_TABLES}
         return catalog, structural
     finally:
         ref.close()
 
 
 def _candidate_structural(conn):
-    structural = {}
-    for table in _PINNED_TABLES:
-        structural[table] = (
-            conn.execute("PRAGMA table_xinfo(%s)" % table).fetchall(),
-            conn.execute("PRAGMA foreign_key_list(%s)" % table).fetchall(),
-            conn.execute("PRAGMA index_list(%s)" % table).fetchall(),
-        )
-    return structural
+    return {table: _table_structural(conn, table) for table in _PINNED_TABLES}
 
 
 def _check_path_isolation(raw_ledger_path, s1_ledger_path):
@@ -485,6 +489,23 @@ def _check_path_isolation(raw_ledger_path, s1_ledger_path):
             raise RawLedgerPathError("raw_ledger_path and s1_ledger_path are the same file")
 
 
+def _verify_exact_shape(conn):
+    ref_catalog, ref_structural = _reference_catalog()
+    if conn.execute(_CATALOG_QUERY).fetchall() != ref_catalog:
+        raise RawLedgerSchemaFingerprintError("raw ledger catalog does not match the pinned schema")
+    if _candidate_structural(conn) != ref_structural:
+        raise RawLedgerSchemaFingerprintError("raw ledger structure does not match the pinned schema")
+    # candidate-only stateful PRAGMA checks against literal required values.
+    if str(conn.execute("PRAGMA journal_mode").fetchone()[0]).lower() != "wal":
+        raise RawLedgerPragmaError("raw ledger journal_mode is not WAL")
+    if int(conn.execute("PRAGMA synchronous").fetchone()[0]) != 2:
+        raise RawLedgerPragmaError("raw ledger synchronous is not FULL")
+    if int(conn.execute("PRAGMA foreign_keys").fetchone()[0]) != 1:
+        raise RawLedgerPragmaError("raw ledger foreign_keys is not ON")
+    if conn.execute("PRAGMA foreign_key_check").fetchall():
+        raise RawLedgerReadinessError("raw ledger fails foreign_key_check")
+
+
 def _preflight_open_raw_ledger(raw_ledger_path, s1_ledger_path):
     _check_path_isolation(raw_ledger_path, s1_ledger_path)
     try:
@@ -492,31 +513,31 @@ def _preflight_open_raw_ledger(raw_ledger_path, s1_ledger_path):
     except sqlite3.Error as exc:
         raise RawLedgerPathError("raw_ledger_path is not openable") from exc
     try:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=FULL")
-        conn.execute("PRAGMA foreign_keys=ON")
-
+        # Probe the non-internal candidate catalog BEFORE executing any state-mutating PRAGMA,
+        # so an existing ledger's persisted journal mode is never silently changed/converted.
         existing = conn.execute(_CATALOG_QUERY).fetchall()
         if len(existing) == 0:
-            # FIRST_INITIALIZATION: complete pinned DDL once in one transaction.
-            conn.executescript("BEGIN;\n" + _RAW_LEDGER_DDL + "\nCOMMIT;")
-        # EXISTING_LEDGER runs no DDL. Both branches verify exact shape below.
-
-        ref_catalog, ref_structural = _reference_catalog()
-        if conn.execute(_CATALOG_QUERY).fetchall() != ref_catalog:
-            raise RawLedgerSchemaFingerprintError("raw ledger catalog does not match the pinned schema")
-        if _candidate_structural(conn) != ref_structural:
-            raise RawLedgerSchemaFingerprintError("raw ledger structure does not match the pinned schema")
-
-        # candidate-only stateful PRAGMA checks against literal required values.
-        if str(conn.execute("PRAGMA journal_mode").fetchone()[0]).lower() != "wal":
-            raise RawLedgerPragmaError("raw ledger journal_mode is not WAL")
-        if int(conn.execute("PRAGMA synchronous").fetchone()[0]) != 2:
-            raise RawLedgerPragmaError("raw ledger synchronous is not FULL")
-        if int(conn.execute("PRAGMA foreign_keys").fetchone()[0]) != 1:
-            raise RawLedgerPragmaError("raw ledger foreign_keys is not ON")
-        if conn.execute("PRAGMA foreign_key_check").fetchall():
-            raise RawLedgerReadinessError("raw ledger fails foreign_key_check")
+            # FIRST_INITIALIZATION: only the proven-empty branch may establish WAL before DDL.
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=FULL")
+            conn.execute("PRAGMA foreign_keys=ON")
+            # Complete pinned DDL inside one STILL-OPEN transaction; verify the exact shape, the
+            # required PRAGMAs, and foreign keys before COMMIT. Any DDL or verification failure
+            # explicitly rolls the initialization transaction back, leaving no schema objects.
+            try:
+                conn.executescript("BEGIN;\n" + _RAW_LEDGER_DDL)
+                _verify_exact_shape(conn)
+            except BaseException:
+                _rollback_quiet(conn)
+                raise
+            conn.execute("COMMIT")
+        else:
+            # EXISTING_LEDGER: never convert. Require WAL already; run no DDL and no repair.
+            if str(conn.execute("PRAGMA journal_mode").fetchone()[0]).lower() != "wal":
+                raise RawLedgerPragmaError("raw ledger journal_mode is not WAL")
+            conn.execute("PRAGMA synchronous=FULL")
+            conn.execute("PRAGMA foreign_keys=ON")
+            _verify_exact_shape(conn)
 
         # transaction-readiness preflight.
         conn.execute("BEGIN IMMEDIATE")
@@ -567,19 +588,25 @@ def _rollback_quiet(conn):
 def _commit_capture(conn, *, source_authority, method, scheme, host, target, body,
                     started_epoch_ms, completed_epoch_ms, elapsed_ns, anomaly, status,
                     headers_payload, body_bytes, sha, collector_commit_sha):
-    conn.execute("BEGIN IMMEDIATE")
-    cap_cur = conn.execute(_INSERT_CAPTURE, (
-        source_authority, method, scheme, host, target, body,
-        started_epoch_ms, completed_epoch_ms, elapsed_ns, anomaly, status,
-        headers_payload, body_bytes, sha, collector_commit_sha))
-    capture_sequence = cap_cur.lastrowid
-    att_cur = conn.execute(_INSERT_ATTEMPT, (
-        source_authority, target, started_epoch_ms, completed_epoch_ms, elapsed_ns, anomaly,
-        "RAW_COMMITTED", capture_sequence, None, None, collector_commit_sha))
-    attempt_sequence = att_cur.lastrowid
-    c1 = _count(conn, _RV10_CAPTURE, (capture_sequence, source_authority, target, collector_commit_sha))
-    c2 = _count(conn, _RV10_ATTEMPT,
-                (attempt_sequence, capture_sequence, source_authority, target, collector_commit_sha))
+    # Wrap the complete transaction lifecycle (BEGIN IMMEDIATE -> INSERTs -> RV-10 queries): every
+    # sqlite3.Error must map to RawLedgerCommitError after an explicit quiet rollback, never escape raw.
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        cap_cur = conn.execute(_INSERT_CAPTURE, (
+            source_authority, method, scheme, host, target, body,
+            started_epoch_ms, completed_epoch_ms, elapsed_ns, anomaly, status,
+            headers_payload, body_bytes, sha, collector_commit_sha))
+        capture_sequence = cap_cur.lastrowid
+        att_cur = conn.execute(_INSERT_ATTEMPT, (
+            source_authority, target, started_epoch_ms, completed_epoch_ms, elapsed_ns, anomaly,
+            "RAW_COMMITTED", capture_sequence, None, None, collector_commit_sha))
+        attempt_sequence = att_cur.lastrowid
+        c1 = _count(conn, _RV10_CAPTURE, (capture_sequence, source_authority, target, collector_commit_sha))
+        c2 = _count(conn, _RV10_ATTEMPT,
+                    (attempt_sequence, capture_sequence, source_authority, target, collector_commit_sha))
+    except sqlite3.Error as exc:
+        _rollback_quiet(conn)
+        raise RawLedgerCommitError("raw-capture transaction failed") from exc
     if c1 != 1 or c2 != 1:
         _rollback_quiet(conn)
         raise RawLedgerCommitError("RV-10 in-transaction reconciliation failed")
@@ -598,10 +625,16 @@ def _commit_failure_attempt(conn, *, source_authority, target, started_epoch_ms,
     if elapsed_ns < 0:
         raise RuntimeError("negative monotonic delta")
     payload = _expected_failure_payload(exc)
-    conn.execute("BEGIN IMMEDIATE")
-    conn.execute(_INSERT_ATTEMPT, (
-        source_authority, target, started_epoch_ms, completed_epoch_ms, elapsed_ns, anomaly,
-        outcome, None, failure_code, payload, collector_commit_sha))
+    # Wrap BEGIN IMMEDIATE -> INSERT: any sqlite3.Error maps to RawLedgerCommitError after an
+    # explicit quiet rollback, exposing no raw sqlite3.Error and committing no durable row.
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(_INSERT_ATTEMPT, (
+            source_authority, target, started_epoch_ms, completed_epoch_ms, elapsed_ns, anomaly,
+            outcome, None, failure_code, payload, collector_commit_sha))
+    except sqlite3.Error as begin_exc:
+        _rollback_quiet(conn)
+        raise RawLedgerCommitError("failure-attempt transaction failed") from begin_exc
     try:
         _ledger_commit(conn)
     except sqlite3.Error as commit_exc:
@@ -629,10 +662,10 @@ async def acquire_public_raw_capture(
     if _COLLECTOR_SHA_GRAMMAR.fullmatch(collector_commit_sha) is None:
         raise ValueError("collector_commit_sha must be exactly 40 lowercase hex characters")
     if type(request) is PolymarketGammaMarketBySlugV1Request:
-        if _SLUG_GRAMMAR.fullmatch(request.slug) is None:
+        if type(request.slug) is not str or _SLUG_GRAMMAR.fullmatch(request.slug) is None:
             raise ValueError("slug must match ^[0-9a-z][0-9a-z-]{0,254}$")
     elif type(request) is PolymarketClobBookByTokenV1Request:
-        if _TOKEN_GRAMMAR.fullmatch(request.token_id) is None:
+        if type(request.token_id) is not str or _TOKEN_GRAMMAR.fullmatch(request.token_id) is None:
             raise ValueError("token_id must match ^[0-9]{1,80}$")
 
     source_authority, method, scheme, host, target, body, headers = _resolve_request(request)
@@ -652,6 +685,9 @@ async def acquire_public_raw_capture(
             status = None
             raw_headers = ()
             body_bytes = b""
+            completed_monotonic_ns = None
+            completed_epoch_ms = None
+            mapped = None  # (outcome, failure_code, raise_exc, source_exc) for a mapped transport failure
             try:
                 async with session.request(
                         method, url, headers=headers,
@@ -669,39 +705,27 @@ async def acquire_public_raw_capture(
                     if not too_large:
                         body_bytes = bytes(buffer)
                     del buffer
+            # Once the 16 MiB boundary is detected, RESPONSE_TOO_LARGE is terminal: any timeout /
+            # aiohttp teardown / response-context cleanup error raised AFTERWARD is suppressed here
+            # (guarded by `not too_large`) and must not create TIMEOUT/TRANSPORT/HTTP_PROTOCOL evidence.
             except asyncio.TimeoutError as exc:
-                completed_monotonic_ns = _monotonic_ns()
-                completed_epoch_ms = _epoch_ms()
-                _commit_failure_attempt(
-                    conn, source_authority=source_authority, target=target,
-                    started_epoch_ms=started_epoch_ms, completed_epoch_ms=completed_epoch_ms,
-                    elapsed_ns=completed_monotonic_ns - started_monotonic_ns,
-                    anomaly=(1 if completed_epoch_ms < started_epoch_ms else 0),
-                    collector_commit_sha=collector_commit_sha,
-                    outcome="TIMEOUT", failure_code="RAW_TIMEOUT", exc=exc)
-                raise RawTimeoutError("raw public fetch timed out")
+                if not too_large:
+                    completed_monotonic_ns = _monotonic_ns()
+                    completed_epoch_ms = _epoch_ms()
+                    mapped = ("TIMEOUT", "RAW_TIMEOUT",
+                              RawTimeoutError("raw public fetch timed out"), exc)
             except aiohttp.ClientConnectionError as exc:
-                completed_monotonic_ns = _monotonic_ns()
-                completed_epoch_ms = _epoch_ms()
-                _commit_failure_attempt(
-                    conn, source_authority=source_authority, target=target,
-                    started_epoch_ms=started_epoch_ms, completed_epoch_ms=completed_epoch_ms,
-                    elapsed_ns=completed_monotonic_ns - started_monotonic_ns,
-                    anomaly=(1 if completed_epoch_ms < started_epoch_ms else 0),
-                    collector_commit_sha=collector_commit_sha,
-                    outcome="TRANSPORT_FAILED", failure_code="RAW_TRANSPORT_ERROR", exc=exc)
-                raise RawTransportError("raw public fetch transport failure")
+                if not too_large:
+                    completed_monotonic_ns = _monotonic_ns()
+                    completed_epoch_ms = _epoch_ms()
+                    mapped = ("TRANSPORT_FAILED", "RAW_TRANSPORT_ERROR",
+                              RawTransportError("raw public fetch transport failure"), exc)
             except aiohttp.ClientError as exc:
-                completed_monotonic_ns = _monotonic_ns()
-                completed_epoch_ms = _epoch_ms()
-                _commit_failure_attempt(
-                    conn, source_authority=source_authority, target=target,
-                    started_epoch_ms=started_epoch_ms, completed_epoch_ms=completed_epoch_ms,
-                    elapsed_ns=completed_monotonic_ns - started_monotonic_ns,
-                    anomaly=(1 if completed_epoch_ms < started_epoch_ms else 0),
-                    collector_commit_sha=collector_commit_sha,
-                    outcome="HTTP_PROTOCOL_FAILED", failure_code="RAW_HTTP_PROTOCOL_ERROR", exc=exc)
-                raise RawHttpProtocolError("raw public fetch protocol failure")
+                if not too_large:
+                    completed_monotonic_ns = _monotonic_ns()
+                    completed_epoch_ms = _epoch_ms()
+                    mapped = ("HTTP_PROTOCOL_FAILED", "RAW_HTTP_PROTOCOL_ERROR",
+                              RawHttpProtocolError("raw public fetch protocol failure"), exc)
 
             if too_large:
                 too_large_exc = RawResponseTooLargeError("response entity exceeds the 16 MiB cap")
@@ -713,6 +737,17 @@ async def acquire_public_raw_capture(
                     collector_commit_sha=collector_commit_sha,
                     outcome="RESPONSE_TOO_LARGE", failure_code="RAW_RESPONSE_TOO_LARGE", exc=too_large_exc)
                 raise too_large_exc
+
+            if mapped is not None:
+                outcome, failure_code, raise_exc, source_exc = mapped
+                _commit_failure_attempt(
+                    conn, source_authority=source_authority, target=target,
+                    started_epoch_ms=started_epoch_ms, completed_epoch_ms=completed_epoch_ms,
+                    elapsed_ns=completed_monotonic_ns - started_monotonic_ns,
+                    anomaly=(1 if completed_epoch_ms < started_epoch_ms else 0),
+                    collector_commit_sha=collector_commit_sha,
+                    outcome=outcome, failure_code=failure_code, exc=source_exc)
+                raise raise_exc
 
             elapsed_ns = completed_monotonic_ns - started_monotonic_ns
             if elapsed_ns < 0:
