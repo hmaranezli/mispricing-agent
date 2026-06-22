@@ -27,6 +27,7 @@ exact field set, so per Slice A's "invent nothing" rule only the source-proven c
 **vocabulary** value type is provided here; the container DTO awaits its own field-shape charter.
 """
 import decimal
+import re
 from dataclasses import dataclass, fields as _dataclass_fields
 from types import MappingProxyType
 
@@ -346,3 +347,246 @@ _EXPECTED_ENVELOPE_FIELDS = (
     "definitions_by_silver_pair",
 )
 assert tuple(f.name for f in _dataclass_fields(ShadowIntentDefinitionArtifact)) == _EXPECTED_ENVELOPE_FIELDS
+
+
+# =================================================================================================
+# Slice-A Runtime Extension — lifecycle slot / root-evidence option-sum / dual-snapshot value types
+#
+# Effective ratified contract: the field-shape amendment (85de568) as superseded by the exactness
+# correction (38eccce), the U+200B source-fidelity correction (9fc7749) and its typo micro-correction
+# (01331ec). Historical superseded clauses do not govern. These are Slice-A-owned passive carriers;
+# no Step algorithm, lifecycle application, or replay-loop behavior lives here.
+# =================================================================================================
+
+# Canonical anchor-timestamp grammar: ASCII "0" | [1-9][0-9]* (ASCII digits only — NOT ``\d``, no
+# Unicode decimal digits, no sign/fraction/exponent/whitespace/leading-zeros). ``[0-9]`` is ASCII by
+# definition; acceptance is lexical (no int() conversion).
+_CANONICAL_ANCHOR_TIMESTAMP = re.compile(r"0|[1-9][0-9]*")
+
+
+def _require_nonblank_context_text(name, value):
+    """A context scalar is exactly a ``str`` AND ``value.strip() != ""`` (verbatim preserved).
+
+    Invalidity is defined operationally and exclusively (9fc7749/01331ec): a scalar is blank **iff**
+    Python ``str.strip()`` returns ``""``. No broader Unicode-whitespace / zero-width / invisible
+    category is consulted — so ``U+200B`` (which ``str.strip()`` leaves intact) is **non-blank and
+    accepted**, while the empty string, ASCII whitespace, NBSP ``U+00A0``, EM SPACE ``U+2003``, and
+    IDEOGRAPHIC SPACE ``U+3000`` are blank and rejected. ``strip()`` is used **only** for the
+    emptiness test; the accepted value is stored exactly as received.
+    """
+    if type(value) is not str:
+        raise LogicalModelError(
+            "field {!r} must be opaque context text (str), not {}".format(name, type(value).__name__)
+        )
+    if value.strip() == "":
+        raise LogicalModelError(
+            "field {!r} must be non-blank (str.strip() != ''); empty/whitespace-only is invalid".format(name)
+        )
+    return value
+
+
+def _require_canonical_anchor_timestamp_text(value):
+    """Exact ``str`` matching the ASCII grammar ``"0" | [1-9][0-9]*`` (lexical; no ``int()``)."""
+    if type(value) is not str:
+        raise LogicalModelError(
+            "provenance_anchor_timestamp_text must be canonical decimal text (str), not {}".format(
+                type(value).__name__
+            )
+        )
+    if _CANONICAL_ANCHOR_TIMESTAMP.fullmatch(value) is None:
+        raise LogicalModelError(
+            "provenance_anchor_timestamp_text must match ASCII '0' | [1-9][0-9]* (no \\d/Unicode digits, "
+            "sign, fraction, exponent, whitespace, or leading zeros): {!r}".format(value)
+        )
+    return value
+
+
+# --- the immutable two-scalar root context (457d279 precedence §5: (source_venue, source_pair)) ---
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EstablishedRootContext:
+    """The established intent's two opaque text context scalars, carried verbatim. Self-validating."""
+
+    source_venue_context_text: object
+    source_pair_context_text: object
+
+    def __post_init__(self):
+        _require_nonblank_context_text("source_venue_context_text", self.source_venue_context_text)
+        _require_nonblank_context_text("source_pair_context_text", self.source_pair_context_text)
+
+
+def _revalidate_established_root_context(ctx):
+    """Defensive: re-assert an exact context's complete invariants (guards object.__new__ bypasses)."""
+    if type(ctx) is not EstablishedRootContext:
+        raise LogicalModelError(
+            "root_context must be an exact EstablishedRootContext, not {}".format(type(ctx).__name__)
+        )
+    _require_nonblank_context_text("source_venue_context_text", ctx.source_venue_context_text)
+    _require_nonblank_context_text("source_pair_context_text", ctx.source_pair_context_text)
+
+
+# --- closed root-evidence option-sum (NoRootEvidence | EstablishedRootEvidence) -------------------
+@dataclass(frozen=True, slots=True)
+class NoRootEvidence:
+    """Closed variant: the slot has no established root (genuine zero payload fields)."""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EstablishedRootEvidence:
+    """Closed variant: the two-scalar context + canonical provenance anchor timestamp. Self-validating."""
+
+    root_context: object
+    provenance_anchor_timestamp_text: object
+
+    def __post_init__(self):
+        _revalidate_established_root_context(self.root_context)
+        _require_canonical_anchor_timestamp_text(self.provenance_anchor_timestamp_text)
+
+
+def _require_root_evidence_option(value):
+    """The root_evidence field is always present and is exactly one closed option variant."""
+    if type(value) is NoRootEvidence:
+        return value
+    if type(value) is EstablishedRootEvidence:
+        _revalidate_established_root_context(value.root_context)
+        _require_canonical_anchor_timestamp_text(value.provenance_anchor_timestamp_text)
+        return value
+    raise LogicalModelError(
+        "root_evidence must be NoRootEvidence or EstablishedRootEvidence, not {}".format(type(value).__name__)
+    )
+
+
+def _require_slot_state_root_invariant(state, root_evidence):
+    """Closed lifecycle-state / root-evidence compatibility (e9995e7 §4; 457d279 atomicity §5).
+
+    ``AUDIT_REPLAYED`` <=> ``NoRootEvidence``; every established/forward/terminal state
+    (``INTENT_RECORDED`` / ``HYPOTHETICAL_CONDITION_MET`` / ``INTENT_EXPIRED`` / ``INTENT_RETIRED``)
+    <=> ``EstablishedRootEvidence``. (Both arguments are already individually validated.)
+    """
+    if state == AUDIT_REPLAYED:
+        if type(root_evidence) is not NoRootEvidence:
+            raise LogicalModelError("AUDIT_REPLAYED slot must carry NoRootEvidence")
+    else:
+        if type(root_evidence) is not EstablishedRootEvidence:
+            raise LogicalModelError(
+                "lifecycle state {!r} (established/forward/terminal) must carry EstablishedRootEvidence".format(state)
+            )
+
+
+# --- per-intent lifecycle slot -------------------------------------------------------------------
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ShadowIntentLifecycleSlot:
+    """Passive per-intent slot: borrowed identity + closed lifecycle state + closed root evidence.
+
+    Frozen, slotted, keyword-only, methodless, self-validating. The identity reuses the existing
+    ``OpaqueSilverPairKey`` (never mints another identity); ``exposure_orientation`` and the
+    hypothetical window stay manifest-resident and are deliberately NOT carried here.
+    """
+
+    shadow_intent_identity_reference: object
+    lifecycle_state: object
+    root_evidence: object
+
+    def __post_init__(self):
+        _revalidate_silver_pair_key(self.shadow_intent_identity_reference)
+        validate_lifecycle_state(self.lifecycle_state)
+        _require_root_evidence_option(self.root_evidence)
+        _require_slot_state_root_invariant(self.lifecycle_state, self.root_evidence)
+
+
+def _revalidate_lifecycle_slot(slot):
+    """Defensive: re-assert a slot's complete invariants (guards object.__new__ bypasses)."""
+    if type(slot) is not ShadowIntentLifecycleSlot:
+        raise LogicalModelError(
+            "snapshot entry value must be an exact ShadowIntentLifecycleSlot, not {}".format(type(slot).__name__)
+        )
+    _revalidate_silver_pair_key(slot.shadow_intent_identity_reference)
+    validate_lifecycle_state(slot.lifecycle_state)
+    _require_root_evidence_option(slot.root_evidence)
+    _require_slot_state_root_invariant(slot.lifecycle_state, slot.root_evidence)
+
+
+# --- shadow snapshot (one type for both RowStartShadowSnapshot / NextShadowSnapshot roles) --------
+@dataclass(frozen=True, slots=True, init=False, repr=False)
+class ShadowLifecycleSnapshot:
+    """Factory-only immutable snapshot: ``slots_by_identity`` is a read-only proxy of
+    ``OpaqueSilverPairKey -> ShadowIntentLifecycleSlot``. Direct construction raises; equality is
+    content-based and order-independent (the proxy compares as the underlying mapping)."""
+
+    slots_by_identity: object
+
+    def __init__(self, *args, **kwargs):
+        raise LogicalModelError(
+            "ShadowLifecycleSnapshot cannot be constructed directly; use make_shadow_lifecycle_snapshot(...)."
+        )
+
+
+def make_shadow_lifecycle_snapshot(*, slot_entries):
+    """Build one validated ``ShadowLifecycleSnapshot`` from an exact tuple of exact 2-tuples.
+
+    ``slot_entries`` is an ordered ``tuple`` of ``(OpaqueSilverPairKey, ShadowIntentLifecycleSlot)``
+    pairs (ordering carries no semantic meaning; it exists only so duplicates are detectable before
+    map construction). Every key and slot is defensively revalidated, the map key MUST equal
+    ``slot.shadow_intent_identity_reference``, and a duplicate key is rejected (no first/last-wins).
+    The local dict is wrapped read-only and not retained; no caller dict is accepted. An empty map is
+    valid.
+    """
+    if type(slot_entries) is not tuple:
+        raise LogicalModelError(
+            "slot_entries must be a tuple of (OpaqueSilverPairKey, ShadowIntentLifecycleSlot) pairs, not {}".format(
+                type(slot_entries).__name__
+            )
+        )
+    built = {}
+    for entry in slot_entries:
+        if type(entry) is not tuple or len(entry) != 2:
+            raise LogicalModelError("each slot entry must be a (key, slot) 2-tuple")
+        key, slot = entry
+        _revalidate_silver_pair_key(key)
+        _revalidate_lifecycle_slot(slot)
+        if key != slot.shadow_intent_identity_reference:
+            raise LogicalModelError("snapshot key must equal slot.shadow_intent_identity_reference")
+        if key in built:
+            raise LogicalModelError("duplicate Silver-pair key in slot_entries is structurally invalid")
+        built[key] = slot
+
+    snapshot = object.__new__(ShadowLifecycleSnapshot)
+    object.__setattr__(snapshot, "slots_by_identity", MappingProxyType(built))
+    return snapshot
+
+
+# --- seen-target-pairs snapshot (one type for both RowStart / Next SeenTargetPairs roles) ---------
+@dataclass(frozen=True, slots=True, init=False, repr=False)
+class SeenTargetPairsSnapshot:
+    """Factory-only immutable replay-local snapshot: ``seen_target_pairs`` is a ``frozenset`` of exact
+    ``OpaqueSilverPairKey`` values. Direct construction raises; equality is set-content and
+    order-independent."""
+
+    seen_target_pairs: object
+
+    def __init__(self, *args, **kwargs):
+        raise LogicalModelError(
+            "SeenTargetPairsSnapshot cannot be constructed directly; use make_seen_target_pairs_snapshot(...)."
+        )
+
+
+def make_seen_target_pairs_snapshot(*, members):
+    """Build one validated ``SeenTargetPairsSnapshot`` from an exact tuple of exact keys.
+
+    ``members`` is an exact ``tuple`` of ``OpaqueSilverPairKey`` values; each is defensively
+    revalidated, and a duplicate member is rejected **before** frozenset construction (no silent
+    deduplication). An empty members tuple is valid.
+    """
+    if type(members) is not tuple:
+        raise LogicalModelError(
+            "members must be a tuple of OpaqueSilverPairKey values, not {}".format(type(members).__name__)
+        )
+    seen = set()
+    for member in members:
+        _revalidate_silver_pair_key(member)
+        if member in seen:
+            raise LogicalModelError("duplicate member in members is structurally invalid (no silent dedup)")
+        seen.add(member)
+
+    snapshot = object.__new__(SeenTargetPairsSnapshot)
+    object.__setattr__(snapshot, "seen_target_pairs", frozenset(seen))
+    return snapshot
