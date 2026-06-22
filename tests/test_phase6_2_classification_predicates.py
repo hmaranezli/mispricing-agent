@@ -668,9 +668,10 @@ def test_runtime_has_no_row_sqlite_or_test_awareness():
         assert token not in text, token
 
 
-def test_slice_e_f_targets_not_created():
+def test_slice_f_target_not_created():
+    # Slice E (atomic_replay_step.py) is now built; only the Slice-F reconstruction fold remains absent.
     package = _module_path().parent
-    for absent in ("atomic_replay_step.py", "reconstruction.py"):
+    for absent in ("reconstruction.py",):
         assert not (package / absent).exists(), absent
 
 
