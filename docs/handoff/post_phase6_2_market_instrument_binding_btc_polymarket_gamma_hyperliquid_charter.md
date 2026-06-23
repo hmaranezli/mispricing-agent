@@ -54,10 +54,31 @@
 | clobTokenIds | `$[0].clobTokenIds` | **stringified JSON** scalar | decodes in memory to exactly **two** string token IDs, **each length 77** |
 
 - **Cardinality:** `len(outcomes) == len(clobTokenIds) == 2`.
-- **Exact full token IDs are NOT reproduced here.** The field-authority audit reported only the decoded
-  array shape and per-element string lengths (77, 77), not the full literal token IDs. Therefore the
-  **exact full token IDs require a later read-only targeted extraction** from the existing Gamma raw
-  ledger **before any executable use**. No token ID is invented in this charter.
+
+### 3.1 Full token extraction — COMPLETE (read-only)
+
+> The prior "full token extraction pending" blocker is **CLOSED**. A separate **read-only** targeted
+> extraction has captured the exact full token IDs from the existing Gamma raw ledger.
+
+- **Full token extraction: COMPLETE.**
+- Extraction was **read-only** from `/root/mispricing_gamma_runtime_evidence/raw_capture.sqlite3`,
+  `capture_sequence=1`.
+- **No network, no writes, no S1, no projection, no git changes** occurred during extraction.
+- Guarded nested parse **passed** all guards:
+  - `outcomes == ["Yes", "No"]`
+  - `clobTokenIds` length `== 2`
+  - token IDs **distinct**
+  - each token ID is a **string**
+  - each token ID matches `^[0-9]{1,80}$`
+  - each token ID length `== 77`
+  - SHA-256 over the original stored bytes **unchanged**:
+    `04a37c839d617fbb027bde036e2255a3388a087afb8872a6699669532a0cad41`
+- **Exact extracted token IDs (opaque string identities — see the red-line in §7.1):**
+  - `polymarket_yes_token_id` =
+    `"13433573766910980267981622064090484781359464703732825845886677588040916221533"`
+  - `polymarket_no_token_id` =
+    `"68320692409850091190490975441025843632582876963922128660910974326175304515755"`
+- No token ID is invented; each was read verbatim from source and every digit is preserved exactly.
 
 ---
 
@@ -135,18 +156,27 @@ polymarket_clob_token_ids_source_path = $[0].clobTokenIds
 polymarket_outcome_token_binding_axiom = PARALLEL_SOURCE_ORDERING
 polymarket_yes_outcome_label        = "Yes"
 polymarket_no_outcome_label         = "No"
-polymarket_yes_token_id             = BLOCKED_PENDING_FULL_TOKEN_EXTRACTION
-polymarket_no_token_id              = BLOCKED_PENDING_FULL_TOKEN_EXTRACTION
-hyperliquid_coin                    = BTC
+polymarket_yes_token_id             = "13433573766910980267981622064090484781359464703732825845886677588040916221533"
+polymarket_no_token_id              = "68320692409850091190490975441025843632582876963922128660910974326175304515755"
+hyperliquid_coin                    = "BTC"
 binding_authority                   = MANUAL_RATIFIED_CHARTER
 source_capture_sha256               = 04a37c839d617fbb027bde036e2255a3388a087afb8872a6699669532a0cad41
 status                              = UNRATIFIED
 ```
 
-- The two per-outcome token IDs are **`BLOCKED_PENDING_FULL_TOKEN_EXTRACTION`** because the audit did
-  not reproduce the full literal token IDs. They are **not invented here**.
-- A **required follow-up read-only token-extraction gate** (see §9) must capture the exact full token
-  IDs into a ratified binding record **before any runtime or `l2Book` acquisition can be authorized**.
+- Both per-outcome token IDs are now **filled with the exact extracted values** (§3.1). The prior
+  `BLOCKED_PENDING_FULL_TOKEN_EXTRACTION` placeholders are removed. `status` remains **UNRATIFIED**
+  until Gemini + Codex review ratifies this updated record.
+
+### 7.1 Red-line — token IDs are exact opaque strings, never numbers
+
+- `polymarket_yes_token_id` and `polymarket_no_token_id` are **exact opaque string identities**.
+- They MUST be represented and described as **strings only**.
+- **Do not** represent them as numeric literals; **do not** convert to `int`; **do not** convert to
+  `float`; **do not** round; **do not** truncate; **do not** format with separators; **do not** use
+  scientific notation; **do not** treat them as quantities.
+- If "BigInt" is ever mentioned, it is clarified here that **computation is forbidden** — these are
+  **identity-only exact strings**, never operands. Every digit is preserved exactly (length 77 each).
 
 ---
 
@@ -166,12 +196,14 @@ status                              = UNRATIFIED
 
 ## 9. Next eligible gate after ratification
 
-- If this charter is ratified and the **full token IDs are still not present** in this docs file, the
-  next safe gate is a **read-only targeted full-token extraction from the existing Gamma raw ledger**
-  (`capture_sequence=1`) — **not** a network request.
-- Only **after** the full token IDs are captured into a ratified binding record may a **docs-only
+- The read-only full-token extraction gate is **SATISFIED**: the exact full token IDs are now present
+  in this docs file (§3.1, §7) — captured read-only from the existing Gamma raw ledger
+  (`capture_sequence=1`), **not** via any network request.
+- Only **after** this updated binding record is **ratified** (Gemini + Codex) may a **docs-only
   `l2Book` raw-acquisition amendment** become eligible.
-- **No `l2Book` physical capture is authorized by this charter.**
+- **No `l2Book` physical capture is authorized by this charter.** This update does **not** ratify the
+  binding, does **not** authorize the `l2Book` runtime or capture, and does **not** authorize
+  projection / S1 / B1 / B2 / calibration / scheduler.
 
 ---
 
@@ -180,8 +212,10 @@ status                              = UNRATIFIED
 - This Market/Instrument Binding Charter (BTC): **BUILT / RATIFIABLE / UNRATIFIED** pending Gemini +
   Codex review.
 - Gamma physical one-shot capture: **COMPLETE**. Gamma field-authority audit: **COMPLETE**.
+- **Full token extraction: COMPLETE.**
 - Source-side Polymarket Gamma B3 evidence: **PROVEN** (slug, condition, outcomes, clob-token shape,
-  parallel cardinality 2≡2). Option-B canonical mapping: **BLOCKED** (proposed, unratified).
+  parallel cardinality 2≡2).
+- Proposed Option-B canonical mapping record: **BUILT / RATIFIABLE / UNRATIFIED**.
 - B1 / B2: **BLOCKED**.
 - `HYPERLIQUID_L2_BOOK_BY_COIN_V1` runtime: **UNBUILT + BLOCKED**.
 - Projection / S1 ingestion: **BLOCKED**.
