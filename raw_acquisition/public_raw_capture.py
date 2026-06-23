@@ -35,8 +35,12 @@ _dummy_cookie_jar = aiohttp.DummyCookieJar
 _GAMMA = "POLYMARKET_GAMMA_MARKET_BY_SLUG_V1"
 _CLOB = "POLYMARKET_CLOB_BOOK_BY_TOKEN_V1"
 _HL = "HYPERLIQUID_META_AND_ASSET_CTXS_V1"
+_HL_L2 = "HYPERLIQUID_L2_BOOK_BY_COIN_V1"
 
 _HYPERLIQUID_BODY = b'{"type":"metaAndAssetCtxs"}'
+# Hardcoded only because the BTC Market/Instrument Binding Charter and Ledger-shape Amendment A1 are
+# RATIFIED; the coin is never inferred from slug/question text and is never caller-supplied.
+_HYPERLIQUID_L2BOOK_BTC_BODY = b'{"type":"l2Book","coin":"BTC"}'
 
 _MAX_BODY_BYTES = 16 * 1024 * 1024
 _CHUNK_BYTES = 65536
@@ -108,6 +112,10 @@ _RAW_LEDGER_DDL = """CREATE TABLE IF NOT EXISTS raw_capture_log (
             AND http_method = 'POST' AND request_host = 'api.hyperliquid.xyz'
             AND request_target = '/info'
             AND request_body = X'7b2274797065223a226d657461416e64417373657443747873227d')
+        OR (source_authority = 'HYPERLIQUID_L2_BOOK_BY_COIN_V1'
+            AND http_method = 'POST' AND request_host = 'api.hyperliquid.xyz'
+            AND request_target = '/info'
+            AND request_body = X'7b2274797065223a226c32426f6f6b222c22636f696e223a22425443227d')
     ),
     -- §3 parent key for the composite provenance FK from raw_fetch_attempt_log (trivially unique because
     -- capture_sequence is already the primary key; declared so the composite FK has a valid parent target):
@@ -131,7 +139,8 @@ CREATE TABLE IF NOT EXISTS raw_fetch_attempt_log (
     CHECK (source_authority IN (
         'POLYMARKET_GAMMA_MARKET_BY_SLUG_V1',
         'POLYMARKET_CLOB_BOOK_BY_TOKEN_V1',
-        'HYPERLIQUID_META_AND_ASSET_CTXS_V1')),
+        'HYPERLIQUID_META_AND_ASSET_CTXS_V1',
+        'HYPERLIQUID_L2_BOOK_BY_COIN_V1')),
     CHECK (outcome IN (
         'RAW_COMMITTED','TRANSPORT_FAILED','TIMEOUT','RESPONSE_TOO_LARGE','HTTP_PROTOCOL_FAILED')),
     CHECK (retrieval_started_epoch_ms >= 0),
@@ -309,16 +318,25 @@ class HyperliquidMetaAndAssetCtxsV1Request:
     pass
 
 
+@dataclasses.dataclass(frozen=True, slots=True, kw_only=True)
+class HyperliquidL2BookBtcV1Request:
+    # Zero-field carrier: the coin is the RATIFIED hardcoded BTC binding, never caller-supplied and
+    # never inferred. Any attempt to pass a field (e.g. coin=...) raises TypeError at construction.
+    pass
+
+
 PublicSourceRequest = (
     PolymarketGammaMarketBySlugV1Request
     | PolymarketClobBookByTokenV1Request
     | HyperliquidMetaAndAssetCtxsV1Request
+    | HyperliquidL2BookBtcV1Request
 )
 
 _VARIANT_TYPES = (
     PolymarketGammaMarketBySlugV1Request,
     PolymarketClobBookByTokenV1Request,
     HyperliquidMetaAndAssetCtxsV1Request,
+    HyperliquidL2BookBtcV1Request,
 )
 
 
@@ -434,6 +452,9 @@ def _resolve_request(request):
         target = "/book?token_id=" + request.token_id
         return (_CLOB, "GET", "https", "clob.polymarket.com", target, b"",
                 {"Accept": "application/json"})
+    if type(request) is HyperliquidL2BookBtcV1Request:
+        return (_HL_L2, "POST", "https", "api.hyperliquid.xyz", "/info", _HYPERLIQUID_L2BOOK_BTC_BODY,
+                {"Accept": "application/json", "Content-Type": "application/json"})
     target = "/info"
     return (_HL, "POST", "https", "api.hyperliquid.xyz", target, _HYPERLIQUID_BODY,
             {"Accept": "application/json", "Content-Type": "application/json"})

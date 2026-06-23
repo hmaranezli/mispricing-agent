@@ -788,15 +788,52 @@ def test_package_initializer_inert_exportless():
     assert body == []
 
 
+# --- Byte-for-byte lock against the RATIFIED successor (Ledger-shape Amendment A1) -----------------
+
+# Exact pre-A1 fragments (the only two regions A1 changes), copied byte-for-byte from the original
+# ratified ``` sql ``` blocks; and their exact A1 successor forms.
+_OLD_INLIST_TAIL = "        'HYPERLIQUID_META_AND_ASSET_CTXS_V1')),"
+_NEW_INLIST_TAIL = ("        'HYPERLIQUID_META_AND_ASSET_CTXS_V1',\n"
+                    "        'HYPERLIQUID_L2_BOOK_BY_COIN_V1')),")
+_META_BRANCH_TAIL = ("            AND request_body = "
+                     "X'7b2274797065223a226d657461416e64417373657443747873227d')")
+_L2_BRANCH = ("\n        OR (source_authority = 'HYPERLIQUID_L2_BOOK_BY_COIN_V1'"
+              "\n            AND http_method = 'POST' AND request_host = 'api.hyperliquid.xyz'"
+              "\n            AND request_target = '/info'"
+              "\n            AND request_body = "
+              "X'7b2274797065223a226c32426f6f6b222c22636f696e223a22425443227d')")
+
+
 def test_ddl_constant_matches_charter_byte_for_byte():
+    """Byte-for-byte lock against the RATIFIED successor (A1) DDL — not weakened/normalized.
+
+    Each original ``` sql ``` DDL block from the charter, with the EXACT A1 deltas applied (and only
+    those two deltas), must be a byte-substring of the runtime ``_RAW_LEDGER_DDL``.
+    """
     charter = (pathlib.Path("docs/handoff/"
                "post_phase6_2_public_source_authority_raw_capture_ledger_exact_shape_charter.md")
                ).read_text(encoding="utf-8")
+    ddl = prc._RAW_LEDGER_DDL
     import re as _re
     blocks = _re.findall(r"```sql\n(.*?)```", charter, _re.S)
     ddl_blocks = [b for b in blocks if ("CREATE TABLE" in b or "CREATE TRIGGER" in b or "CREATE UNIQUE INDEX" in b)]
     for b in ddl_blocks:
-        assert b.strip() in prc._RAW_LEDGER_DDL
+        expected = b.strip()
+        if _OLD_INLIST_TAIL in expected:
+            expected = expected.replace(_OLD_INLIST_TAIL, _NEW_INLIST_TAIL)
+        if _META_BRANCH_TAIL in expected:
+            expected = expected.replace(_META_BRANCH_TAIL, _META_BRANCH_TAIL + _L2_BRANCH)
+        assert expected in ddl
+
+    # Positive successor lock: the exact A1 strings are present in the runtime DDL.
+    assert _NEW_INLIST_TAIL in ddl
+    assert _L2_BRANCH.lstrip("\n") in ddl
+    # Stale pre-A1 vocabulary terminator must be gone.
+    assert _OLD_INLIST_TAIL not in ddl
+    # Runtime <-> charter synchronization (the A1 amendment text carries these exact tokens).
+    assert "X'7b2274797065223a226c32426f6f6b222c22636f696e223a22425443227d'" in charter
+    assert "'HYPERLIQUID_L2_BOOK_BY_COIN_V1'))," in charter
+    assert ("OR (source_authority = 'HYPERLIQUID_L2_BOOK_BY_COIN_V1'") in charter
 
 
 # === 8. CORRECTIVE FOLLOW-UP: DEFECTS A–F =========================================================
@@ -1021,3 +1058,205 @@ def test_response_too_large_supersedes_teardown_error(monkeypatch, tmp_path):
                          "('HTTP_PROTOCOL_FAILED','TRANSPORT_FAILED','TIMEOUT')").fetchone()[0] == 0
     finally:
         c.close()
+
+
+# === 9. HYPERLIQUID_L2_BOOK_BY_COIN_V1 (fourth variant, successor schema A1) =======================
+
+_L2_BODY = b'{"type":"l2Book","coin":"BTC"}'
+_L2_HEX = "7b2274797065223a226c32426f6f6b222c22636f696e223a22425443227d"
+_L2_AUTH = "HYPERLIQUID_L2_BOOK_BY_COIN_V1"
+
+
+def _l2():
+    return prc.HyperliquidL2BookBtcV1Request()
+
+
+# --- A: request variant exists, frozen/slotted/kw-only, zero-field, in the closed sum --------------
+
+def test_l2book_request_variant_frozen_slotted_zero_field_in_union():
+    import dataclasses
+    cls = prc.HyperliquidL2BookBtcV1Request          # AttributeError before production -> RED
+    assert dataclasses.is_dataclass(cls)
+    assert getattr(cls, "__slots__", None) is not None
+    assert [f.name for f in dataclasses.fields(cls)] == []     # zero-field carrier
+    assert cls in prc._VARIANT_TYPES
+    inst = cls()
+    # exercising the public callable with this variant must be accepted past the type guard
+    assert type(inst) in prc._VARIANT_TYPES
+
+
+# --- B: exact body / authority / endpoint ---------------------------------------------------------
+
+def test_l2book_exact_request_body_and_authority(monkeypatch, tmp_path):
+    raw, s1 = _paths(tmp_path)
+    _install_session(monkeypatch, resp=_ok_resp())
+    _clock(monkeypatch)
+    run(acquire_public_raw_capture(request=_l2(), raw_ledger_path=raw,
+                                   s1_ledger_path=s1, collector_commit_sha=_CSHA))
+    rq = FakeSession.instances[-1].requests[0]
+    assert rq["method"] == "POST"
+    assert rq["url"] == "https://api.hyperliquid.xyz/info"
+    assert rq["kwargs"]["headers"] == {"Accept": "application/json", "Content-Type": "application/json"}
+    data = rq["kwargs"]["data"]
+    assert data == _L2_BODY
+    assert data.hex() == _L2_HEX
+    assert b" " not in data and b"\n" not in data and b"\t" not in data   # no whitespace
+    assert b"nSigFigs" not in data and b"mantissa" not in data
+    # stored capture row provenance
+    c = sqlite3.connect(raw)
+    try:
+        row = c.execute("SELECT source_authority, http_method, request_scheme, request_host, "
+                        "request_target, request_body FROM raw_capture_log").fetchone()
+    finally:
+        c.close()
+    assert row[0] == _L2_AUTH
+    assert (row[1], row[2], row[3], row[4]) == ("POST", "https", "api.hyperliquid.xyz", "/info")
+    assert bytes(row[5]) == _L2_BODY
+
+
+# --- C: no caller-supplied coin / no inference -----------------------------------------------------
+
+def test_l2book_rejects_caller_supplied_coin():
+    import dataclasses
+    assert [f.name for f in dataclasses.fields(prc.HyperliquidL2BookBtcV1Request)] == []
+    with pytest.raises(TypeError):
+        prc.HyperliquidL2BookBtcV1Request(coin="BTC")
+    with pytest.raises(TypeError):
+        prc.HyperliquidL2BookBtcV1Request(coin="btc")
+    # no slug/question/polymarket field exists on the carrier
+    for forbidden in ("coin", "slug", "question", "token_id", "conditionId"):
+        assert forbidden not in {f.name for f in dataclasses.fields(prc.HyperliquidL2BookBtcV1Request)}
+
+
+# --- D: DDL admission / rejection (successor schema) -----------------------------------------------
+
+def _ddl_db():
+    c = sqlite3.connect(":memory:", isolation_level=None)
+    c.execute("PRAGMA foreign_keys=ON")
+    c.executescript(prc._RAW_LEDGER_DDL)
+    return c
+
+
+def _cap_row(source_authority, method, host, target, body):
+    return (source_authority, method, "https", host, target, body,
+            0, 0, 0, 0, 200, b"", b"", "a" * 64, "b" * 40)
+
+
+_CAP_INSERT = ("INSERT INTO raw_capture_log(source_authority,http_method,request_scheme,request_host,"
+               "request_target,request_body,retrieval_started_epoch_ms,retrieval_completed_epoch_ms,"
+               "retrieval_elapsed_monotonic_ns,clock_anomaly_evidence,http_status,response_headers_payload,"
+               "response_body,response_body_sha256,collector_commit_sha) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+_ATT_INSERT = ("INSERT INTO raw_fetch_attempt_log(source_authority,request_target,retrieval_started_epoch_ms,"
+               "retrieval_completed_epoch_ms,retrieval_elapsed_monotonic_ns,clock_anomaly_evidence,outcome,"
+               "capture_sequence,failure_code,failure_payload,collector_commit_sha) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+
+
+def _accepts(c, sql, params):
+    try:
+        c.execute("SAVEPOINT s"); c.execute(sql, params); c.execute("ROLLBACK TO s"); c.execute("RELEASE s")
+        return True
+    except sqlite3.Error:
+        c.execute("ROLLBACK TO s"); c.execute("RELEASE s")
+        return False
+
+
+def test_l2book_ddl_admits_exact_body_and_rejects_variants():
+    c = _ddl_db()
+    try:
+        # exact l2Book body accepted
+        assert _accepts(c, _CAP_INSERT, _cap_row(_L2_AUTH, "POST", "api.hyperliquid.xyz", "/info", _L2_BODY))
+        # lowercase btc rejected
+        assert not _accepts(c, _CAP_INSERT, _cap_row(_L2_AUTH, "POST", "api.hyperliquid.xyz", "/info",
+                                                     b'{"type":"l2Book","coin":"btc"}'))
+        # whitespace variant rejected
+        assert not _accepts(c, _CAP_INSERT, _cap_row(_L2_AUTH, "POST", "api.hyperliquid.xyz", "/info",
+                                                     b'{"type": "l2Book", "coin": "BTC"}'))
+        # reordered keys rejected
+        assert not _accepts(c, _CAP_INSERT, _cap_row(_L2_AUTH, "POST", "api.hyperliquid.xyz", "/info",
+                                                     b'{"coin":"BTC","type":"l2Book"}'))
+        # nSigFigs / mantissa rejected
+        assert not _accepts(c, _CAP_INSERT, _cap_row(_L2_AUTH, "POST", "api.hyperliquid.xyz", "/info",
+                                                     b'{"type":"l2Book","coin":"BTC","nSigFigs":5}'))
+        assert not _accepts(c, _CAP_INSERT, _cap_row(_L2_AUTH, "POST", "api.hyperliquid.xyz", "/info",
+                                                     b'{"type":"l2Book","coin":"BTC","mantissa":2}'))
+        # existing three authorities still accepted
+        assert _accepts(c, _CAP_INSERT, _cap_row("POLYMARKET_GAMMA_MARKET_BY_SLUG_V1", "GET",
+                                                 "gamma-api.polymarket.com", "/markets?slug=x", b""))
+        assert _accepts(c, _CAP_INSERT, _cap_row("POLYMARKET_CLOB_BOOK_BY_TOKEN_V1", "GET",
+                                                 "clob.polymarket.com", "/book?token_id=1", b""))
+        assert _accepts(c, _CAP_INSERT, _cap_row("HYPERLIQUID_META_AND_ASSET_CTXS_V1", "POST",
+                                                 "api.hyperliquid.xyz", "/info",
+                                                 b'{"type":"metaAndAssetCtxs"}'))
+        # an l2Book row with wrong host is still rejected (coupling intact)
+        assert not _accepts(c, _CAP_INSERT, _cap_row(_L2_AUTH, "POST", "clob.polymarket.com", "/info", _L2_BODY))
+    finally:
+        c.close()
+
+
+def test_l2book_ddl_admits_failure_attempt_capture_seq_null():
+    c = _ddl_db()
+    try:
+        ok = _accepts(c, _ATT_INSERT, (_L2_AUTH, "/info", 0, 0, 0, 0, "TIMEOUT", None, "RAW_TIMEOUT", "{}", "b" * 40))
+        assert ok
+        # RAW_COMMITTED for l2book authority without a parent capture is still rejected (FK/coupling intact)
+        bad = _accepts(c, _ATT_INSERT, (_L2_AUTH, "/info", 0, 0, 0, 0, "RAW_COMMITTED", 999, None, None, "b" * 40))
+        assert not bad
+    finally:
+        c.close()
+
+
+# --- G: ledger isolation / no evidence pollution --------------------------------------------------
+
+def test_l2book_writes_only_to_supplied_ledger(monkeypatch, tmp_path):
+    raw, s1 = _paths(tmp_path)
+    prior_meta = str(tmp_path / "prior_meta.db")
+    prior_gamma = str(tmp_path / "prior_gamma.db")
+    for p in (prior_meta, prior_gamma):
+        x = sqlite3.connect(p); x.execute("CREATE TABLE t(x)"); x.close()
+    opened = []
+    real_connect = sqlite3.connect
+
+    def spy_connect(path, *a, **k):
+        opened.append(str(path))
+        return real_connect(path, *a, **k)
+
+    monkeypatch.setattr(prc.sqlite3, "connect", spy_connect)
+    _install_session(monkeypatch, resp=_ok_resp())
+    _clock(monkeypatch)
+    run(acquire_public_raw_capture(request=_l2(), raw_ledger_path=raw,
+                                   s1_ledger_path=s1, collector_commit_sha=_CSHA))
+    assert prior_meta not in opened and prior_gamma not in opened
+    assert all(os.path.realpath(s1) != os.path.realpath(p) for p in opened)
+    assert s1 not in opened
+    assert not os.path.exists(s1)
+    c = sqlite3.connect(raw)
+    try:
+        assert c.execute("SELECT COUNT(*) FROM raw_processing_journal").fetchone()[0] == 0
+        assert c.execute("SELECT COUNT(*) FROM raw_capture_log").fetchone()[0] == 1
+    finally:
+        c.close()
+
+
+# --- H: raw-only, no parse, no projection/B1/B2/S1 ------------------------------------------------
+
+def test_l2book_stores_raw_bytes_only_no_parse(monkeypatch, tmp_path):
+    raw, s1 = _paths(tmp_path)
+    body = b'{"coin":"BTC","time":1782200000000,"levels":[[{"px":"1","sz":"2","n":3}],[]]}'
+    _install_session(monkeypatch, resp=FakeResp(200, ((b"content-type", b"application/json"),),
+                                                [body[:10], body[10:]]))
+    _clock(monkeypatch)
+    res = run(acquire_public_raw_capture(request=_l2(), raw_ledger_path=raw,
+                                         s1_ledger_path=s1, collector_commit_sha=_CSHA))
+    assert res.source_authority == _L2_AUTH
+    assert res.response_body_sha256 == hashlib.sha256(body).hexdigest()
+    c = sqlite3.connect(raw)
+    try:
+        stored = c.execute("SELECT response_body FROM raw_capture_log").fetchone()[0]
+        assert bytes(stored) == body                                  # exact raw bytes, unparsed
+        assert c.execute("SELECT COUNT(*) FROM raw_processing_journal").fetchone()[0] == 0
+    finally:
+        c.close()
+    # production performs no JSON decode of the response body
+    src = _src()
+    assert ".json()" not in src
+    assert "json.loads(response" not in src
