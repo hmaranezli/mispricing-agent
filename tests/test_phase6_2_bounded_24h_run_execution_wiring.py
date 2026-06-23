@@ -10,6 +10,8 @@ import hashlib
 import os
 import sqlite3
 import stat
+import unittest.mock
+import urllib.request
 
 import pytest
 
@@ -346,3 +348,73 @@ def test_no_trading_or_actionability_api():
     for banned in ("trade", "order", "place_order", "balance", "position", "calibrate",
                    "paper", "live", "signal", "rank", "edge"):
         assert not hasattr(wiring, banned)
+
+
+# --- Group H: https_transport per-leg header correctness (header-correctness amendment) ----------
+
+_HL_TRANSPORT_URL = "https://api.hyperliquid.xyz/info"
+_HL_TRANSPORT_BODY = b'{"type":"l2Book","coin":"BTC"}'
+_POLY_TRANSPORT_URL = (
+    "https://clob.polymarket.com/book?token_id="
+    "13433573766910980267981622064090484781359464703732825845886677588040916221533"
+)
+
+
+def _fake_urlopen(captured, status=200, body=b'{"ok":true}'):
+    """Returns a fake urlopen callable that records the Request object and acts as a context mgr."""
+    mock_resp = unittest.mock.MagicMock()
+    mock_resp.status = status
+    mock_resp.read.return_value = body
+    mock_resp.__enter__ = lambda s: s  # context manager returns itself (as urlopen does)
+    mock_resp.__exit__ = unittest.mock.MagicMock(return_value=False)
+
+    def _open(req, timeout=None):
+        captured.append(req)
+        return mock_resp
+
+    return _open
+
+
+def test_hl_post_request_carries_accept_header():
+    captured = []
+    with unittest.mock.patch("urllib.request.urlopen", side_effect=_fake_urlopen(captured)):
+        wiring.https_transport("POST", _HL_TRANSPORT_URL, _HL_TRANSPORT_BODY)
+    assert captured[0].get_header("Accept") == "application/json"
+
+
+def test_hl_post_request_carries_content_type_header():
+    captured = []
+    with unittest.mock.patch("urllib.request.urlopen", side_effect=_fake_urlopen(captured)):
+        wiring.https_transport("POST", _HL_TRANSPORT_URL, _HL_TRANSPORT_BODY)
+    # urllib.request.Request normalises Content-Type to Content-type via .capitalize()
+    assert captured[0].get_header("Content-type") == "application/json"
+
+
+def test_poly_get_request_carries_accept_header():
+    captured = []
+    with unittest.mock.patch("urllib.request.urlopen", side_effect=_fake_urlopen(captured)):
+        wiring.https_transport("GET", _POLY_TRANSPORT_URL, b"")
+    assert captured[0].get_header("Accept") == "application/json"
+
+
+def test_poly_get_request_has_no_content_type():
+    """GET must not carry Content-Type — amendment pins Accept only for Polymarket."""
+    captured = []
+    with unittest.mock.patch("urllib.request.urlopen", side_effect=_fake_urlopen(captured)):
+        wiring.https_transport("GET", _POLY_TRANSPORT_URL, b"")
+    assert captured[0].get_header("Content-type") is None
+
+
+def test_https_transport_still_returns_five_tuple():
+    """Fixed transport must preserve the (status, body, started_ms, completed_ms, elapsed_ns) contract."""
+    captured = []
+    with unittest.mock.patch("urllib.request.urlopen",
+                             side_effect=_fake_urlopen(captured, status=200, body=b'{"r":1}')):
+        result = wiring.https_transport("POST", _HL_TRANSPORT_URL, _HL_TRANSPORT_BODY)
+    assert isinstance(result, tuple) and len(result) == 5
+    status, body, started, completed, elapsed = result
+    assert status == 200
+    assert body == b'{"r":1}'
+    assert isinstance(started, int) and started >= 0
+    assert isinstance(completed, int) and completed >= 0
+    assert isinstance(elapsed, int) and elapsed >= 0
