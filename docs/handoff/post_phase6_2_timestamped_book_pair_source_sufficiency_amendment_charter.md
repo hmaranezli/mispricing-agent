@@ -163,15 +163,81 @@ Logical request shape (illustrative; **not** an executable byte-pinned body):
 
 ---
 
-## 8. Exact sequencing after independent ratification
+## 8. Exact sequencing after independent ratification (evidence-first, mapping-second)
 
-1. Exact **market/instrument binding charter** selects one Polymarket token/market and one Hyperliquid
-   coin **without heuristic mapping**.
-2. Exact **raw-acquisition amendment** pins the new `l2Book` request variant and request-byte shape.
-3. **Separately authorized one-shot captures** acquire timestamped book evidence.
-4. **Offline field-authority audit** proves timestamp units/shapes and book-side semantics.
-5. Exact **B1 economic formula/unit + B2 tolerance + B3 canonical mapping charter**.
-6. **Projection / S1-ingestion TDD** only after B1–B3 ratification.
+> **Correction (resolves the §8 source-authority paradox):** the prior ordering authored an
+> "Exact market/instrument binding charter" *before* any raw Polymarket Gamma/market evidence
+> existed. That would have forced the system to invent or hardcode the relationship between `slug`,
+> `condition_id`, `outcomes`, `clobTokenIds` / `token_id`, and the eventual Hyperliquid coin — a
+> zero-trust / no-invention violation. The sequence below is rewritten so that **captured source
+> evidence precedes any mapping**: nothing binds an instrument until the Gamma payload that defines
+> those identifiers has itself been durably captured and audited from source.
+
+1. **Gamma raw-evidence acquisition authorization (docs-only, separate, future).** A docs-only
+   Polymarket Gamma/markets raw-evidence acquisition authorization/amendment must first be ratified
+   for the **already-existing** current runtime variant:
+
+   ```
+   POLYMARKET_GAMMA_MARKET_BY_SLUG_V1
+   GET https://gamma-api.polymarket.com/markets?slug=<caller-supplied>
+   ```
+
+   That step authorizes **only** a separately executed one-shot capture for a **specific
+   caller-supplied slug**. It must **not** infer or select a market by search, discovery, or fuzzy
+   matching. (This amendment does **not** authorize that Gamma one-shot; it only names this gate.)
+
+2. **Read-only Gamma field-authority audit.** After that one-shot Gamma raw evidence is durably
+   captured, perform a read-only field-authority audit of the captured Gamma payload to prove, **if
+   present**, the exact source paths and types for:
+   - `slug`
+   - `condition_id` / `conditionId` (or equivalent source key), if present
+   - `outcomes`
+   - `clobTokenIds` / `token_id` / `asset_id` relationship, if present
+   - any market identifier fields
+
+   The audit must **not** invent missing fields and must **not** normalize, guess, or repair source
+   data.
+
+3. **Exact Market/Instrument Binding Charter** — authored **only after** durable Gamma evidence and
+   its audit exist. It may bind Polymarket market/token evidence to a Hyperliquid coin **only from
+   captured source evidence and ratified closed mapping rules**. No heuristic mapping, UI assumption,
+   case-folding, aliasing, fuzzy match, or hardcoded relationship.
+
+4. **New Hyperliquid `l2Book` raw-acquisition amendment** — authored **only after** the binding
+   charter is ratified. It may then pin:
+
+   ```
+   HYPERLIQUID_L2_BOOK_BY_COIN_V1
+   POST https://api.hyperliquid.xyz/info
+   body {"type":"l2Book","coin":<exact-ratified-coin>}   # nSigFigs / mantissa omitted
+   ```
+
+   Until then, `l2Book` remains **UNBUILT + BLOCKED** and **no fourth runtime variant** is authorized.
+
+5. **Timestamped book captures + offline audit** — only after those timestamped captures are
+   separately authorized and executed may an offline field-authority audit prove timestamp
+   units/shapes and book-side semantics.
+
+6. **Exact B1 economic formula/unit + B2 tolerance + B3 canonical mapping charter** — only after the
+   audits of step 5.
+
+7. **Projection / S1-ingestion TDD** — eligible only after B1–B3 ratification.
+
+### 8.1 Explicit denials carried by this correction
+
+- This amendment remains **docs-only**.
+- This correction does **not** authorize a network request.
+- This correction does **not** authorize the Gamma one-shot itself; it only fixes the required
+  ordering and names the next evidence-first gate (step 1).
+- This correction does **not** authorize the `l2Book` runtime or a fourth raw runtime variant.
+- This correction does **not** authorize projection, S1 ingestion, calibration, scheduler, continuous
+  collection, paper, live, or HYPOTHETICAL_OUTCOME.
+- **B1 remains BLOCKED.**
+- **B2 remains BLOCKED.**
+- **B3** source-side Hyperliquid **meta** evidence remains **PROVEN only on the meta side**; B3
+  **canonical mapping remains BLOCKED**.
+- Data collection remains **STARTED** with exactly one RAW_CAPTURED sample.
+- Capacity remains **0**.
 
 ---
 
