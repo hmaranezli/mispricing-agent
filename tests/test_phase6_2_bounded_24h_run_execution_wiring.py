@@ -418,3 +418,28 @@ def test_https_transport_still_returns_five_tuple():
     assert isinstance(started, int) and started >= 0
     assert isinstance(completed, int) and completed >= 0
     assert isinstance(elapsed, int) and elapsed >= 0
+
+
+# --- Group I: Polymarket pinned User-Agent (User-Agent amendment) --------------------------------
+
+_PINNED_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+)
+
+
+def test_poly_get_request_carries_pinned_user_agent():
+    """Polymarket GET must carry the exact chartered User-Agent literal (resolves 403)."""
+    captured = []
+    with unittest.mock.patch("urllib.request.urlopen", side_effect=_fake_urlopen(captured)):
+        wiring.https_transport("GET", _POLY_TRANSPORT_URL, b"")
+    # urllib.request.Request normalises User-Agent -> User-agent via .capitalize()
+    assert captured[0].get_header("User-agent") == _PINNED_UA
+
+
+def test_hl_post_request_has_no_user_agent():
+    """Hyperliquid POST must NOT carry the Polymarket User-Agent — amendment applies to Poly only."""
+    captured = []
+    with unittest.mock.patch("urllib.request.urlopen", side_effect=_fake_urlopen(captured)):
+        wiring.https_transport("POST", _HL_TRANSPORT_URL, _HL_TRANSPORT_BODY)
+    assert captured[0].get_header("User-agent") is None

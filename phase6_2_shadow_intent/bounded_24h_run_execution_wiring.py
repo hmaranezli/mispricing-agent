@@ -133,11 +133,17 @@ def https_transport(method, url, request_body):
     import time
 
     data = request_body if (request_body and method == "POST") else None
-    # Ratified per-source header sets (header-correctness amendment charter Section 4).
+    # Ratified per-source header sets (header-correctness + User-Agent amendment charters).
     if "api.hyperliquid.xyz" in url:
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
     else:
-        headers = {"Accept": "application/json"}
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": (
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+            ),
+        }
     request = urllib.request.Request(url=url, data=data, method=method, headers=headers)
     started = time.time_ns() // 1_000_000
     started_mono = time.monotonic_ns()
