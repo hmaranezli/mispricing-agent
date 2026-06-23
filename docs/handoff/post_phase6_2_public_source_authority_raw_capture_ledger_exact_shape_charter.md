@@ -896,3 +896,127 @@ pre-commit loss window, forbids refetch-as-original, and confines reconciliation
 / RATIFIABLE / UNRATIFIED; raw acquisition, projection, S1 ingestion, HYPOTHETICAL_OUTCOME, calibration, and Phases
 7.1/7.2/8.1 all BLOCKED; data collection NOT STARTED; capacity 0; only independent ratification makes one raw-only
 one-shot slice eligible — the system is not ready.**
+
+---
+
+# AMENDMENT A1 — Admit `HYPERLIQUID_L2_BOOK_BY_COIN_V1` source authority (successor schema)
+
+> **NOTE ON FORM:** every successor-DDL excerpt in this amendment is shown in a plain `text` fence, **not**
+> a `sql` fence, deliberately. The byte-for-byte lock test extracts only ` ```sql ` blocks and asserts each
+> is a substring of the runtime `_RAW_LEDGER_DDL`. This amendment changes **none** of the original ` ```sql `
+> blocks above and does **not** modify `_RAW_LEDGER_DDL`; therefore the existing lock remains green at this
+> commit. The successor `sql` blocks are adopted only by the **separate** runtime+lock-test TDD task (§A1.6).
+
+## A1.1 Status / intent
+
+- **Docs-only.** Status after commit: **BUILT / RATIFIABLE / UNRATIFIED** pending independent Gemini + Codex review.
+- **Purpose:** extend the ledger-shape charter so a future runtime may commit `HYPERLIQUID_L2_BOOK_BY_COIN_V1`
+  success **and** failure rows without violating the byte-for-byte schema lock.
+- This commit **does not** build runtime, **does not** update `_RAW_LEDGER_DDL`, **does not** update tests, and
+  **does not** authorize any physical `l2Book` capture.
+- The `HYPERLIQUID_L2_BOOK_BY_COIN_V1` runtime remains **UNBUILT + BLOCKED** until this amendment is ratified
+  **and** a separate TDD task updates the runtime DDL + byte-lock test to the successor schema (§A1.6).
+
+## A1.2 New source authority admission (closed four-variant vocabulary)
+
+The successor schema admits a **fourth** source authority, `HYPERLIQUID_L2_BOOK_BY_COIN_V1`, added to **both**
+the `raw_capture_log` source-authority coupling `CHECK` and the `raw_fetch_attempt_log` source-authority
+`IN (...)` closed vocabulary. The existing three authorities and their exact behavior are **preserved unchanged**:
+`POLYMARKET_GAMMA_MARKET_BY_SLUG_V1`, `POLYMARKET_CLOB_BOOK_BY_TOKEN_V1`, `HYPERLIQUID_META_AND_ASSET_CTXS_V1`.
+
+Successor `raw_fetch_attempt_log` vocabulary (added member shown with `+`):
+
+```text
+    CHECK (source_authority IN (
+        'POLYMARKET_GAMMA_MARKET_BY_SLUG_V1',
+        'POLYMARKET_CLOB_BOOK_BY_TOKEN_V1',
+        'HYPERLIQUID_META_AND_ASSET_CTXS_V1',
++       'HYPERLIQUID_L2_BOOK_BY_COIN_V1')),
+```
+
+## A1.3 Exact `l2Book` capture coupling branch (strict hex binding)
+
+The successor `raw_capture_log` source-authority coupling `CHECK` gains exactly one additional `OR` branch,
+**appended after** the existing Hyperliquid `meta` branch and **leaving the three existing branches byte-identical**:
+
+```text
+        OR (source_authority = 'HYPERLIQUID_L2_BOOK_BY_COIN_V1'
+            AND http_method = 'POST' AND request_host = 'api.hyperliquid.xyz'
+            AND request_target = '/info'
+            AND request_body = X'7b2274797065223a226c32426f6f6b222c22636f696e223a22425443227d')
+```
+
+- `request_scheme = 'https'` continues to be enforced by the pre-existing standalone
+  `CHECK (request_scheme = 'https')`; `http_method IN ('GET','POST')` is likewise already enforced.
+- The branch binds `request_body` to the **exact BLOB hex literal**
+  `X'7b2274797065223a226c32426f6f6b222c22636f696e223a22425443227d'`, which is the byte-for-byte encoding of
+  `b'{"type":"l2Book","coin":"BTC"}'` and nothing else.
+- Body acceptance is expressed **only** as exact-blob equality — **never** as logical JSON equivalence.
+- The DB must **reject** any other `request_body` byte sequence: no whitespace variant, no reordered keys, no
+  lowercase `btc`, no `XBT`/`wBTC`/alias, no optional fields, no `nSigFigs`, no `mantissa`, no alternate
+  byte representation.
+
+## A1.4 Failure-attempt support
+
+- A failed `l2Book` attempt is recordable under the **existing** failure law: `capture_sequence IS NULL`,
+  `failure_code IS NOT NULL`, `failure_payload IS NOT NULL`, with `source_authority =
+  'HYPERLIQUID_L2_BOOK_BY_COIN_V1'` now accepted by the `raw_fetch_attempt_log` vocabulary (§A1.2).
+- The closed `outcome → failure_code` mapping is **unchanged**: `TRANSPORT_FAILED→RAW_TRANSPORT_ERROR`,
+  `TIMEOUT→RAW_TIMEOUT`, `RESPONSE_TOO_LARGE→RAW_RESPONSE_TOO_LARGE`, `HTTP_PROTOCOL_FAILED→RAW_HTTP_PROTOCOL_ERROR`,
+  and `RAW_COMMITTED` with `NULL` failure_code. **No new failure codes.**
+- **No** retry semantics, **no** scheduler semantics; `RAW_COMMITTED` behavior is unchanged except for admitting
+  the new authority.
+
+## A1.5 No migration / tabula-rasa rule
+
+- **No `ALTER TABLE`. No migration. No repair. No backfill. No upgrade-in-place. No schema rewrite of prior raw
+  ledgers.**
+- **No** injection of this fourth authority into the existing Hyperliquid `meta`
+  (`/root/mispricing_runtime_evidence/raw_capture.sqlite3`) or Polymarket Gamma
+  (`/root/mispricing_gamma_runtime_evidence/raw_capture.sqlite3`) ledgers.
+- Existing raw ledgers remain evidence artifacts **under the schema they were created with**.
+- `HYPERLIQUID_L2_BOOK_BY_COIN_V1` is valid **only** for **future, newly initialized** raw ledgers whose schema
+  is created from the ratified successor DDL.
+- For any `l2Book` physical capture, the **independent-ledger rule remains mandatory**: a fresh evidence
+  directory, a fresh `raw_capture.sqlite3`, and its own isolated `s1_audit.sqlite3` path that must remain absent.
+  **No append semantics are authorized.**
+
+## A1.6 Schema fingerprint / byte-lock continuity
+
+- After this amendment is ratified, the runtime `_RAW_LEDGER_DDL` **and** the byte-for-byte lock test
+  (`test_ddl_constant_matches_charter_byte_for_byte`) must be updated in a **separate TDD task** to match the
+  successor charter exactly. **Until then, the runtime remains blocked.**
+- Text-different older schemas must still be **rejected** by the exact reference-catalog comparison; this
+  amendment creates **no** permissive/compatibility mode.
+- Do **not** relax: the exact reference-catalog comparison (incl. `index_xinfo`), append-only
+  `BEFORE UPDATE`/`BEFORE DELETE` triggers, path/S1 isolation, the RV-10 provenance queries, the §5.3 exact
+  `failure_payload` JSON law, the §8 forensic clock law, or any existing source-authority coupling.
+
+## A1.7 Independent-review verification checklist (for the successor TDD task)
+
+A future independent review must verify that, against the successor DDL:
+
+- all DDL blocks still execute cleanly in SQLite;
+- a valid `l2Book` capture row (exact body blob) is **accepted**;
+- the same fields with an **altered** `request_body` are **rejected**;
+- an `l2Book` lowercase-`btc` body is **rejected**;
+- an `l2Book` body containing `nSigFigs`/`mantissa` is **rejected**;
+- an `l2Book` failure attempt with `capture_sequence IS NULL` is **accepted** under existing failure law;
+- the existing three authorities still pass their prior tests;
+- append-only triggers still block `UPDATE`/`DELETE`;
+- old (text-different) schemas remain **rejected as stale** by the reference-catalog comparison.
+
+## A1.8 Post-state
+
+- Ledger-shape `l2Book` amendment (this A1): **BUILT / RATIFIABLE / UNRATIFIED** pending Gemini + Codex review.
+- Existing Source-Authority / Raw-Ledger charter: **RATIFIED**, but this successor amendment **UNRATIFIED**.
+- `l2Book` raw-acquisition amendment charter: **RATIFIED**.
+- BTC Market/Instrument Binding Charter: **RATIFIED**.
+- `HYPERLIQUID_L2_BOOK_BY_COIN_V1` runtime: **UNBUILT + BLOCKED**.
+- `l2Book` physical capture: **NOT STARTED**.
+- B1 / B2: **BLOCKED**.
+- Projection / S1 ingestion: **BLOCKED**.
+- HYPOTHETICAL_OUTCOME: **BLOCKED**.
+- Calibration and Phase 7.1 / 7.2 / 8.1: **BLOCKED**.
+- Scheduler / continuous collection: **BLOCKED**.
+- Capacity: **0**.
