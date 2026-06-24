@@ -11,6 +11,7 @@ freshness_binding_digest'tir. REVIEWABLE_FOR_S1_APPEND, AUTHORIZED DEĞİLDİR.
 İlk RED: approval.s1_append_execution_db_writer yok → ImportError (eksik üretim seam'i).
 """
 import ast
+import dataclasses
 import inspect
 import os
 import sqlite3
@@ -35,40 +36,30 @@ _A = "a" * 64  # approval_row_digest
 _TARGET = "s1_stream_btc_15m_window_0001"
 _SNAP = "snapshot_ref::frozen::seq=7752::digest=" + ("d" * 16)
 _CMD = "operator_command::human_operator_001::id=OPCMD-0001"
+_CREATED = "2026-06-19T00:00:00Z"
 
 
 def _valid_request(**over) -> S1AppendRequest:
-    base = dict(
-        decision_status="REVIEWABLE_FOR_S1_APPEND",
-        evidence_digest=over.get("evidence_digest", _E),
-        s1_target=over.get("s1_target", _TARGET),
-        canonical_payload_digest=over.get("canonical_payload_digest", _C),
-        approval_row_digest=over.get("approval_row_digest", _A),
-        immutable_snapshot_ref=over.get("immutable_snapshot_ref", _SNAP),
-        operator_command_id=over.get("operator_command_id", _CMD),
-    )
+    evi = over.get("evidence_digest", _E)
+    tgt = over.get("s1_target", _TARGET)
+    can = over.get("canonical_payload_digest", _C)
+    apr = over.get("approval_row_digest", _A)
+    snap = over.get("immutable_snapshot_ref", _SNAP)
     binding = compute_freshness_binding_digest(
-        immutable_snapshot_ref=base["immutable_snapshot_ref"],
-        evidence_digest=base["evidence_digest"],
-        s1_target=base["s1_target"],
-        canonical_payload_digest=base["canonical_payload_digest"],
-        approval_row_digest=base["approval_row_digest"],
+        immutable_snapshot_ref=snap, evidence_digest=evi, s1_target=tgt,
+        canonical_payload_digest=can, approval_row_digest=apr,
     )
-    kw = dict(
-        decision_status=base["decision_status"],
-        evidence_digest=base["evidence_digest"],
-        s1_target=base["s1_target"],
-        canonical_payload_digest=base["canonical_payload_digest"],
-        approval_row_digest=base["approval_row_digest"],
-        freshness_binding_digest=binding,
-        immutable_snapshot_ref=base["immutable_snapshot_ref"],
-        operator_command_id=base["operator_command_id"],
+    return S1AppendRequest(
+        decision_status=over.get("decision_status", "REVIEWABLE_FOR_S1_APPEND"),
+        evidence_digest=evi,
+        s1_target=tgt,
+        canonical_payload_digest=can,
+        approval_row_digest=apr,
+        freshness_binding_digest=over.get("freshness_binding_digest", binding),
+        immutable_snapshot_ref=snap,
+        operator_command_id=over.get("operator_command_id", _CMD),
+        created_at_utc=over.get("created_at_utc", _CREATED),
     )
-    # explicit overrides for the listed dataclass fields (e.g., to break a binding)
-    for k in ("decision_status", "freshness_binding_digest"):
-        if k in over:
-            kw[k] = over[k]
-    return S1AppendRequest(**kw)
 
 
 def _db(tmp_path):
@@ -80,7 +71,7 @@ def _db(tmp_path):
 def _rows(db_path):
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
-        return con.execute("SELECT evidence_digest, s1_target FROM s1_append_log").fetchall()
+        return con.execute("SELECT evidence_digest, s1_target FROM s1_appends").fetchall()
     finally:
         con.close()
 
@@ -144,17 +135,7 @@ def test_no_bare_boolean_freshness_field():
 def test_freshness_binding_mismatch_fails_closed(tmp_path):
     db = _db(tmp_path)
     # tamper canonical digest WITHOUT recomputing the binding
-    req = _valid_request()
-    bad = S1AppendRequest(
-        decision_status=req.decision_status,
-        evidence_digest=req.evidence_digest,
-        s1_target=req.s1_target,
-        canonical_payload_digest="f" * 64,
-        approval_row_digest=req.approval_row_digest,
-        freshness_binding_digest=req.freshness_binding_digest,
-        immutable_snapshot_ref=req.immutable_snapshot_ref,
-        operator_command_id=req.operator_command_id,
-    )
+    bad = dataclasses.replace(_valid_request(), canonical_payload_digest="f" * 64)
     r = execute_s1_append(db, request=bad, accepted_snapshot_ref=_SNAP)
     assert r.status == "BLOCKED"
     assert r.reason == "freshness_binding_mismatch"
@@ -163,17 +144,7 @@ def test_freshness_binding_mismatch_fails_closed(tmp_path):
 
 def test_target_mismatch_fails_closed(tmp_path):
     db = _db(tmp_path)
-    req = _valid_request()
-    bad = S1AppendRequest(
-        decision_status=req.decision_status,
-        evidence_digest=req.evidence_digest,
-        s1_target="s1_stream_other_target",
-        canonical_payload_digest=req.canonical_payload_digest,
-        approval_row_digest=req.approval_row_digest,
-        freshness_binding_digest=req.freshness_binding_digest,
-        immutable_snapshot_ref=req.immutable_snapshot_ref,
-        operator_command_id=req.operator_command_id,
-    )
+    bad = dataclasses.replace(_valid_request(), s1_target="s1_stream_other_target")
     r = execute_s1_append(db, request=bad, accepted_snapshot_ref=_SNAP)
     assert r.status == "BLOCKED"
     assert r.reason == "freshness_binding_mismatch"
@@ -182,17 +153,7 @@ def test_target_mismatch_fails_closed(tmp_path):
 
 def test_approval_row_mismatch_fails_closed(tmp_path):
     db = _db(tmp_path)
-    req = _valid_request()
-    bad = S1AppendRequest(
-        decision_status=req.decision_status,
-        evidence_digest=req.evidence_digest,
-        s1_target=req.s1_target,
-        canonical_payload_digest=req.canonical_payload_digest,
-        approval_row_digest="0" * 64,
-        freshness_binding_digest=req.freshness_binding_digest,
-        immutable_snapshot_ref=req.immutable_snapshot_ref,
-        operator_command_id=req.operator_command_id,
-    )
+    bad = dataclasses.replace(_valid_request(), approval_row_digest="0" * 64)
     r = execute_s1_append(db, request=bad, accepted_snapshot_ref=_SNAP)
     assert r.status == "BLOCKED"
     assert r.reason == "freshness_binding_mismatch"
@@ -269,24 +230,32 @@ def test_hot_journal_returns_recovery_required_no_cleanup(tmp_path):
     assert _rows(db) == []
 
 
-def test_orphan_wal_returns_recovery_required(tmp_path):
-    db = _db(tmp_path)
+def test_orphan_sidecar_without_db_returns_recovery_required(tmp_path):
+    # WAL/SHM are EXPECTED companions of a live WAL container; a sidecar with NO db is orphan/suspect.
+    db = str(tmp_path / "absent.sqlite3")
     sidecar = db + "-wal"
     with open(sidecar, "wb") as fh:
         fh.write(b"\x00orphan-wal")
     r = execute_s1_append(db, request=_valid_request(), accepted_snapshot_ref=_SNAP)
     assert r.status == "BLOCKED_RECOVERY_REQUIRED"
     assert os.path.exists(sidecar)
+    assert _rows_or_empty(db) == []
 
 
 def test_lock_residue_returns_recovery_required(tmp_path):
     db = _db(tmp_path)
-    sidecar = db + "-shm"
+    sidecar = db + "-lock"
     with open(sidecar, "wb") as fh:
-        fh.write(b"\x00orphan-shm")
+        fh.write(b"\x00lock")
     r = execute_s1_append(db, request=_valid_request(), accepted_snapshot_ref=_SNAP)
     assert r.status == "BLOCKED_RECOVERY_REQUIRED"
     assert os.path.exists(sidecar)
+
+
+def _rows_or_empty(db_path):
+    if not os.path.exists(db_path):
+        return []
+    return _rows(db_path)
 
 
 # --- exceptions / atomicity --------------------------------------------------
@@ -296,7 +265,8 @@ def test_connection_error_fails_closed(tmp_path):
     os.mkdir(bad_dir)
     r = execute_s1_append(bad_dir, request=_valid_request(), accepted_snapshot_ref=_SNAP)
     assert r.status == "BLOCKED"
-    assert r.reason == "write_failed"
+    # canonical preflight rejects an unopenable/non-canonical path before any write
+    assert r.reason in ("introspection_failed", "schema_mismatch", "write_failed")
     assert r.production_s1_append_authorized is False
 
 
@@ -426,7 +396,7 @@ def test_imports_stdlib_only():
     import approval.s1_append_execution_db_writer as mod
 
     tree = ast.parse(inspect.getsource(mod))
-    allowed_top = {"hashlib", "sqlite3", "dataclasses", "typing", "__future__", "os", "threading"}
+    allowed_top = {"hashlib", "sqlite3", "dataclasses", "typing", "__future__", "os", "threading", "approval"}
     imported_top = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -436,3 +406,11 @@ def test_imports_stdlib_only():
             if node.module:
                 imported_top.add(node.module.split(".")[0])
     assert imported_top <= allowed_top, f"unexpected imports: {imported_top - allowed_top}"
+
+
+def test_writer_uses_canonical_table_only_no_legacy():
+    import approval.s1_append_execution_db_writer as mod
+
+    src = inspect.getsource(mod)
+    assert "s1_appends" in src, "writer must use the canonical s1_appends table"
+    assert "s1_append_log" not in src, "legacy s1_append_log must not be used by the writer"

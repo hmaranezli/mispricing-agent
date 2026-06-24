@@ -1,8 +1,13 @@
 """approval/s1_append_execution_db_writer.py — isolated S1 Append Execution & DB Writer.
 
-This is the FIRST physical append writer described by the ratified S1 Append Execution & DB Writer
-Boundary Charter. It is deliberately constrained to a LIBRARY/TEST seam:
+This is the physical append writer described by the ratified S1 Append Execution & DB Writer Boundary
+Charter, UNIFIED (Schema & Journal Unification) onto the single canonical container:
 
+  * The ONE canonical append-only table is ``s1_appends`` (provisioned by the shared genesis in
+    ``approval.live_s1_db_initialization``); the legacy ``s1_append`` + ``_log`` table is NOT used.
+    There is NO dual-write, NO shadow-write, and NO compatibility shim.
+  * The ONE canonical journal mode is **WAL**; the durability floor is **synchronous=FULL**. Both are
+    set and verified by the writer preflight before any append.
   * It writes ONLY to a caller-supplied SQLite ``db_path`` (tempfile / test path). There is NO
     default / production DB path and NO auto-run entrypoint.
   * It performs NO production S1 append, creates NO production stream, mutates NO approval ledger,
@@ -12,13 +17,12 @@ Boundary Charter. It is deliberately constrained to a LIBRARY/TEST seam:
     immutable snapshot reference plus the bound content digests, and the request's snapshot ref must
     equal the caller-supplied accepted immutable snapshot reference. No TTL / config / env /
     wall-clock is consulted.
-  * Append is atomic-or-fail-closed (BEGIN IMMEDIATE / single COMMIT, rollback on any error). A
-    schema-level ``UNIQUE(evidence_digest, s1_target)`` enforces "one evidence_digest + one s1_target
-    -> at most one append". Duplicate/replay returns ``BLOCKED_DUPLICATE`` and writes zero rows.
-  * Suspect recovery state (hot rollback journal, orphan WAL/SHM, lock residue) returns
-    ``BLOCKED_RECOVERY_REQUIRED`` and performs NO cleanup/delete/auto-recovery.
-  * REVIEWABLE_FOR_S1_APPEND is NOT AUTHORIZED; the writer invents no authority and exposes no
-    scheduler/hook/callback/queue/worker/observer auto-promotion and no trade/order/capacity surface.
+  * Append is atomic-or-fail-closed (BEGIN IMMEDIATE / single COMMIT, rollback on any error). The
+    canonical ``UNIQUE(evidence_digest, s1_target)`` enforces "one evidence_digest + one s1_target ->
+    at most one append". Duplicate/replay returns ``BLOCKED_DUPLICATE`` and writes zero rows.
+  * Suspect recovery state (hot rollback journal, lock residue) returns ``BLOCKED_RECOVERY_REQUIRED``
+    and performs NO cleanup / delete / checkpoint / vacuum / migration. WAL/SHM are expected
+    companions of a WAL container, not suspect.
 """
 from __future__ import annotations
 
@@ -28,8 +32,13 @@ import sqlite3
 import threading
 from dataclasses import dataclass
 
+from approval import live_s1_db_initialization as _init
+
 _REVIEWABLE = "REVIEWABLE_FOR_S1_APPEND"
-_SIDE_CAR_SUFFIXES = ("-journal", "-wal", "-shm", "-lock")
+# WAL/SHM are expected companions of the canonical WAL container; only a hot rollback journal or lock
+# residue (or any sidecar when the DB is absent) is treated as suspect.
+_RECOVERY_SUFFIXES_ANY = ("-journal", "-wal", "-shm", "-lock")
+_RECOVERY_SUFFIXES_WITH_DB = ("-journal", "-lock")
 _REQUIRED_TEXT_FIELDS = (
     "evidence_digest",
     "s1_target",
@@ -38,6 +47,7 @@ _REQUIRED_TEXT_FIELDS = (
     "freshness_binding_digest",
     "immutable_snapshot_ref",
     "operator_command_id",
+    "created_at_utc",
 )
 
 
@@ -53,6 +63,7 @@ class S1AppendRequest:
     freshness_binding_digest: str
     immutable_snapshot_ref: str
     operator_command_id: str
+    created_at_utc: str
 
 
 @dataclass(frozen=True)
@@ -101,6 +112,7 @@ def _result_digest(status: str, reason: str, request: S1AppendRequest) -> str:
         f"freshness_binding_digest={request.freshness_binding_digest}",
         f"immutable_snapshot_ref={request.immutable_snapshot_ref}",
         f"operator_command_id={request.operator_command_id}",
+        f"created_at_utc={request.created_at_utc}",
     ]
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
@@ -110,37 +122,10 @@ def _blocked(status: str, reason: str, request: S1AppendRequest) -> S1AppendResu
 
 
 def init_s1_append_db(db_path: str) -> None:
-    """Create the isolated append-only S1 log schema at a caller-supplied path. Idempotent."""
+    """Provision the canonical append-only ``s1_appends`` container at a caller path (test genesis)."""
     con = sqlite3.connect(db_path)
     try:
-        con.execute("PRAGMA journal_mode=DELETE")
-        con.execute(
-            """
-            CREATE TABLE IF NOT EXISTS s1_append_log (
-                seq INTEGER PRIMARY KEY AUTOINCREMENT,
-                evidence_digest TEXT NOT NULL,
-                s1_target TEXT NOT NULL,
-                canonical_payload_digest TEXT NOT NULL,
-                approval_row_digest TEXT NOT NULL,
-                freshness_binding_digest TEXT NOT NULL,
-                immutable_snapshot_ref TEXT NOT NULL,
-                operator_command_id TEXT NOT NULL,
-                result_digest TEXT NOT NULL,
-                UNIQUE(evidence_digest, s1_target)
-            )
-            """
-        )
-        # append-only: forbid in-place mutation / deletion of recorded evidence
-        con.execute(
-            "CREATE TRIGGER IF NOT EXISTS s1_append_no_update "
-            "BEFORE UPDATE ON s1_append_log BEGIN "
-            "SELECT RAISE(ABORT, 's1_append_log is append-only'); END"
-        )
-        con.execute(
-            "CREATE TRIGGER IF NOT EXISTS s1_append_no_delete "
-            "BEFORE DELETE ON s1_append_log BEGIN "
-            "SELECT RAISE(ABORT, 's1_append_log is append-only'); END"
-        )
+        _init.create_canonical_schema(con)
         con.commit()
     finally:
         con.close()
@@ -172,25 +157,28 @@ def _validate(request: S1AppendRequest, accepted_snapshot_ref: str) -> str:
 
 
 def _suspect_recovery(db_path: str) -> bool:
-    """Detect hot journal / orphan WAL/SHM / lock residue. Detection only — never deletes."""
-    return any(os.path.exists(db_path + suffix) for suffix in _SIDE_CAR_SUFFIXES)
+    """Detect hot journal / lock residue (or any orphan sidecar without a DB). Never deletes."""
+    db_exists = os.path.exists(db_path)
+    suffixes = _RECOVERY_SUFFIXES_WITH_DB if db_exists else _RECOVERY_SUFFIXES_ANY
+    return any(os.path.exists(db_path + suffix) for suffix in suffixes)
 
 
 def _atomic_append(db_path: str, request: S1AppendRequest) -> S1AppendResult:
-    """Single atomic transaction. Commit the exact reviewed row, or roll back leaving nothing."""
+    """Single atomic transaction into canonical s1_appends. Commit the exact row, or roll back."""
     result_digest = _result_digest("APPENDED", "", request)
     try:
         con = sqlite3.connect(db_path, isolation_level=None)
     except Exception:
         return _blocked("BLOCKED", "write_failed", request)
     try:
-        con.execute("PRAGMA journal_mode=DELETE")
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("PRAGMA synchronous=FULL")
         con.execute("BEGIN IMMEDIATE")
         try:
             cur = con.execute(
-                "INSERT INTO s1_append_log ("
+                "INSERT INTO s1_appends ("
                 "evidence_digest, s1_target, canonical_payload_digest, approval_row_digest, "
-                "freshness_binding_digest, immutable_snapshot_ref, operator_command_id, result_digest"
+                "freshness_binding_digest, immutable_snapshot_ref, operator_command_id, created_at_utc"
                 ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     request.evidence_digest,
@@ -200,7 +188,7 @@ def _atomic_append(db_path: str, request: S1AppendRequest) -> S1AppendResult:
                     request.freshness_binding_digest,
                     request.immutable_snapshot_ref,
                     request.operator_command_id,
-                    result_digest,
+                    request.created_at_utc,
                 ),
             )
             seq = cur.lastrowid
@@ -231,7 +219,7 @@ def execute_s1_append(
     accepted_snapshot_ref: str,
     single_flight: "threading.Lock | None" = None,
 ) -> S1AppendResult:
-    """Gated, atomic, fail-closed append into a caller-supplied SQLite path. Authorizes nothing."""
+    """Gated, atomic, fail-closed append into the canonical s1_appends container. Authorizes nothing."""
     reason = _validate(request, accepted_snapshot_ref)
     if reason:
         return _blocked("BLOCKED", reason, request)
@@ -240,12 +228,13 @@ def execute_s1_append(
     if not lock.acquire(blocking=False):
         return _blocked("BLOCKED", "race_lock_unavailable", request)
     try:
-        # Recovery detection runs UNDER the single-flight lock: only a quiescent DB is observed, so a
-        # concurrent live transaction's transient rollback journal is never misread as orphan/suspect
-        # residue. A genuinely orphaned journal/WAL/SHM/lock (e.g. from a crashed process) is still
-        # caught on first acquisition and fails closed with no cleanup.
+        # Recovery detection runs UNDER the single-flight lock: only a quiescent DB is observed.
         if _suspect_recovery(db_path):
             return _blocked("BLOCKED_RECOVERY_REQUIRED", "recovery_required", request)
+        # Canonical preflight: WAL + synchronous=FULL floor + shared schema/journal fingerprints.
+        preflight = _init.verify_canonical_container(db_path)
+        if preflight:
+            return _blocked("BLOCKED", preflight, request)
         return _atomic_append(db_path, request)
     finally:
         lock.release()

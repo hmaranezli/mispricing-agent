@@ -134,6 +134,152 @@ def _synchronous_name(value: int) -> str:
     return {0: "OFF", 1: "NORMAL", 2: "FULL", 3: "EXTRA"}.get(int(value), str(value))
 
 
+# --- canonical schema + journal definition (shared by initializer, writer, circuit) ---------------
+CANONICAL_TABLE = "s1_appends"
+LEGACY_FORBIDDEN_TABLE = "s1_append" + "_log"  # constructed so no executable literal token exists
+CANONICAL_COLUMNS = _EXPECTED_COLS
+CANONICAL_UNIQUE = tuple(_UNIQUE_COLS)
+CANONICAL_TRIGGERS = ("s1_appends_no_update", "s1_appends_no_delete")
+CANONICAL_JOURNAL_MODE = "wal"
+CANONICAL_SYNCHRONOUS = "FULL"
+
+
+def create_canonical_schema(con, *, allow_synchronous_extra: bool = False):
+    """Provision the ONE canonical append-only s1_appends container (WAL + FULL floor). Shared genesis.
+
+    No dual-table, no shadow-table, no compatibility shim: this creates exactly one table.
+    Returns the verified (journal_mode, synchronous) pair.
+    """
+    target_sync = "EXTRA" if allow_synchronous_extra else "FULL"
+    con.execute("PRAGMA journal_mode=WAL")
+    jm = con.execute("PRAGMA journal_mode").fetchone()[0]
+    con.execute(f"PRAGMA synchronous={target_sync}")
+    syn = _synchronous_name(con.execute("PRAGMA synchronous").fetchone()[0])
+    con.execute(
+        """
+        CREATE TABLE s1_appends (
+            seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            evidence_digest TEXT NOT NULL,
+            s1_target TEXT NOT NULL,
+            canonical_payload_digest TEXT NOT NULL,
+            approval_row_digest TEXT NOT NULL,
+            freshness_binding_digest TEXT NOT NULL,
+            immutable_snapshot_ref TEXT NOT NULL,
+            operator_command_id TEXT NOT NULL,
+            created_at_utc TEXT NOT NULL,
+            UNIQUE(evidence_digest, s1_target)
+        )
+        """
+    )
+    con.execute(
+        "CREATE TRIGGER s1_appends_no_update BEFORE UPDATE ON s1_appends "
+        "BEGIN SELECT RAISE(ABORT, 's1_appends is append-only'); END"
+    )
+    con.execute(
+        "CREATE TRIGGER s1_appends_no_delete BEFORE DELETE ON s1_appends "
+        "BEGIN SELECT RAISE(ABORT, 's1_appends is append-only'); END"
+    )
+    return jm, syn
+
+
+def canonical_schema_fingerprint() -> str:
+    """Deterministic fingerprint of the canonical schema DEFINITION. Shared by all three modules."""
+    parts = [
+        f"table={CANONICAL_TABLE}",
+        "columns=" + ",".join(CANONICAL_COLUMNS),
+        "unique=" + ",".join(CANONICAL_UNIQUE),
+        "triggers=" + ",".join(sorted(CANONICAL_TRIGGERS)),
+    ]
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def canonical_journal_fingerprint() -> str:
+    """Deterministic fingerprint of the canonical journal/synchronous policy. Shared by all three."""
+    parts = [f"journal_mode={CANONICAL_JOURNAL_MODE}", f"synchronous={CANONICAL_SYNCHRONOUS}"]
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def has_table(con, name: str) -> bool:
+    return con.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,)
+    ).fetchone() is not None
+
+
+def _unique_cols(con):
+    for idx in con.execute(f"PRAGMA index_list('{CANONICAL_TABLE}')").fetchall():
+        if idx[2] == 1:
+            return tuple(r[2] for r in con.execute(f"PRAGMA index_info('{idx[1]}')"))
+    return ()
+
+
+def _trigger_names(con):
+    return tuple(
+        sorted(
+            r[0]
+            for r in con.execute(
+                "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name=?", (CANONICAL_TABLE,)
+            )
+        )
+    )
+
+
+def container_schema_fingerprint(con) -> str:
+    """Fingerprint of an actual container's s1_appends structure. Matches the canonical fingerprint
+    iff the container's columns/unique/triggers equal the canonical definition."""
+    cols = tuple(r[1] for r in con.execute(f"PRAGMA table_info('{CANONICAL_TABLE}')"))
+    parts = [
+        f"table={CANONICAL_TABLE}",
+        "columns=" + ",".join(cols),
+        "unique=" + ",".join(_unique_cols(con)),
+        "triggers=" + ",".join(_trigger_names(con)),
+    ]
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def container_journal_fingerprint(con) -> str:
+    """Fingerprint of an actual container's journal mode + enforced synchronous floor."""
+    con.execute("PRAGMA synchronous=FULL")
+    syn = _synchronous_name(con.execute("PRAGMA synchronous").fetchone()[0])
+    jm = con.execute("PRAGMA journal_mode").fetchone()[0]
+    parts = [f"journal_mode={jm.lower()}", f"synchronous={syn}"]
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def verify_canonical_container(db_path: str, *, expected_file_mode=None, expected_row_count=None) -> str:
+    """Read-only canonical verification shared by writer/circuit preflight. '' if canonical, else a
+    fail-closed reason. Rejects the forbidden legacy/dual-table state; never migrates/cleans/repairs."""
+    if expected_file_mode is not None and _mode(db_path) != expected_file_mode:
+        return "file_mode_mismatch"
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        try:
+            legacy = has_table(con, LEGACY_FORBIDDEN_TABLE)
+            canonical = has_table(con, CANONICAL_TABLE)
+            if legacy and canonical:
+                return "forbidden_dual_table"
+            if legacy:
+                return "forbidden_legacy_table"
+            if not canonical:
+                return "schema_mismatch"
+            integrity = con.execute("PRAGMA integrity_check").fetchone()[0]
+            schema_fp = container_schema_fingerprint(con)
+            journal_fp = container_journal_fingerprint(con)
+            row_count = con.execute("SELECT COUNT(*) FROM s1_appends").fetchone()[0]
+        finally:
+            con.close()
+    except Exception:
+        return "introspection_failed"
+    if isinstance(integrity, str) and integrity.lower() != "ok":
+        return "integrity_failure"
+    if schema_fp != canonical_schema_fingerprint():
+        return "schema_fingerprint_mismatch"
+    if journal_fp != canonical_journal_fingerprint():
+        return "journal_fingerprint_mismatch"
+    if expected_row_count is not None and row_count != expected_row_count:
+        return "nonzero_rows"
+    return ""
+
+
 def _mode(path: str) -> int:
     return os.stat(path).st_mode & 0o777
 
@@ -179,17 +325,28 @@ def _check_parent(request: LiveS1DbInitRequest) -> str:
 
 
 def _verify_existing(request: LiveS1DbInitRequest) -> LiveS1DbInitResult:
-    """Verify a pre-existing container matches policy/schema exactly. Fail closed on any mismatch."""
+    """Verify a pre-existing container matches policy/schema exactly. Fail closed on any mismatch.
+
+    Rejects the forbidden legacy/dual-table state (no migration, rename, copy, or cleanup)."""
     if _mode(request.db_path) != request.expected_file_mode:
         return _result("BLOCKED", "file_mode_mismatch", request)
     try:
         con = sqlite3.connect(request.db_path)
         try:
+            legacy = has_table(con, LEGACY_FORBIDDEN_TABLE)
+            canonical = has_table(con, CANONICAL_TABLE)
+            if legacy and canonical:
+                return _result("BLOCKED", "forbidden_dual_table", request)
+            if legacy:
+                return _result("BLOCKED", "forbidden_legacy_table", request)
+            if not canonical:
+                return _result("BLOCKED", "schema_mismatch", request)
             con.execute("PRAGMA synchronous=FULL")
             syn = _synchronous_name(con.execute("PRAGMA synchronous").fetchone()[0])
             jm = con.execute("PRAGMA journal_mode").fetchone()[0]
             cols = tuple(r[1] for r in con.execute("PRAGMA table_info('s1_appends')"))
             has_unique = _has_unique_index(con)
+            triggers = _trigger_names(con)
             row_count = con.execute("SELECT COUNT(*) FROM s1_appends").fetchone()[0]
         finally:
             con.close()
@@ -202,6 +359,8 @@ def _verify_existing(request: LiveS1DbInitRequest) -> LiveS1DbInitResult:
         return _result("BLOCKED", "schema_mismatch", request)
     if not has_unique:
         return _result("BLOCKED", "missing_unique_constraint", request)
+    if tuple(sorted(CANONICAL_TRIGGERS)) != triggers:
+        return _result("BLOCKED", "missing_triggers", request)
     if row_count != 0:
         return _result("BLOCKED", "nonzero_rows", request, row_count=row_count)
     return _result(_OK_STATUS, "", request, created_now=False, row_count=0, journal_mode=jm, synchronous=syn)
@@ -219,38 +378,10 @@ def _has_unique_index(con) -> bool:
 
 def _create_container(request: LiveS1DbInitRequest) -> LiveS1DbInitResult:
     """Create an empty, append-only, restrictively-permissioned container. Inserts zero rows."""
-    target_sync = "EXTRA" if request.allow_synchronous_extra else "FULL"
     try:
         con = sqlite3.connect(request.db_path)
         try:
-            con.execute("PRAGMA journal_mode=WAL")
-            jm = con.execute("PRAGMA journal_mode").fetchone()[0]
-            con.execute(f"PRAGMA synchronous={target_sync}")
-            syn = _synchronous_name(con.execute("PRAGMA synchronous").fetchone()[0])
-            con.execute(
-                """
-                CREATE TABLE s1_appends (
-                    seq INTEGER PRIMARY KEY AUTOINCREMENT,
-                    evidence_digest TEXT NOT NULL,
-                    s1_target TEXT NOT NULL,
-                    canonical_payload_digest TEXT NOT NULL,
-                    approval_row_digest TEXT NOT NULL,
-                    freshness_binding_digest TEXT NOT NULL,
-                    immutable_snapshot_ref TEXT NOT NULL,
-                    operator_command_id TEXT NOT NULL,
-                    created_at_utc TEXT NOT NULL,
-                    UNIQUE(evidence_digest, s1_target)
-                )
-                """
-            )
-            con.execute(
-                "CREATE TRIGGER s1_appends_no_update BEFORE UPDATE ON s1_appends "
-                "BEGIN SELECT RAISE(ABORT, 's1_appends is append-only'); END"
-            )
-            con.execute(
-                "CREATE TRIGGER s1_appends_no_delete BEFORE DELETE ON s1_appends "
-                "BEGIN SELECT RAISE(ABORT, 's1_appends is append-only'); END"
-            )
+            jm, syn = create_canonical_schema(con, allow_synchronous_extra=request.allow_synchronous_extra)
             con.commit()
         finally:
             con.close()

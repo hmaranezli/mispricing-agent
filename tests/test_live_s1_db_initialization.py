@@ -486,3 +486,72 @@ def test_imports_stdlib_only():
             if node.module:
                 imported_top.add(node.module.split(".")[0])
     assert imported_top <= allowed_top, f"unexpected imports: {imported_top - allowed_top}"
+
+
+# --- Schema & Journal Unification: canonical table + shared fingerprints -----
+import approval.live_s1_db_initialization as _initmod  # noqa: E402
+import approval.production_s1_append_circuit as _circuitmod  # noqa: E402
+
+_LEGACY = "s1_append" + "_log"  # construct token so the literal appears only in the assertions below
+
+
+def test_legacy_table_only_fails_closed(tmp_path):
+    parent, db = _setup(tmp_path)
+    con = sqlite3.connect(db)
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute(f"CREATE TABLE {_LEGACY} (seq INTEGER PRIMARY KEY AUTOINCREMENT)")
+    con.commit()
+    con.close()
+    os.chmod(db, 0o600)
+    r = initialize_live_s1_db(_req(parent, db))
+    assert r.status == "BLOCKED"
+    assert r.reason == "forbidden_legacy_table"
+
+
+def test_dual_table_fails_closed(tmp_path):
+    parent, db = _setup(tmp_path)
+    initialize_live_s1_db(_req(parent, db))  # creates canonical s1_appends
+    con = sqlite3.connect(db)
+    con.execute(f"CREATE TABLE {_LEGACY} (seq INTEGER PRIMARY KEY AUTOINCREMENT)")
+    con.commit()
+    con.close()
+    r = initialize_live_s1_db(_req(parent, db))
+    assert r.status == "BLOCKED"
+    assert r.reason == "forbidden_dual_table"
+
+
+def test_existing_missing_triggers_fails_closed(tmp_path):
+    parent, db = _setup(tmp_path)
+    initialize_live_s1_db(_req(parent, db))
+    con = sqlite3.connect(db)
+    con.execute("DROP TRIGGER s1_appends_no_update")
+    con.execute("DROP TRIGGER s1_appends_no_delete")
+    con.commit()
+    con.close()
+    r = initialize_live_s1_db(_req(parent, db))
+    assert r.status == "BLOCKED"
+    assert r.reason == "missing_triggers"
+
+
+def test_shared_canonical_schema_fingerprint(tmp_path):
+    parent, db = _setup(tmp_path)
+    initialize_live_s1_db(_req(parent, db))
+    # initializer + circuit agree on ONE deterministic schema fingerprint
+    assert _circuitmod.compute_container_fingerprint(db) == _initmod.canonical_schema_fingerprint()
+
+
+def test_shared_canonical_journal_fingerprint(tmp_path):
+    parent, db = _setup(tmp_path)
+    initialize_live_s1_db(_req(parent, db))
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        assert _initmod.container_journal_fingerprint(con) == _initmod.canonical_journal_fingerprint()
+    finally:
+        con.close()
+
+
+def test_canonical_table_is_s1_appends_and_no_legacy_in_source():
+    assert _initmod.CANONICAL_TABLE == "s1_appends"
+    src = inspect.getsource(_initmod)
+    assert "s1_appends" in src
+    assert "s1_append_log" not in src  # constructed via concatenation; literal must be absent

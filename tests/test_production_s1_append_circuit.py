@@ -49,6 +49,7 @@ _APR = "d" * 64
 _SNAP = "snap::frozen::seq=7752"
 _TGT = "s1_btc_15m_window_0001"
 _OPID = "OPCMD-APPEND-0001"
+_CREATED = "2026-06-19T00:00:00Z"
 
 
 def _reviewable_decision(**over):
@@ -119,7 +120,7 @@ def _valid(tmp_path):
         decision_status="REVIEWABLE_FOR_S1_APPEND",
         evidence_digest=_EVI, s1_target=_TGT, canonical_payload_digest=_CAN,
         approval_row_digest=_APR, freshness_binding_digest=fresh,
-        immutable_snapshot_ref=_SNAP, operator_command_id=_OPID,
+        immutable_snapshot_ref=_SNAP, operator_command_id=_OPID, created_at_utc=_CREATED,
     )
     fp = compute_container_fingerprint(db)
     cmd = S1AppendCircuitCommand(
@@ -131,6 +132,7 @@ def _valid(tmp_path):
         approval_row_digest=_APR,
         freshness_binding_digest=fresh,
         immutable_snapshot_ref=_SNAP,
+        created_at_utc=_CREATED,
         decision_result_digest=dec.evidence_digest,
         initializer_result_digest=ires.initialization_result_digest,
         writer_request_digest=wrd,
@@ -153,10 +155,10 @@ def _run(ctx, **cmd_over):
 def _log_rows(db):
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
-        t = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='s1_append_log'").fetchone()
+        t = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='s1_appends'").fetchone()
         if not t:
             return []
-        return con.execute("SELECT evidence_digest, s1_target FROM s1_append_log").fetchall()
+        return con.execute("SELECT evidence_digest, s1_target FROM s1_appends").fetchall()
     finally:
         con.close()
 
@@ -316,7 +318,7 @@ def test_wrong_pragma_fails_closed(tmp_path):
         command=cmd, decision_result=ctx["dec"], initializer_request=ctx["ireq"], initializer_result=ctx["ires"]
     )
     assert r.status == "BLOCKED_TAMPER_SUSPECT"
-    assert r.reason == "wrong_pragma"
+    assert r.reason == "journal_fingerprint_mismatch"
 
 
 def test_nonzero_rows_fails_closed(tmp_path):
@@ -346,7 +348,7 @@ def test_missing_triggers_fails_closed(tmp_path):
         command=cmd, decision_result=ctx["dec"], initializer_request=ctx["ireq"], initializer_result=ctx["ires"]
     )
     assert r.status == "BLOCKED_TAMPER_SUSPECT"
-    assert r.reason == "missing_triggers"
+    assert r.reason == "schema_fingerprint_mismatch"
 
 
 def test_wrong_file_mode_fails_closed(tmp_path):
@@ -497,3 +499,30 @@ def test_imports_stdlib_and_approval_only():
             if node.module:
                 imported_top.add(node.module.split(".")[0])
     assert imported_top <= allowed_top, f"unexpected imports: {imported_top - allowed_top}"
+
+
+# --- Schema & Journal Unification: legacy/dual-table rejection + no-legacy token --------------------
+_LEGACY = "s1_append" + "_log"  # token appears as a literal only in the forbidden-token assertion
+
+
+def test_dual_table_container_fails_closed(tmp_path):
+    ctx = _valid(tmp_path)
+    con = sqlite3.connect(ctx["db"])
+    con.execute(f"CREATE TABLE {_LEGACY} (seq INTEGER PRIMARY KEY AUTOINCREMENT)")
+    con.commit()
+    con.close()
+    cmd = dataclasses.replace(ctx["cmd"], expected_container_fingerprint=compute_container_fingerprint(ctx["db"]))
+    r = run_production_s1_append_circuit(
+        command=cmd, decision_result=ctx["dec"], initializer_request=ctx["ireq"], initializer_result=ctx["ires"]
+    )
+    assert r.status == "BLOCKED_TAMPER_SUSPECT"
+    assert r.reason == "forbidden_dual_table"
+    assert _log_rows(ctx["db"]) == []
+
+
+def test_circuit_uses_canonical_table_only_no_legacy():
+    import approval.production_s1_append_circuit as mod
+
+    src = inspect.getsource(mod)
+    assert "s1_appends" in src, "circuit must use the canonical s1_appends table"
+    assert "s1_append_log" not in src, "legacy s1_append_log must not be used by the circuit"
