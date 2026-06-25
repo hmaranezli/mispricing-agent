@@ -545,7 +545,7 @@ async def _run_shadow_4h_scan(conn) -> None:
 _PAPER_SCAN_SECS = 60  # edge bucket paper scan cadence (30→60: live loop yükünü azalt; 7s'in katı, çakışma minimal)
 
 
-async def _paper_shadow_scan_loop(conn) -> None:
+async def _paper_shadow_scan_loop(conn, db_path=None) -> None:
     """Edge bucket paper scan — düşük-edge (fee_adj>=0.03) adayları paper'a besler.
 
     Council/execute path'ine ASLA girmez. Ayrı cadence, live loop'u yavaşlatmaz.
@@ -572,7 +572,7 @@ async def _paper_shadow_scan_loop(conn) -> None:
                     _tracking_key = f"{f.get('slug')}|{_sig_ms}|{f.get('action')}|{_uuid4().hex[:12]}"
                     paper_tracker.schedule_paper_open(
                         f, {"confidence_score": None},
-                        {"position_usd": 1.25}, conn=conn, snapshot=snapshot,
+                        {"position_usd": 1.25}, conn=conn, db_path=db_path, snapshot=snapshot,
                         paper_id=_paper_id, tracking_key=_tracking_key,
                     )
                     # Legacy model telemetri V2 (VOL CLAMP + counterfactual altyapısı) — non-blocking
