@@ -577,6 +577,52 @@ _MIGRATIONS = [
         schema_version                  INTEGER,
         created_at                      TEXT
     )""",
+    # PM book evidence (radar, NOT trading). Append-only, isolated, NOT paired with any reference here.
+    # Book-side columns NULLABLE so partial YES/NO failures are persisted (never dropped). Ladders are
+    # Decimal-string JSON [[price_text,size_text],...] (price AND size; no float, no int rounding). Venue
+    # book timestamp is never fabricated (client receipt time is NOT a venue event ts).
+    """CREATE TABLE IF NOT EXISTS polymarket_book_ticks (
+        id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+        book_tick_id                TEXT UNIQUE,
+        market_slug                 TEXT,
+        asset                       TEXT,
+        timeframe                   TEXT,
+        yes_token_id                TEXT,
+        no_token_id                 TEXT,
+        fetch_started_at            TEXT,
+        fetch_completed_at          TEXT,
+        fetch_span_ms               INTEGER,
+        yes_fetch_started_at        TEXT,
+        yes_fetch_completed_at      TEXT,
+        yes_fetch_span_ms           INTEGER,
+        no_fetch_started_at         TEXT,
+        no_fetch_completed_at       TEXT,
+        no_fetch_span_ms            INTEGER,
+        yes_no_completion_skew_ms   INTEGER,
+        capture_span_ms             INTEGER,
+        raw_yes_book_json           TEXT,
+        raw_no_book_json            TEXT,
+        yes_asks_json               TEXT,
+        yes_bids_json               TEXT,
+        no_asks_json                TEXT,
+        no_bids_json                TEXT,
+        yes_ask_levels              INTEGER,
+        yes_bid_levels              INTEGER,
+        no_ask_levels               INTEGER,
+        no_bid_levels               INTEGER,
+        top_yes_bid_text            TEXT,
+        top_yes_ask_text            TEXT,
+        top_no_bid_text             TEXT,
+        top_no_ask_text             TEXT,
+        venue_book_ts_raw           TEXT,
+        venue_book_ts_parse_status  TEXT,
+        reject_reason               TEXT,
+        not_paired_with_reference   INTEGER DEFAULT 1,
+        not_execution_proven        INTEGER DEFAULT 1,
+        not_profitability_proven    INTEGER DEFAULT 1,
+        schema_version              INTEGER,
+        created_at                  TEXT
+    )""",
 ]
 
 
