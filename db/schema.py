@@ -508,6 +508,75 @@ _MIGRATIONS = [
         recovery_reason    TEXT,
         created_at         TEXT NOT NULL
     )""",
+    # Tier-0 PUBLIC_REFERENCE_BASKET evidence (radar, NOT trading). Append-only, isolated.
+    # Numeric discipline: economic quantities are Decimal TEXT (REAL YASAK). Timing = INTEGER ms / TEXT.
+    # SETTLEMENT_AUTHORITY=Chainlink (proven, auth-gated) is NOT required to collect; public basket
+    # (Coinbase+Kraken USD spot) is the live proxy; Hyperliquid perp is a SEPARATE basis input.
+    """CREATE TABLE IF NOT EXISTS reference_price_ticks (
+        id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+        tick_id                     TEXT UNIQUE,
+        source_name                 TEXT,
+        source_type                 TEXT,
+        asset                       TEXT,
+        pair                        TEXT,
+        quote                       TEXT,
+        source_event_ts_raw         TEXT,
+        source_event_ts_parse_status TEXT,
+        collector_received_at       TEXT,
+        ingest_skew_ms              INTEGER,
+        fetch_started_at            TEXT,
+        fetch_completed_at          TEXT,
+        source_age_ms               INTEGER,
+        price_raw                   TEXT,
+        price_decimal_text          TEXT,
+        raw_payload_json            TEXT,
+        reject_reason               TEXT,
+        schema_version              INTEGER,
+        created_at                  TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS proxy_reference_basket_ticks (
+        id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+        basket_id                   TEXT UNIQUE,
+        asset                       TEXT,
+        anchor_ts                   TEXT,
+        coinbase_tick_id            TEXT,
+        kraken_tick_id              TEXT,
+        coinbase_fetch_started_at   TEXT,
+        coinbase_fetch_completed_at TEXT,
+        kraken_fetch_started_at     TEXT,
+        kraken_fetch_completed_at   TEXT,
+        basket_capture_span_ms      INTEGER,
+        completion_skew_ms          INTEGER,
+        coinbase_source_age_ms      INTEGER,
+        kraken_source_age_ms        INTEGER,
+        spot_reference_decimal_text TEXT,
+        spread_bps_decimal_text     TEXT,
+        spread_guard_status         TEXT,
+        used_spot_sources_json      TEXT,
+        excluded_sources_json       TEXT,
+        max_source_age_ms           INTEGER,
+        proxy_confidence            TEXT,
+        not_official_chainlink      INTEGER DEFAULT 1,
+        schema_version              INTEGER,
+        created_at                  TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS perp_basis_ticks (
+        id                              INTEGER PRIMARY KEY AUTOINCREMENT,
+        basis_id                        TEXT UNIQUE,
+        asset                           TEXT,
+        proxy_basket_id                 TEXT,
+        hyperliquid_tick_id             TEXT,
+        hyperliquid_fetch_started_at    TEXT,
+        hyperliquid_fetch_completed_at  TEXT,
+        hyperliquid_source_age_ms       INTEGER,
+        perp_price_decimal_text         TEXT,
+        spot_reference_decimal_text     TEXT,
+        basis_bps_decimal_text          TEXT,
+        basis_direction                 TEXT,
+        basis_quality_status            TEXT,
+        schema_version                  INTEGER,
+        created_at                      TEXT
+    )""",
 ]
 
 
