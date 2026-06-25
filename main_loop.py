@@ -601,7 +601,7 @@ async def _paper_shadow_scan_loop(conn, db_path=None) -> None:
                             window_close_ts=str(_w.get("end_ms")) if _w.get("end_ms") else None,
                             paper_id=_paper_id, tracking_key=_tracking_key,
                         )
-                        model_telemetry.schedule_telemetry(_rec, db_path=None)
+                        model_telemetry.schedule_telemetry(_rec, db_path=db_path)
                     except Exception as _te:
                         print(f"[model_telemetry] hook error (devam): {_te}")
                 except Exception as _pe:
@@ -632,7 +632,7 @@ async def _paper_shadow_scan_loop(conn, db_path=None) -> None:
                         paper_id=None, tracking_key=_rtk,
                         skip_reason=rf.get("reject_reason", "below_threshold"),
                     )
-                    model_telemetry.schedule_telemetry(_rrec, db_path=None)
+                    model_telemetry.schedule_telemetry(_rrec, db_path=db_path)
                 except Exception as _re:
                     print(f"[model_telemetry] rejected hook error (devam): {_re}")
             if findings or findings_5m:

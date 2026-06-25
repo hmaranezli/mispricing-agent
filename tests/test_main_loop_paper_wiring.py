@@ -76,3 +76,60 @@ async def test_paper_shadow_scan_loop_default_db_path_is_none_when_omitted():
 
     assert schedule_spy.call_args.kwargs.get("db_path") is None, \
         "omitting db_path must preserve legacy default (None → DB_FILE)"
+
+
+# ---------------------------------------------------------- telemetry db_path forwarding (isolation)
+
+def _telemetry_candidate(action="YES"):
+    # ref_price/cur_price present so the optional hl_drift computation is safe (no error before the
+    # telemetry call); other fields are looked up with .get() and may be absent.
+    return {"slug": "btc-up-5m-tel", "asset": "BTC", "action": action,
+            "fair_value": 0.55, "best_ask": 0.45, "edge": 0.20, "seconds_remaining": 600,
+            "yes_token_id": "y", "no_token_id": "n", "cur_price": 1.0, "ref_price": 1.0}
+
+
+def _telemetry_patches(scan_returns, sched_tel_spy):
+    """Patches that drive _paper_shadow_scan_loop to a model_telemetry.schedule_telemetry call."""
+    async def _fake_scan(*a, **k):
+        return scan_returns
+    return [
+        patch("main_loop.asyncio.sleep", new_callable=AsyncMock),
+        patch("council.scout.scan_shadow_edges", new=_fake_scan),
+        patch.object(main_loop.paper_tracker, "build_entry_snapshot",
+                     new=AsyncMock(return_value={"signal_timestamp_ms": 1_700_000_000_000})),
+        patch.object(main_loop.paper_tracker, "schedule_paper_open", MagicMock()),
+        patch.object(main_loop.model_telemetry, "get_raw_vol", new=AsyncMock(return_value=0.5)),
+        patch.object(main_loop.model_telemetry, "compute_legacy_telemetry_v2",
+                     new=MagicMock(return_value="rec")),
+        patch.object(main_loop.model_telemetry, "schedule_telemetry", sched_tel_spy),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_scan_loop_forwards_db_path_to_telemetry_findings_site():
+    """would_enter=True telemetry (main_loop.py:604) must receive the supplied db_path, never None."""
+    import contextlib
+    sched_tel_spy = MagicMock(side_effect=_StopLoopSentinel())  # record db_path, then break the loop
+    with contextlib.ExitStack() as stack:
+        for cm in _telemetry_patches(([_telemetry_candidate()], []), sched_tel_spy):
+            stack.enter_context(cm)
+        with pytest.raises(_StopLoopSentinel):
+            await main_loop._paper_shadow_scan_loop(object(), db_path=_SENTINEL_DB)
+    assert sched_tel_spy.call_count >= 1, "findings-site schedule_telemetry must be reached"
+    assert sched_tel_spy.call_args.kwargs.get("db_path") == _SENTINEL_DB, \
+        "findings-site telemetry must forward the dedicated db_path (not write the default DB)"
+
+
+@pytest.mark.asyncio
+async def test_scan_loop_forwards_db_path_to_telemetry_rejected_site():
+    """would_enter=False telemetry (main_loop.py:635) must receive the supplied db_path, never None."""
+    import contextlib
+    sched_tel_spy = MagicMock(side_effect=_StopLoopSentinel())
+    with contextlib.ExitStack() as stack:
+        for cm in _telemetry_patches(([], [_telemetry_candidate()]), sched_tel_spy):
+            stack.enter_context(cm)
+        with pytest.raises(_StopLoopSentinel):
+            await main_loop._paper_shadow_scan_loop(object(), db_path=_SENTINEL_DB)
+    assert sched_tel_spy.call_count >= 1, "rejected-site schedule_telemetry must be reached"
+    assert sched_tel_spy.call_args.kwargs.get("db_path") == _SENTINEL_DB, \
+        "rejected-site telemetry must forward the dedicated db_path (not write the default DB)"
