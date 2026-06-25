@@ -50,9 +50,11 @@ async def test_duplicate_intent_id_rejected():
     import sqlite3
     raised = False
     try:
-        conn = await aiosqlite.connect(str(dbp))
-        await conn.execute("INSERT INTO order_intents (order_intent_id, status, created_at) VALUES (?, 'INTENT_CREATED', 't')", (iid,))
-        await conn.commit(); await conn.close()
+        # async with closes the connection (and joins its non-daemon worker thread) even when the
+        # duplicate INSERT raises IntegrityError below — otherwise the aiosqlite connection leaks.
+        async with aiosqlite.connect(str(dbp)) as conn:
+            await conn.execute("INSERT INTO order_intents (order_intent_id, status, created_at) VALUES (?, 'INTENT_CREATED', 't')", (iid,))
+            await conn.commit()
     except sqlite3.IntegrityError:
         raised = True
     assert raised
