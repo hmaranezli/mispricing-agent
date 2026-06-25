@@ -34,6 +34,7 @@ async def _run_scan_with_session_count(count):
     with patch.object(config, "NEW_ENTRIES_ENABLED", True), \
          patch("main_loop._effective_risk_mode", create=True, new=MagicMock(return_value="Operational")), \
          patch("main_loop._session_trade_count", create=True, new=MagicMock(return_value=count)), \
+         patch("main_loop._session_submit_count", create=True, new=MagicMock(return_value=count)), \
          patch("main_loop.scan_edges", new_callable=AsyncMock, return_value=[_finding()]), \
          patch("main_loop._run_council", new_callable=AsyncMock, return_value=({}, {})), \
          patch("main_loop.execute", mock_exec):

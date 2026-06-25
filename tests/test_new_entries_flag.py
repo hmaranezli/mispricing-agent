@@ -81,6 +81,7 @@ async def test_new_entries_enabled_calls_execute():
         return None  # FAK kill — pozisyon açılmaz, ama execute çağrıldı
 
     with patch.object(config, "NEW_ENTRIES_ENABLED", True), \
+         patch("main_loop._effective_risk_mode", create=True, new=MagicMock(return_value="Operational")), \
          patch("main_loop.scan_edges", side_effect=mock_scan), \
          patch("main_loop._run_council", side_effect=mock_council), \
          patch("main_loop.execute", side_effect=mock_execute):

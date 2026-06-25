@@ -34,14 +34,19 @@ SLUG = "btc-updown-15m-t"
 @pytest.fixture(autouse=True)
 def _reset_session_counter():
     """Seanslar arası in-memory sayaç sızıntısını engelle. GREEN reset seam'i varsa onu kullan;
-    RED-safe: yokken sessiz geç (asıl RED, artış-assertion'ı olsun, fixture setup hatası DEĞİL)."""
-    reset = getattr(main_loop, "_reset_session_trade_count", None)
-    if callable(reset):
-        reset()
+    RED-safe: yokken sessiz geç (asıl RED, artış-assertion'ı olsun, fixture setup hatası DEĞİL).
+
+    trade_count'un yanı sıra submit_count ve no_fill_streak de sıfırlanır: E11f fill-to-submit gate
+    `_session_submit_count()` okuduğu için, önceki testlerden taşan submit sayacı ikinci açılışta oranı
+    eşik altına düşürüp gerçek açılışı bloklardı (intra-file sayaç kirliliği)."""
+    def _reset_all():
+        for name in ("_reset_session_trade_count", "_reset_session_submit_count", "_reset_no_fill_streak"):
+            reset = getattr(main_loop, name, None)
+            if callable(reset):
+                reset()
+    _reset_all()
     yield
-    reset = getattr(main_loop, "_reset_session_trade_count", None)
-    if callable(reset):
-        reset()
+    _reset_all()
 
 
 def _finding():
