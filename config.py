@@ -19,7 +19,7 @@ TELEGRAM_CHAT_ID        = os.getenv("TELEGRAM_CHAT_ID")
 DATABASE_URL            = os.getenv("DATABASE_URL", "postgresql://localhost/mispricing")
 
 # ── KILITLI GUARDRAIL KURALLARI ──
-DRY_RUN              = False  # LIVE — gercek orderlar gidiyor
+DRY_RUN              = True   # PAPER-SAFE — gercek order GONDERILMEZ, sadece loglanir
 MAX_TRADE_PCT        = 0.05   # Tek trade max sermayenin %5'i
 MAX_OPEN_POSITIONS   = 1      # Micro-canary anti-burst cap (E7/E8: 5→1)
 BUST_PROTECTION_PCT  = 0.50   # Bankroll baslangicin %50'sine dusunce → HARD STOP
