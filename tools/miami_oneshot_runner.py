@@ -80,7 +80,7 @@ def _book_to_sides(parsed_safe_book):
 
 
 def main(argv=None, *, book_fetcher, reference_fetcher, metadata_fetcher,
-         now_fn=None, out=None) -> int:
+         now_fn=None, out=None, extra_notes_markers=()) -> int:
     out = out or sys.stdout
     now_fn = now_fn or _now_z
     parser = build_arg_parser()
@@ -145,7 +145,8 @@ def main(argv=None, *, book_fetcher, reference_fetcher, metadata_fetcher,
         # ---- compute + audit-merge notes -------------------------------------
         row = compute_decision_row(assembled.kwargs, {"fee_cost": args.fee_cost})
         calc_notes = row["notes"]
-        audit = [f"operator_fee_cost={args.fee_cost}"] + list(assembled.notes_markers)
+        audit = ([f"operator_fee_cost={args.fee_cost}"]
+                 + list(extra_notes_markers) + list(assembled.notes_markers))
         row["notes"] = " | ".join(audit + [calc_notes])
 
         # ---- output ----------------------------------------------------------
