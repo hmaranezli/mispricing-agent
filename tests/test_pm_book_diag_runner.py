@@ -390,3 +390,152 @@ def test_module_has_no_forbidden_scope():
                    "reference_book_pairs", "stale_lag", "math.log", "implied",
                    "candidate", "actionability", "response.json"):
         assert banned not in src, f"forbidden term {banned!r} found in pm_book_diag_runner.py"
+
+
+# ===========================================================================
+# CLI entrypoint hardening tests (15-21)
+# ===========================================================================
+
+# Full set of valid CLI args for reuse; stop condition added per-test.
+_CLI_BASE = [
+    "--market-slug", "btc-updown-5m-123",
+    "--yes-token-id", "YES-CLI-TOKEN",
+    "--no-token-id", "NO-CLI-TOKEN",
+    "--asset", "BTC",
+    "--timeframe", "5m",
+    "--db-path", "logs/cli_lab.db",
+    "--base-url", "https://clob.example.com",
+    "--cycle-sleep-seconds", "1.5",
+]
+
+
+class _FakeSession:
+    """Async-context-manager stand-in for aiohttp.ClientSession (no network)."""
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+def _recording_run():
+    """Return (fake async run_fn, recorded-kwargs dict, call-counter list)."""
+    recorded: dict = {}
+    calls: list = []
+
+    async def _fake_run(**kwargs):
+        calls.append(1)
+        recorded.update(kwargs)
+        return {"captures": 0}
+
+    return _fake_run, recorded, calls
+
+
+# 15. Parser requires explicit required args
+def test_parser_requires_explicit_required_args():
+    from tools.pm_book_diag_runner import build_arg_parser
+    parser = build_arg_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args([])  # all required args missing
+    # each single-omission must also fail
+    omit_each = [
+        "--market-slug", "--yes-token-id", "--no-token-id", "--asset",
+        "--timeframe", "--db-path", "--base-url", "--cycle-sleep-seconds",
+    ]
+    for flag in omit_each:
+        argv = []
+        skip = False
+        i = 0
+        while i < len(_CLI_BASE):
+            if _CLI_BASE[i] == flag:
+                skip = True
+                i += 2
+                continue
+            argv.extend(_CLI_BASE[i:i + 2])
+            i += 2
+        assert skip
+        with pytest.raises(SystemExit):
+            parser.parse_args(argv)
+
+
+# 16. Parser accepts full valid args and types them
+def test_parser_accepts_full_valid_args():
+    from tools.pm_book_diag_runner import build_arg_parser
+    parser = build_arg_parser()
+    ns = parser.parse_args(_CLI_BASE + ["--max-captures", "20"])
+    assert ns.market_slug == "btc-updown-5m-123"
+    assert ns.yes_token_id == "YES-CLI-TOKEN"
+    assert ns.no_token_id == "NO-CLI-TOKEN"
+    assert ns.asset == "BTC"
+    assert ns.timeframe == "5m"
+    assert ns.db_path == "logs/cli_lab.db"
+    assert ns.base_url == "https://clob.example.com"
+    assert ns.cycle_sleep_seconds == 1.5
+    assert ns.max_captures == 20
+    assert ns.duration_seconds is None
+
+
+# 17. Missing both stop conditions fails before runner call
+def test_missing_both_stop_conditions_fails_before_runner():
+    from tools.pm_book_diag_runner import main
+    run_fn, recorded, calls = _recording_run()
+    with pytest.raises(SystemExit):
+        main(argv=_CLI_BASE, session_factory=_FakeSession, run_fn=run_fn)
+    assert calls == [], "runner must NOT be called when no stop condition supplied"
+
+
+# 18. CLI maps hyphenated args to exact run_pm_book_diag kwargs
+def test_cli_maps_hyphenated_args_to_runner_kwargs():
+    from tools.pm_book_diag_runner import main
+    run_fn, recorded, calls = _recording_run()
+    rc = main(argv=_CLI_BASE + ["--max-captures", "5", "--duration-seconds", "60"],
+              session_factory=_FakeSession, run_fn=run_fn)
+    assert rc == 0
+    assert calls == [1], "runner must be called exactly once"
+    assert recorded["yes_token_id"] == "YES-CLI-TOKEN"
+    assert recorded["no_token_id"] == "NO-CLI-TOKEN"
+    assert recorded["market_slug"] == "btc-updown-5m-123"
+    assert recorded["asset"] == "BTC"
+    assert recorded["timeframe"] == "5m"
+    assert recorded["db_path"] == "logs/cli_lab.db"
+    assert recorded["base_url"] == "https://clob.example.com"
+    assert recorded["cycle_sleep_seconds"] == 1.5
+    assert recorded["max_captures"] == 5
+    assert recorded["duration_seconds"] == 60.0
+
+
+# 19. CLI injects a session without touching network
+def test_cli_injects_session_without_network():
+    from tools.pm_book_diag_runner import main
+    run_fn, recorded, calls = _recording_run()
+    fake_session = _FakeSession()
+
+    def _factory():
+        return fake_session
+
+    main(argv=_CLI_BASE + ["--max-captures", "1"],
+         session_factory=_factory, run_fn=run_fn)
+    assert recorded["http_client"] is fake_session, \
+        "CLI must inject the factory-created session as http_client; no real network"
+
+
+# 20. CLI does not discover tokens or markets — runner called once with explicit tokens
+def test_cli_does_not_discover_tokens_or_markets():
+    from tools.pm_book_diag_runner import main
+    run_fn, recorded, calls = _recording_run()
+    main(argv=_CLI_BASE + ["--max-captures", "1"],
+         session_factory=_FakeSession, run_fn=run_fn)
+    # Exactly one runner call; tokens are precisely the CLI-supplied values (no lookup/override)
+    assert calls == [1]
+    assert recorded["yes_token_id"] == "YES-CLI-TOKEN"
+    assert recorded["no_token_id"] == "NO-CLI-TOKEN"
+
+
+# 21. python -m entrypoint present via source inspection
+def test_main_module_entrypoint_present():
+    import tools.pm_book_diag_runner as m
+    src = open(m.__file__, "r", encoding="utf-8").read()
+    assert 'if __name__ == "__main__":' in src
+    assert "raise SystemExit(main(" in src
+    assert "def main(" in src
+    assert "def build_arg_parser(" in src

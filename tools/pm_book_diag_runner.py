@@ -20,6 +20,7 @@ and touches no execution, wallet, signing, Telegram, or S1 production surface.
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import time
 from decimal import Decimal
@@ -160,3 +161,78 @@ async def run_pm_book_diag(
 
     await conn.close()
     return {"captures": captures}
+
+
+# ---------------------------------------------------------------------------
+# CLI entrypoint (auditable replacement for one-off inline `python -c` launch)
+# ---------------------------------------------------------------------------
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    """Build the diagnostic-runner CLI parser. All market/token/path args are explicit and required.
+
+    The CLI performs NO market or token discovery: the caller supplies the exact slug and both
+    token ids. No default DB path exists. At least one stop condition (--max-captures or
+    --duration-seconds) must be supplied (enforced in main()).
+    """
+    p = argparse.ArgumentParser(
+        prog="tools.pm_book_diag_runner",
+        description="Lab-only PM CLOB book capture runner (serial interval evidence only).",
+    )
+    p.add_argument("--market-slug", required=True, help="explicit Polymarket slug")
+    p.add_argument("--yes-token-id", required=True, help="explicit YES/Up CLOB token id")
+    p.add_argument("--no-token-id", required=True, help="explicit NO/Down CLOB token id")
+    p.add_argument("--asset", required=True, help="asset label, e.g. BTC")
+    p.add_argument("--timeframe", required=True, help="timeframe label, e.g. 5m")
+    p.add_argument("--db-path", required=True, help="dedicated lab DB path (no default)")
+    p.add_argument("--base-url", required=True, help="CLOB base url")
+    p.add_argument("--cycle-sleep-seconds", required=True, type=float,
+                   help="sleep between cycles (>= 1.0 enforced by runner)")
+    p.add_argument("--max-captures", type=int, default=None, help="bounded capture count")
+    p.add_argument("--duration-seconds", type=float, default=None, help="bounded wall-clock limit")
+    return p
+
+
+async def _amain(args, *, session_factory, run_fn) -> dict:
+    """Create the injected client session inside the runtime path and run the diagnostic loop."""
+    session_cm = session_factory()
+    async with session_cm as session:
+        result = await run_fn(
+            yes_token_id=args.yes_token_id,
+            no_token_id=args.no_token_id,
+            market_slug=args.market_slug,
+            asset=args.asset,
+            timeframe=args.timeframe,
+            db_path=args.db_path,
+            base_url=args.base_url,
+            http_client=session,
+            cycle_sleep_seconds=args.cycle_sleep_seconds,
+            max_captures=args.max_captures,
+            duration_seconds=args.duration_seconds,
+        )
+    print("RUNNER_RESULT", result, flush=True)
+    return result
+
+
+def main(argv=None, *, session_factory=None, run_fn=None) -> int:
+    """Parse args, enforce stop-condition presence, then run. Returns process exit code.
+
+    ``session_factory`` and ``run_fn`` are injectable for tests so no real network/DB is touched.
+    In production, the aiohttp ClientSession is created lazily only on the runtime path.
+    """
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
+    if args.max_captures is None and args.duration_seconds is None:
+        parser.error("at least one of --max-captures or --duration-seconds is required")
+
+    if session_factory is None:
+        import aiohttp
+        session_factory = aiohttp.ClientSession
+    if run_fn is None:
+        run_fn = run_pm_book_diag
+
+    asyncio.run(_amain(args, session_factory=session_factory, run_fn=run_fn))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
