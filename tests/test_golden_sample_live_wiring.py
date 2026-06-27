@@ -388,6 +388,21 @@ def test_serializer_datetime_is_iso_provenance():
     assert decoded["yes_book"]["client_received_at_utc"] == _FIXED_UTC.isoformat()
 
 
+def test_serializer_encodes_bool_as_json_native():
+    # bool is a permitted JSON-safe scalar; json.dumps renders it natively (no default=str)
+    decoded = json.loads(serialize_golden_sample({"flag": True, "off": False}))
+    assert decoded == {"flag": True, "off": False}
+
+
+def test_serializer_preserves_bool_in_book_evidence():
+    rec, _, _ = _run()
+    rec["yes_book"]["evidence"]["parsed_safe_book"]["neg_risk"] = False
+    rec["no_book"]["evidence"]["parsed_safe_book"]["some_flag"] = True
+    decoded = json.loads(serialize_golden_sample(rec))
+    assert decoded["yes_book"]["evidence"]["parsed_safe_book"]["neg_risk"] is False
+    assert decoded["no_book"]["evidence"]["parsed_safe_book"]["some_flag"] is True
+
+
 def test_serializer_rejects_float():
     with pytest.raises(TypeError):
         serialize_golden_sample({"bad": 1.5})

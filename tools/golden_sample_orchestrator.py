@@ -59,7 +59,7 @@ def _clone_plain_tree(value):
         return None
     t = type(value)
     if t is bool:
-        raise _PlainTreeError("bool not permitted")
+        return value                      # bool is a permitted JSON-safe scalar (checked before int)
     if t is int:
         return value
     if t is str:

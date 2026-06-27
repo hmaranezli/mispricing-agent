@@ -563,7 +563,7 @@ def _assert_plain_tree(node, path="root"):
         return
     t = type(node)
     if t is bool:
-        raise AssertionError(f"bool at {path}")
+        return                      # bool is a permitted JSON-safe scalar
     if t in (int, str) or t is Decimal:
         return
     if t is dict:
@@ -598,11 +598,25 @@ def test_unsupported_onboarding_datetime_invalid_zero_calls():
     assert yc == []
 
 
-def test_unsupported_onboarding_bool_invalid():
+def test_onboarding_bool_permitted_and_preserved():
+    # bool is a JSON-safe scalar; it must pass the plain-tree boundary and be preserved verbatim
     onb = _onb()
     onb["gamma"]["flag"] = True
     rec = _run(onboarding_record=onb)
-    assert rec["error_code"] == "onboarding_invalid"
+    assert rec["status"] == "GOLDEN_SAMPLE_OK"
+    assert rec["error_code"] is None
+    assert rec["onboarding"]["gamma"]["flag"] is True
+
+
+def test_book_evidence_bool_node_permitted_and_preserved():
+    # PM /book payloads carry boolean flags (e.g. neg_risk); bool must not fail the evidence gate
+    book = {"bids": [{"price": Decimal("0.81"), "size": Decimal("50")}],
+            "asks": [{"price": Decimal("0.83"), "size": Decimal("50")}],
+            "neg_risk": False}
+    rec = _run(yes=_book_fetcher(_Carrier(_YES_TID, book)))
+    assert rec["status"] == "GOLDEN_SAMPLE_OK"
+    assert rec["error_code"] is None
+    assert rec["yes_book"]["evidence"]["parsed_safe_book"]["neg_risk"] is False
 
 
 def test_unsupported_yes_evidence_float_price():

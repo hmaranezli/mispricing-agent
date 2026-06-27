@@ -98,7 +98,7 @@ def _encode(value):
         return None
     t = type(value)
     if t is bool:
-        raise TypeError("bool is not a permitted Golden Sample projection node")
+        return value          # bool is JSON-safe; json.dumps renders true/false natively (no default=str)
     if t is int:
         return value
     if t is str:
