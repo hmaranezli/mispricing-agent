@@ -16,7 +16,7 @@ from tools.market_onboarder import onboard_market
 
 GAMMA_BASE_DEFAULT = "https://gamma-api.polymarket.com"
 BINANCE_BASE_DEFAULT = "https://api.binance.com"
-TIMEOUT_DEFAULT_S = 1.0
+TIMEOUT_DEFAULT_S = 2.0
 TIMEOUT_CAP_S = 2.0
 
 
