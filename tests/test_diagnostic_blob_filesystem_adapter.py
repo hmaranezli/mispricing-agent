@@ -71,6 +71,7 @@ class FakeFS:
         self.fchmod_errno = None
         self.unlink_errno = None
         self.close_fail = False
+        self.close_fail_file = False
         self.fail_fsync_target = False
         self.fail_fsync_dir_after_publish = False
         self._published = False
@@ -211,8 +212,11 @@ class FakeFS:
 
     def close(self, fd):
         self.calls.append(("close", fd))
+        node = self.fds.get(fd)
         if self.close_fail:
             raise OSError(errno.EIO, "close")
+        if self.close_fail_file and node is not None and node.kind == "file":
+            raise OSError(errno.EIO, "close file")
         self.fds.pop(fd, None)
 
 
@@ -597,3 +601,27 @@ def test_post_publish_shard_fsync_failure_is_directory_fsync_failed():
     res = _adapter(fs).persist_snapshot_blob(_snap())
     assert res.status is BlobPersistStatus.BLOCKED_RECOVERY_REQUIRED
     assert res.reason is BlobPersistReason.DIRECTORY_FSYNC_FAILED
+
+
+def test_persist_after_close_fails_closed_without_seam_ops():
+    fs = FakeFS()
+    a = _adapter(fs)
+    a.close()
+    base = len(fs.calls)
+    res = a.persist_snapshot_blob(_snap())
+    assert res.status is BlobPersistStatus.BLOCKED_RECOVERY_REQUIRED
+    assert res.reason is BlobPersistReason.AMBIGUOUS_PUBLICATION_STATE
+    assert fs.calls[base:] == []  # no fresh filesystem/seam operation after close()
+
+
+def test_cleanup_reopen_close_failure_is_ambiguous():
+    fs = FakeFS()
+    fs.write_zero = True        # WRITE_FAILED -> bounded cleanup attempt
+    fs.close_fail_file = True   # closing the reopened inode-proof descriptor fails
+    snap = _snap()
+    aa, bb, _, temp = _shard_names(snap)
+    res = _adapter(fs).persist_snapshot_blob(snap)
+    assert res.status is BlobPersistStatus.BLOCKED_RECOVERY_REQUIRED
+    assert res.reason is BlobPersistReason.TEMP_CLEANUP_AMBIGUOUS
+    assert temp in fs.root.children[aa].children[bb].children  # temp preserved
+    assert not any(c[0] == "unlink" for c in fs.calls)         # cleanup never proceeded to unlink

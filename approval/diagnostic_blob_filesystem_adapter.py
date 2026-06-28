@@ -100,6 +100,10 @@ class FilesystemBlobPersistAdapter:
         def fail(status, reason):
             return BlobPersistResult(status, reason, digest, ref, blen, False, False)
 
+        # -- closed adapter: fail closed immediately, no fresh seam operation --
+        if self._root_fd is None:
+            return fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.AMBIGUOUS_PUBLICATION_STATE)
+
         # -- phase 0: pure snapshot preflight (no filesystem mutation) --
         if not _is_lower_hex64(digest):
             return fail(_S.SNAPSHOT_VALIDATION_FAILED, _R.INVALID_DIGEST)
@@ -155,6 +159,7 @@ class FilesystemBlobPersistAdapter:
             except OSError:
                 return False
             ok = False
+            close_failed = False
             try:
                 st = sc.fstat(fd)
                 ok = (st.st_dev, st.st_ino) == temp_id
@@ -164,8 +169,8 @@ class FilesystemBlobPersistAdapter:
                 try:
                     sc.close(fd)
                 except OSError:
-                    pass
-            if not ok:
+                    close_failed = True   # unproven descriptor close => ambiguous, never treat as clean
+            if not ok or close_failed:
                 return False
             try:
                 sc.unlink(temp_name, shard_fd)
