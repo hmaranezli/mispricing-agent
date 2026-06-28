@@ -52,6 +52,7 @@ async def run_golden_sample_live(
     hl_timeout_s,
     monotonic_ns_fn,
     utc_now_fn,
+    wall_ms_fn,
     max_skew_ms,
 ) -> dict:
     """Bind injected live clients to the unchanged orchestrator and return its in-memory record.
@@ -84,6 +85,7 @@ async def run_golden_sample_live(
             hl_reference_fetcher=hl_reference_fetcher,
             monotonic_ns_fn=monotonic_ns_fn,
             utc_now_fn=utc_now_fn,
+            wall_ms_fn=wall_ms_fn,
             max_skew_ms=max_skew_ms,
         )
 

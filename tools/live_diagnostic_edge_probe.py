@@ -25,7 +25,7 @@ import asyncio
 import json
 import math
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 from tools.market_onboarder import onboard_market
@@ -40,10 +40,43 @@ DEADLINE_CAP_S = 2.0
 _PRECISION_MIN = 28
 _PRECISION_MAX = 80
 _ASSET_ALLOWLIST = ["BTC", "ETH", "SOL", "XRP"]
-_SCHEMA = "diag-edge-probe-v0"
+_SCHEMA = "diag-edge-probe-v1"
 _DRIVER_NOTE = "diagnostic observation only; not trading/actionability"
 _MARKERS = ("not_actionable", "capture_and_economics_layers_separated",
             "perp_reference_not_spot_truth_settlement")
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+def _epoch_int(v):
+    """Exact non-bool int >= 0 (type(True) is bool, so bool is excluded)."""
+    return type(v) is int and v >= 0
+
+
+def _epoch_ms_to_iso_z(epoch_ms: int) -> str:
+    """Integer-only UTC ISO-8601 (millisecond precision) derived from a stored epoch-ms value."""
+    if type(epoch_ms) is not int or epoch_ms < 0:
+        raise ValueError("epoch_ms must be a non-bool int >= 0")
+    seconds, millis = divmod(epoch_ms, 1000)
+    dt = _EPOCH + timedelta(seconds=seconds, milliseconds=millis)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S") + f".{millis:03d}Z"
+
+
+def _build_provenance(capture, valuation_time_ms):
+    """UTC mirrors + signed offset derived from the canonical epoch-ms stored in capture.timing."""
+    start_ms = complete_ms = None
+    if isinstance(capture, dict):
+        timing = capture.get("timing")
+        if isinstance(timing, dict):
+            start_ms = timing.get("capture_start_time_ms")
+            complete_ms = timing.get("capture_complete_time_ms")
+    offset = (start_ms - valuation_time_ms
+              if _epoch_int(start_ms) and _epoch_int(valuation_time_ms) else None)
+    return {
+        "valuation_time_ms": valuation_time_ms,
+        "capture_start_utc": _epoch_ms_to_iso_z(start_ms) if _epoch_int(start_ms) else None,
+        "capture_complete_utc": _epoch_ms_to_iso_z(complete_ms) if _epoch_int(complete_ms) else None,
+        "valuation_to_capture_start_offset_ms": offset,
+    }
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -79,7 +112,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return p
 
 
-def _envelope(*, layer, capture_status, reason, capture, economics):
+def _envelope(*, layer, capture_status, reason, capture, economics, provenance):
     return {
         "schema_version": _SCHEMA,
         "layer": layer,
@@ -87,6 +120,7 @@ def _envelope(*, layer, capture_status, reason, capture, economics):
         "fail_closed_reason": reason,
         "capture": capture,
         "economics": economics,
+        "provenance": provenance,
         "markers": list(_MARKERS),
         "driver_note": _DRIVER_NOTE,
     }
@@ -214,7 +248,7 @@ def _identity_payload(record, args, reason):
 
 
 async def _capture(*, args, now_ms, build_onboarding_clients, build_pm_session,
-                   hl_client_factory, monotonic_ns_fn, utc_now_fn):
+                   hl_client_factory, monotonic_ns_fn, utc_now_fn, wall_ms_fn):
     gamma_client, binance_client = build_onboarding_clients(args.onboarding_timeout_s)
     record = await onboard_market(
         slug=args.slug, asset=args.asset, interval=args.interval, now_ms=now_ms,
@@ -235,7 +269,8 @@ async def _capture(*, args, now_ms, build_onboarding_clients, build_pm_session,
         onboarding_record=record, pm_session=pm_session, hl_client_factory=hl_client_factory,
         pm_base_url=args.pm_base_url, hl_base_url=args.hl_base_url,
         pm_timeout_s=args.pm_timeout_s, hl_timeout_s=args.hl_timeout_s,
-        monotonic_ns_fn=monotonic_ns_fn, utc_now_fn=utc_now_fn, max_skew_ms=args.max_skew_ms)
+        monotonic_ns_fn=monotonic_ns_fn, utc_now_fn=utc_now_fn, wall_ms_fn=wall_ms_fn,
+        max_skew_ms=args.max_skew_ms)
     return {"kind": "CAPTURE", "record": record, "capture": capture}
 
 
@@ -296,7 +331,7 @@ def _make_hl_factory():  # pragma: no cover - live boundary
 
 def main(argv=None, *, build_onboarding_clients=None, build_pm_session=None,
          hl_client_factory=None, now_fn=None, monotonic_ns_fn=None, utc_now_fn=None,
-         economics_fn=None, out=None, err=None) -> int:
+         wall_ms_fn=None, economics_fn=None, out=None, err=None) -> int:
     out = out if out is not None else sys.stdout
     err = err if err is not None else sys.stderr
 
@@ -306,20 +341,23 @@ def main(argv=None, *, build_onboarding_clients=None, build_pm_session=None,
     except SystemExit as e:
         return int(e.code) if e.code is not None else 2
 
+    def _validation_envelope():
+        # valuation_time_ms is parsed by argparse (type=int) before any bound check, so it is echoed
+        return _envelope(layer="VALIDATION", capture_status=None, reason="invalid_config",
+                         capture=None, economics=None,
+                         provenance=_build_provenance(None, args.valuation_time_ms))
+
     # ---- preflight validation (no onboarding/capture/calculator on failure) ----
     if not (_valid_deadline(args.onboarding_timeout_s) and _valid_deadline(args.pm_timeout_s)
             and _valid_deadline(args.hl_timeout_s)):
-        _emit(_envelope(layer="VALIDATION", capture_status=None, reason="invalid_config",
-                        capture=None, economics=None), out)
+        _emit(_validation_envelope(), out)
         return 2
     if not (isinstance(args.max_skew_ms, int) and not isinstance(args.max_skew_ms, bool)
             and args.max_skew_ms > 0):
-        _emit(_envelope(layer="VALIDATION", capture_status=None, reason="invalid_config",
-                        capture=None, economics=None), out)
+        _emit(_validation_envelope(), out)
         return 2
     if not _validate_economics(args):
-        _emit(_envelope(layer="VALIDATION", capture_status=None, reason="invalid_config",
-                        capture=None, economics=None), out)
+        _emit(_validation_envelope(), out)
         return 2
 
     if args.now_ms is not None:
@@ -331,8 +369,7 @@ def main(argv=None, *, build_onboarding_clients=None, build_pm_session=None,
         import time as _t  # pragma: no cover
         now_ms = int(_t.time() * 1000)  # pragma: no cover
     if now_ms < 0:
-        _emit(_envelope(layer="VALIDATION", capture_status=None, reason="invalid_config",
-                        capture=None, economics=None), out)
+        _emit(_validation_envelope(), out)
         return 2
 
     build_onboarding_clients = build_onboarding_clients or _make_onboarding_clients
@@ -340,14 +377,18 @@ def main(argv=None, *, build_onboarding_clients=None, build_pm_session=None,
     hl_client_factory = hl_client_factory or _make_hl_factory()
     monotonic_ns_fn = monotonic_ns_fn or _default_monotonic_ns()
     utc_now_fn = utc_now_fn or _iso_utc_now
+    if wall_ms_fn is None:                       # explicit 0/False/"" must reach clock validation
+        wall_ms_fn = _default_wall_ms
     economics_fn = economics_fn or compute_diagnostic_edge_report
+
+    val_ms = args.valuation_time_ms
 
     # ---- one live capture, zero retry ----
     try:
         outcome = asyncio.run(_capture(
             args=args, now_ms=now_ms, build_onboarding_clients=build_onboarding_clients,
             build_pm_session=build_pm_session, hl_client_factory=hl_client_factory,
-            monotonic_ns_fn=monotonic_ns_fn, utc_now_fn=utc_now_fn))
+            monotonic_ns_fn=monotonic_ns_fn, utc_now_fn=utc_now_fn, wall_ms_fn=wall_ms_fn))
     except (KeyboardInterrupt, SystemExit):
         raise
     except Exception as e:
@@ -358,19 +399,21 @@ def main(argv=None, *, build_onboarding_clients=None, build_pm_session=None,
     if kind == "ONBOARDING_INVALID":
         _emit(_envelope(layer="ONBOARDING", capture_status="ONBOARDING_INVALID",
                         reason=outcome["record"].get("onboarding_error_code"),
-                        capture=_onboarding_payload(outcome["record"]), economics=None), out)
+                        capture=_onboarding_payload(outcome["record"]), economics=None,
+                        provenance=_build_provenance(None, val_ms)), out)
         return 4
     if kind == "IDENTITY_MISMATCH":
         _emit(_envelope(layer="IDENTITY", capture_status="IDENTITY_MISMATCH",
                         reason=outcome["reason"],
                         capture=_identity_payload(outcome["record"], args, outcome["reason"]),
-                        economics=None), out)
+                        economics=None, provenance=_build_provenance(None, val_ms)), out)
         return 5
 
     capture = outcome["capture"]
     if capture["status"] != "GOLDEN_SAMPLE_OK":
         _emit(_envelope(layer="CAPTURE", capture_status=capture["status"],
-                        reason=capture.get("error_code"), capture=capture, economics=None), out)
+                        reason=capture.get("error_code"), capture=capture, economics=None,
+                        provenance=_build_provenance(capture, val_ms)), out)
         return 6
 
     # ---- capture OK: invoke the pure calculator (the ONLY place it runs) ----
@@ -391,13 +434,19 @@ def main(argv=None, *, build_onboarding_clients=None, build_pm_session=None,
         return 3
 
     _emit(_envelope(layer="ECONOMICS", capture_status="GOLDEN_SAMPLE_OK",
-                    reason=None, capture=capture, economics=economics), out)
+                    reason=None, capture=capture, economics=economics,
+                    provenance=_build_provenance(capture, val_ms)), out)
     return 0 if economics.get("status") == "DIAGNOSTIC_OK" else 1
 
 
 def _default_monotonic_ns():  # pragma: no cover - live boundary monotonic clock
     import time as _t
     return _t.monotonic_ns
+
+
+def _default_wall_ms():  # pragma: no cover - live boundary epoch-ms wall clock
+    import time as _t
+    return _t.time_ns() // 1_000_000
 
 
 if __name__ == "__main__":  # pragma: no cover - live boundary

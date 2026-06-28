@@ -124,7 +124,7 @@ def _identity_payload(record, args, reason) -> dict:
 
 
 async def _pipeline(*, args, now_ms, build_onboarding_clients, build_pm_session,
-                    hl_client_factory, monotonic_ns_fn, utc_now_fn) -> dict:
+                    hl_client_factory, monotonic_ns_fn, utc_now_fn, wall_ms_fn) -> dict:
     gamma_client, binance_client = build_onboarding_clients(args.onboarding_timeout_s)
     record = await onboard_market(
         slug=args.slug, asset=args.asset, interval=args.interval, now_ms=now_ms,
@@ -152,12 +152,17 @@ async def _pipeline(*, args, now_ms, build_onboarding_clients, build_pm_session,
         hl_timeout_s=args.hl_timeout_s,
         monotonic_ns_fn=monotonic_ns_fn,
         utc_now_fn=utc_now_fn,
+        wall_ms_fn=wall_ms_fn,
         max_skew_ms=args.max_skew_ms)
     return {"kind": "CAPTURE", "record": record, "capture": capture}
 
 
 def _iso_utc_now() -> str:  # pragma: no cover - trivial wall-clock provenance
     return datetime.now(timezone.utc).isoformat()
+
+
+def _default_wall_ms() -> int:  # pragma: no cover - live boundary epoch-ms wall clock
+    return time.time_ns() // 1_000_000
 
 
 def _make_onboarding_clients(timeout_s):  # pragma: no cover - live boundary
@@ -213,7 +218,7 @@ def _make_hl_factory():  # pragma: no cover - live boundary
 
 def main(argv=None, *, build_onboarding_clients=None, build_pm_session=None,
          hl_client_factory=None, now_fn=None, monotonic_ns_fn=None, utc_now_fn=None,
-         out=None, err=None) -> int:
+         wall_ms_fn=None, out=None, err=None) -> int:
     out = out if out is not None else sys.stdout
     err = err if err is not None else sys.stderr
 
@@ -250,6 +255,8 @@ def main(argv=None, *, build_onboarding_clients=None, build_pm_session=None,
     hl_client_factory = hl_client_factory or _make_hl_factory()
     monotonic_ns_fn = monotonic_ns_fn or time.monotonic_ns
     utc_now_fn = utc_now_fn or _iso_utc_now
+    if wall_ms_fn is None:                       # explicit 0/False/"" must reach clock validation
+        wall_ms_fn = _default_wall_ms
 
     try:
         outcome = asyncio.run(_pipeline(
@@ -258,7 +265,8 @@ def main(argv=None, *, build_onboarding_clients=None, build_pm_session=None,
             build_pm_session=build_pm_session,
             hl_client_factory=hl_client_factory,
             monotonic_ns_fn=monotonic_ns_fn,
-            utc_now_fn=utc_now_fn))
+            utc_now_fn=utc_now_fn,
+            wall_ms_fn=wall_ms_fn))
     except (KeyboardInterrupt, SystemExit):
         raise
     except Exception as e:   # unexpected internal failure only

@@ -136,7 +136,7 @@ _HL_PAYLOAD = {"BTC": "60279.5", "ETH": "3000.0"}
 def _run(*, record=None, http_client=None, session=None, hl_factory=None, hl_calls=None,
          pm_base_url="https://clob.example.com", hl_base_url="https://hl.example.com",
          pm_timeout_s=1.5, hl_timeout_s=2.0, max_skew_ms=10_000,
-         monotonic_ns_fn=None, utc_now_fn=None):
+         monotonic_ns_fn=None, utc_now_fn=None, wall_ms_fn=None):
     record = record if record is not None else _onboarding_record()
     if http_client is None:
         http_client = _FakeHttpClient({"YES_TOKEN": _YES_BODY, "NO_TOKEN": _NO_BODY})
@@ -155,6 +155,7 @@ def _run(*, record=None, http_client=None, session=None, hl_factory=None, hl_cal
         hl_timeout_s=hl_timeout_s,
         monotonic_ns_fn=monotonic_ns_fn or _mono_counter(),
         utc_now_fn=utc_now_fn or (lambda: _FIXED_UTC),
+        wall_ms_fn=wall_ms_fn or (lambda: 1_700_000_000_000),
         max_skew_ms=max_skew_ms,
     ))
     return out, session, http_client
@@ -313,6 +314,7 @@ def test_max_skew_ms_has_no_default():
             hl_timeout_s=2.0,
             monotonic_ns_fn=_mono_counter(),
             utc_now_fn=lambda: _FIXED_UTC,
+            wall_ms_fn=lambda: 1_700_000_000_000,
         ))
 
 
@@ -448,3 +450,15 @@ def test_wiring_does_not_create_its_own_gather_or_tasks():
     assert "gather" not in src           # concurrency owned by the orchestrator only
     assert "create_task" not in src
     assert "ensure_future" not in src
+
+
+def test_wall_clock_threaded_into_record():
+    rec, _, _ = _run(wall_ms_fn=_wall_seq([1782605100000, 1782605101234]))
+    assert rec["timing"]["capture_start_time_ms"] == 1782605100000
+    assert rec["timing"]["capture_complete_time_ms"] == 1782605101234
+    assert rec["schema_version"] == "golden-sample-v1"
+
+
+def _wall_seq(seq):
+    it = iter(seq)
+    return lambda: next(it)

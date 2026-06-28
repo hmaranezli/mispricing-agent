@@ -31,6 +31,7 @@ _ISO_UTC = "2026-06-27T12:00:00+00:00"
 
 _OMIT = object()
 _DEFAULT = object()
+_NO_WALL = object()
 
 
 def _gamma_doc(**over):
@@ -114,7 +115,7 @@ class _Ctx:
 
 
 def _make_injections(ctx, *, gamma_payload, binance_payload, book_bodies, hl_payload,
-                     pm_raise=None, hl_raise=None):
+                     pm_raise=None, hl_raise=None, wall_override=_NO_WALL):
     def build_onboarding_clients(timeout_s):
         ctx.onb_deadlines.append(timeout_s)
 
@@ -152,12 +153,20 @@ def _make_injections(ctx, *, gamma_payload, binance_payload, book_bodies, hl_pay
         ctx.order_log.append(("mono", _state["v"]))
         return _state["v"]
 
+    _wstate = {"seq": iter([1782605100000, 1782605101234])}
+
+    def _seq_wall():
+        return next(_wstate["seq"])
+
+    wall_ms_fn = _seq_wall if wall_override is _NO_WALL else wall_override
+
     return dict(build_onboarding_clients=build_onboarding_clients,
                 build_pm_session=build_pm_session,
                 hl_client_factory=hl_client_factory,
                 now_fn=lambda: _NOW_IN_WINDOW,
                 monotonic_ns_fn=monotonic_ns_fn,
-                utc_now_fn=lambda: _ISO_UTC)
+                utc_now_fn=lambda: _ISO_UTC,
+                wall_ms_fn=wall_ms_fn)
 
 
 def _argv(**over):
@@ -177,14 +186,16 @@ def _argv(**over):
 
 
 def _invoke(*, argv_over=None, gamma_payload=_DEFAULT, binance_payload=_DEFAULT,
-            book_bodies=None, hl_payload=None, pm_raise=None, hl_raise=None):
+            book_bodies=None, hl_payload=None, pm_raise=None, hl_raise=None,
+            wall_override=_NO_WALL):
     ctx = _Ctx()
     gp = [_gamma_doc()] if gamma_payload is _DEFAULT else gamma_payload
     bp = [_kline()] if binance_payload is _DEFAULT else binance_payload
     bodies = book_bodies if book_bodies is not None else {"YESTOK": _BOOK_BODY, "NOTOK": _BOOK_BODY}
     hp = hl_payload if hl_payload is not None else _HL_PAYLOAD
     inj = _make_injections(ctx, gamma_payload=gp, binance_payload=bp, book_bodies=bodies,
-                           hl_payload=hp, pm_raise=pm_raise, hl_raise=hl_raise)
+                           hl_payload=hp, pm_raise=pm_raise, hl_raise=hl_raise,
+                           wall_override=wall_override)
     import io
     out = io.StringIO()
     err = io.StringIO()
@@ -464,3 +475,24 @@ def test_source_scan_no_forbidden_surfaces():
     )
     for term in banned:
         assert term not in low, f"forbidden term {term!r} present in probe source"
+
+
+def test_record_is_golden_sample_v1_with_capture_clock():
+    code, out, _, _ = _invoke()
+    assert code == 0
+    rec = json.loads(out)
+    assert rec["schema_version"] == "golden-sample-v1"
+    assert rec["timing"]["capture_start_time_ms"] == 1782605100000
+    assert rec["timing"]["capture_complete_time_ms"] == 1782605101234
+    assert rec["capture_provenance"]["clock_basis"] == (
+        "injected_monotonic_ns_durations+injected_epoch_ms_capture_boundary"
+        "+injected_per_leg_utc_completion")
+
+
+@pytest.mark.parametrize("bad_clock", [0, False, ""])
+def test_falsey_wall_reaches_validation_exit3(bad_clock):
+    # explicit falsey clock must NOT silently select the default; reaches validation -> internal fail
+    code, out, err, _ = _invoke(wall_override=bad_clock)
+    assert code == 3                 # default clock was not silently used (would be exit 0)
+    assert out == ""                 # empty stdout
+    assert "internal error" in err

@@ -15,13 +15,15 @@ from __future__ import annotations
 import asyncio
 from decimal import Decimal
 
-_SCHEMA = "golden-sample-v0"
+_SCHEMA = "golden-sample-v1"
 _OK = "GOLDEN_SAMPLE_OK"
 _INVALID = "GOLDEN_SAMPLE_INVALID"
 _HL_SOURCE = "hyperliquid_all_mids_perp"
 _NS_PER_MS = 1_000_000
 _BASE_MARKERS = ("client_completion_skew_not_venue_event_time", "no_venue_event_timestamp_degraded")
 _SEMANTICS_NOTE = "completion skew is client-completion skew, not venue-event-time skew"
+_CLOCK_BASIS = ("injected_monotonic_ns_durations+injected_epoch_ms_capture_boundary"
+                "+injected_per_leg_utc_completion")
 
 
 class _PlainTreeError(Exception):
@@ -34,6 +36,12 @@ def _is_pos_int(v):
 
 def _is_nonneg_int(v):
     return isinstance(v, int) and not isinstance(v, bool) and v >= 0
+
+
+def _assert_epoch_ms(value):
+    """Wall-clock contract: value must be a non-bool int epoch-ms >= 0. Violation -> raise (internal)."""
+    if type(value) is not int or value < 0:
+        raise TypeError("wall_ms_fn must return a non-bool int epoch-ms >= 0")
 
 
 def _ns_to_ms_str(ns):
@@ -97,7 +105,7 @@ def _record(*, onboarding, yes_book, no_book, hl_reference, timing, max_skew_ms,
         "no_book": no_book,
         "hl_reference": hl_reference,
         "timing": timing,
-        "capture_provenance": {"clock_basis": "injected_monotonic_ns+injected_utc"},
+        "capture_provenance": {"clock_basis": _CLOCK_BASIS},
         "max_skew_ms": max_skew_ms,
         "markers": list(markers),
         "status": status,
@@ -292,7 +300,9 @@ def _hl_slot(expected_asset, leg, ev, *, latency_ns):
 
 async def orchestrate_golden_sample(*, onboarding_record, yes_book_fetcher, no_book_fetcher,
                                     hl_reference_fetcher, monotonic_ns_fn, utc_now_fn,
-                                    max_skew_ms) -> dict:
+                                    wall_ms_fn, max_skew_ms) -> dict:
+    if not callable(wall_ms_fn):
+        raise TypeError("wall_ms_fn must be callable")
     err, ident = _validate_inputs(
         onboarding_record,
         [yes_book_fetcher, no_book_fetcher, hl_reference_fetcher],
@@ -310,11 +320,19 @@ async def orchestrate_golden_sample(*, onboarding_record, yes_book_fetcher, no_b
                        timing=None, max_skew_ms=max_skew_ms, markers=_BASE_MARKERS,
                        status=_INVALID, error_code="onboarding_invalid")
 
+    # capture-boundary wall clock: recorded once immediately before the concurrent PM/HL barrier
+    cap_start_ms = wall_ms_fn()
+    _assert_epoch_ms(cap_start_ms)
+
     yes_leg, no_leg, hl_leg = await asyncio.gather(
         _timed_leg(yes_book_fetcher, ident["yes_tid"], monotonic_ns_fn, utc_now_fn),
         _timed_leg(no_book_fetcher, ident["no_tid"], monotonic_ns_fn, utc_now_fn),
         _timed_leg(hl_reference_fetcher, ident["asset"], monotonic_ns_fn, utc_now_fn),
     )
+    # recorded once immediately after successful gather completion (never fabricated on raise)
+    cap_complete_ms = wall_ms_fn()
+    _assert_epoch_ms(cap_complete_ms)
+
     legs = [yes_leg, no_leg, hl_leg]
     clock_invalid = _clock_invalid(legs)
 
@@ -347,6 +365,8 @@ async def orchestrate_golden_sample(*, onboarding_record, yes_book_fetcher, no_b
         "capture_span_ms": _ns_to_ms_str(span_ns) if span_ns is not None else None,
         "completion_skew_ms": _ns_to_ms_str(skew_ns) if skew_ns is not None else None,
         "semantics_note": _SEMANTICS_NOTE,
+        "capture_start_time_ms": cap_start_ms,
+        "capture_complete_time_ms": cap_complete_ms,
     }
 
     markers = list(_BASE_MARKERS)

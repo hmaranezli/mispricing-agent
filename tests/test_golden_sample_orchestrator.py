@@ -99,17 +99,24 @@ def _onb(**over):
     return rec
 
 
+def _wall(seq):
+    it = iter(seq)
+    return lambda: next(it)
+
+
 def _run(*, onboarding_record=None, yes=None, no=None, hl=None,
-         mono=None, utc=None, max_skew_ms=1000):
+         mono=None, utc=None, wall=None, max_skew_ms=1000):
     onboarding_record = _onb() if onboarding_record is None else onboarding_record
     yes = _book_fetcher(_Carrier(_YES_TID, _YES_BOOK)) if yes is None else yes
     no = _book_fetcher(_Carrier(_NO_TID, _NO_BOOK)) if no is None else no
     hl = _hl_fetcher(_hl_record()) if hl is None else hl
     mono = _mono([1000, 1500, 1100, 1700, 1200, 1600]) if mono is None else mono
     utc = _utc() if utc is None else utc
+    wall = _wall([1000, 1100]) if wall is None else wall
     return asyncio.run(orchestrate_golden_sample(
         onboarding_record=onboarding_record, yes_book_fetcher=yes, no_book_fetcher=no,
-        hl_reference_fetcher=hl, monotonic_ns_fn=mono, utc_now_fn=utc, max_skew_ms=max_skew_ms))
+        hl_reference_fetcher=hl, monotonic_ns_fn=mono, utc_now_fn=utc, wall_ms_fn=wall,
+        max_skew_ms=max_skew_ms))
 
 
 def _has_float(obj):
@@ -246,7 +253,7 @@ def test_concurrent_start_all_three():
             yes_book_fetcher=make("y", _Carrier(_YES_TID, _YES_BOOK)),
             no_book_fetcher=make("n", _Carrier(_NO_TID, _NO_BOOK)),
             hl_reference_fetcher=make("h", _hl_record()),
-            monotonic_ns_fn=lambda: 0, utc_now_fn=_utc(), max_skew_ms=1000)
+            monotonic_ns_fn=lambda: 0, utc_now_fn=_utc(), wall_ms_fn=lambda: 0, max_skew_ms=1000)
         return started, rec
 
     started, rec = asyncio.run(asyncio.wait_for(scenario(), 5))
@@ -267,7 +274,7 @@ def test_external_cancellation_propagates():
             onboarding_record=_onb(), yes_book_fetcher=slow,
             no_book_fetcher=_book_fetcher(_Carrier(_NO_TID, _NO_BOOK)),
             hl_reference_fetcher=_hl_fetcher(_hl_record()),
-            monotonic_ns_fn=lambda: 0, utc_now_fn=_utc(), max_skew_ms=1000))
+            monotonic_ns_fn=lambda: 0, utc_now_fn=_utc(), wall_ms_fn=lambda: 0, max_skew_ms=1000))
         await asyncio.sleep(0)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -651,3 +658,52 @@ def test_decimal_and_scalars_preserved():
     assert type(rec["max_skew_ms"]) is int
     assert rec["error_code"] is None
     assert isinstance(rec["status"], str)
+
+
+# ===========================================================================
+# Capture-Clock v1: wall-clock capture boundary + schema/provenance
+# ===========================================================================
+
+def test_schema_version_is_v1():
+    rec = _run()
+    assert rec["schema_version"] == "golden-sample-v1"
+
+
+def test_capture_clock_recorded_at_barrier():
+    rec = _run(wall=_wall([1782605100000, 1782605101234]))
+    assert rec["timing"]["capture_start_time_ms"] == 1782605100000
+    assert rec["timing"]["capture_complete_time_ms"] == 1782605101234
+    assert type(rec["timing"]["capture_start_time_ms"]) is int
+
+
+def test_clock_basis_truthful():
+    rec = _run()
+    assert rec["capture_provenance"]["clock_basis"] == (
+        "injected_monotonic_ns_durations+injected_epoch_ms_capture_boundary"
+        "+injected_per_leg_utc_completion")
+
+
+def test_pre_gather_invalid_has_no_capture_clock():
+    # input_invalid (max_skew_ms not positive int) returns before the gather -> timing is None
+    rec = _run(max_skew_ms=0)
+    assert rec["error_code"] == "input_invalid"
+    assert rec["timing"] is None
+
+
+def test_non_callable_wall_raises_typeerror():
+    with pytest.raises(TypeError):
+        _run(wall=123)
+
+
+@pytest.mark.parametrize("bad", [True, 1.5, -1, "1000"])
+def test_invalid_wall_value_raises(bad):
+    # bad start value at the barrier -> _assert_epoch_ms raises (internal failure, not a carrier)
+    with pytest.raises(TypeError):
+        _run(wall=_wall([bad, 2000]))
+
+
+def test_raising_wall_propagates():
+    def boom():
+        raise RuntimeError("wall down")
+    with pytest.raises(RuntimeError):
+        _run(wall=boom)

@@ -116,7 +116,8 @@ class _EconSpy:
         return self.result
 
 
-def _make_injections(ctx, *, gamma_payload, binance_payload, hl_raise=None):
+def _make_injections(ctx, *, gamma_payload, binance_payload, hl_raise=None,
+                     wall_seq=None, wall_ms_fn=None):
     def build_onboarding_clients(timeout_s):
         async def gamma(url):
             ctx.gamma_calls.append(url)
@@ -144,10 +145,15 @@ def _make_injections(ctx, *, gamma_payload, binance_payload, hl_raise=None):
         _s["v"] += 1
         return _s["v"]
 
+    if wall_ms_fn is None:
+        seq = wall_seq if wall_seq is not None else [_VAL_MS + 5000, _VAL_MS + 5600]
+        _it = iter(seq)
+        wall_ms_fn = lambda: next(_it)  # noqa: E731
+
     return dict(build_onboarding_clients=build_onboarding_clients,
                 build_pm_session=build_pm_session, hl_client_factory=hl_client_factory,
                 now_fn=lambda: _NOW_IN_WINDOW, monotonic_ns_fn=monotonic_ns_fn,
-                utc_now_fn=lambda: _ISO_UTC)
+                utc_now_fn=lambda: _ISO_UTC, wall_ms_fn=wall_ms_fn)
 
 
 def _argv(**over):
@@ -173,16 +179,19 @@ def _argv(**over):
 
 
 def _invoke(*, argv_over=None, gamma_payload=_DEFAULT, binance_payload=_DEFAULT,
-            hl_raise=None, economics_fn=None, monkeypatch_onboard=None):
+            hl_raise=None, economics_fn=None, monkeypatch_onboard=None,
+            wall_seq=None, wall_ms_fn=None):
     ctx = _Ctx()
     gp = [_gamma_doc()] if gamma_payload is _DEFAULT else gamma_payload
     bp = [_kline()] if binance_payload is _DEFAULT else binance_payload
-    inj = _make_injections(ctx, gamma_payload=gp, binance_payload=bp, hl_raise=hl_raise)
+    inj = _make_injections(ctx, gamma_payload=gp, binance_payload=bp, hl_raise=hl_raise,
+                           wall_seq=wall_seq, wall_ms_fn=wall_ms_fn)
     if economics_fn is not None:
         inj["economics_fn"] = economics_fn
         ctx.econ = economics_fn
     out, err = io.StringIO(), io.StringIO()
     code = main(_argv(**(argv_over or {})), out=out, err=err, **inj)
+    ctx.stderr = err.getvalue()
     payload = None
     if out.getvalue().strip():
         payload = json.loads(out.getvalue())
@@ -196,7 +205,7 @@ def _invoke(*, argv_over=None, gamma_payload=_DEFAULT, binance_payload=_DEFAULT,
 def test_happy_path_exit0_economics_ok():
     code, env, _ = _invoke()
     assert code == 0
-    assert env["schema_version"] == "diag-edge-probe-v0"
+    assert env["schema_version"] == "diag-edge-probe-v1"
     assert env["layer"] == "ECONOMICS"
     assert env["capture_status"] == "GOLDEN_SAMPLE_OK"
     assert env["economics"]["status"] == "DIAGNOSTIC_OK"
@@ -377,3 +386,138 @@ def test_existing_probe_exit_codes_unchanged():
     # the original probe still ends its capture branch with 0/else-1 (untouched contract)
     assert 'return 0 if capture["status"] == "GOLDEN_SAMPLE_OK" else 1' in src
     assert "diag-edge-probe-v0" not in src
+
+
+# ===========================================================================
+# Capture-Clock v1 provenance
+# ===========================================================================
+from tools.live_diagnostic_edge_probe import _epoch_ms_to_iso_z  # noqa: E402
+
+
+def test_provenance_populated_on_success():
+    code, env, _ = _invoke(wall_seq=[_VAL_MS + 5000, _VAL_MS + 5600])
+    assert code == 0
+    prov = env["provenance"]
+    assert prov["valuation_time_ms"] == _VAL_MS
+    assert prov["capture_start_utc"] == _epoch_ms_to_iso_z(_VAL_MS + 5000)
+    assert prov["capture_complete_utc"] == _epoch_ms_to_iso_z(_VAL_MS + 5600)
+    assert prov["valuation_to_capture_start_offset_ms"] == 5000
+    # canonical epoch-ms remain only in capture.timing (not duplicated in provenance)
+    assert env["capture"]["timing"]["capture_start_time_ms"] == _VAL_MS + 5000
+    assert env["capture"]["timing"]["capture_complete_time_ms"] == _VAL_MS + 5600
+    assert "capture_start_time_ms" not in prov
+
+
+def test_offset_sign_positive_negative_zero():
+    _, env_pos, _ = _invoke(wall_seq=[_VAL_MS + 1000, _VAL_MS + 1100])
+    assert env_pos["provenance"]["valuation_to_capture_start_offset_ms"] == 1000
+    _, env_neg, _ = _invoke(wall_seq=[_VAL_MS - 1000, _VAL_MS - 900])
+    assert env_neg["provenance"]["valuation_to_capture_start_offset_ms"] == -1000
+    _, env_zero, _ = _invoke(wall_seq=[_VAL_MS, _VAL_MS + 50])
+    assert env_zero["provenance"]["valuation_to_capture_start_offset_ms"] == 0
+
+
+def test_utc_formatter_integer_only():
+    assert _epoch_ms_to_iso_z(1782605100000) == "2026-06-28T00:05:00.000Z"
+    assert _epoch_ms_to_iso_z(1782605100123) == "2026-06-28T00:05:00.123Z"
+    assert _epoch_ms_to_iso_z(1782605100999) == "2026-06-28T00:05:00.999Z"
+    # rollover: +1ms past .999 advances the second
+    assert _epoch_ms_to_iso_z(1782605101000) == "2026-06-28T00:05:01.000Z"
+
+
+@pytest.mark.parametrize("layer_over,expect_layer", [
+    ({}, "ONBOARDING"),
+])
+def test_null_provenance_onboarding(layer_over, expect_layer):
+    code, env, ctx = _invoke(gamma_payload=[])   # ONBOARDING_INVALID, gather never began
+    assert code == 4
+    prov = env["provenance"]
+    assert prov["valuation_time_ms"] == _VAL_MS         # echoed
+    assert prov["capture_start_utc"] is None
+    assert prov["capture_complete_utc"] is None
+    assert prov["valuation_to_capture_start_offset_ms"] is None
+
+
+def test_null_provenance_validation():
+    code, env, _ = _invoke(argv_over={"--fee-per-share": "-0.01"})
+    assert code == 2
+    prov = env["provenance"]
+    assert prov["valuation_time_ms"] == _VAL_MS
+    assert prov["capture_start_utc"] is None
+    assert prov["valuation_to_capture_start_offset_ms"] is None
+
+
+@pytest.mark.parametrize("bad", [True, 1.5, -1, "1000"])
+def test_invalid_wall_value_exit3_empty_stdout(bad):
+    code, env, _ = _invoke(wall_ms_fn=lambda: bad)
+    assert code == 3
+    assert env is None       # no stdout envelope on internal failure
+
+
+def test_raising_wall_exit3_empty_stdout():
+    def boom():
+        raise RuntimeError("wall down")
+    code, env, _ = _invoke(wall_ms_fn=boom)
+    assert code == 3
+    assert env is None
+
+
+def test_schema_version_v1_envelope_and_record():
+    _, env, _ = _invoke()
+    assert env["schema_version"] == "diag-edge-probe-v1"
+    assert env["capture"]["schema_version"] == "golden-sample-v1"
+
+
+def test_v0_legacy_record_offset_unknown_not_zero():
+    # a legacy golden-sample-v0 record carries no capture-boundary epoch-ms -> offset must be null
+    from tools.live_diagnostic_edge_probe import _build_provenance
+    v0_capture = {"schema_version": "golden-sample-v0",
+                  "timing": {"capture_span_ms": "1.0", "completion_skew_ms": "0.5"}}  # no clock keys
+    prov = _build_provenance(v0_capture, _VAL_MS)
+    assert prov["valuation_time_ms"] == _VAL_MS
+    assert prov["capture_start_utc"] is None
+    assert prov["capture_complete_utc"] is None
+    assert prov["valuation_to_capture_start_offset_ms"] is None   # unknown, NOT zero
+
+
+# ===========================================================================
+# Fix 1 (falsey injection bypass) + Fix 2 (negative epoch rejection)
+# ===========================================================================
+from tools.live_diagnostic_edge_probe import _epoch_int, _build_provenance  # noqa: E402
+
+
+@pytest.mark.parametrize("bad_clock", [0, False, ""])
+def test_falsey_wall_reaches_validation_exit3(bad_clock):
+    # explicit falsey clock must NOT silently select the default; it reaches validation -> internal fail
+    code, env, ctx = _invoke(wall_ms_fn=bad_clock)
+    assert code == 3                 # default clock was not silently used (would be exit 0)
+    assert env is None               # empty stdout
+    assert "internal error" in ctx.stderr
+
+
+def test_epoch_int_rejects_negative():
+    assert _epoch_int(-1) is False
+    assert _epoch_int(-1000) is False
+    assert _epoch_int(0) is True
+    assert _epoch_int(123) is True
+
+
+def test_epoch_formatter_rejects_negative():
+    with pytest.raises(ValueError):
+        _epoch_ms_to_iso_z(-1)
+
+
+def test_build_provenance_negative_epochs_are_null():
+    cap = {"timing": {"capture_start_time_ms": -5, "capture_complete_time_ms": -1}}
+    prov = _build_provenance(cap, _VAL_MS)
+    assert prov["capture_start_utc"] is None
+    assert prov["capture_complete_utc"] is None
+    assert prov["valuation_to_capture_start_offset_ms"] is None
+
+
+def test_zero_positive_epoch_behavior_unchanged():
+    assert _epoch_ms_to_iso_z(0) == "1970-01-01T00:00:00.000Z"
+    cap = {"timing": {"capture_start_time_ms": 0, "capture_complete_time_ms": 5}}
+    prov = _build_provenance(cap, 0)
+    assert prov["capture_start_utc"] == "1970-01-01T00:00:00.000Z"
+    assert prov["valuation_to_capture_start_offset_ms"] == 0
