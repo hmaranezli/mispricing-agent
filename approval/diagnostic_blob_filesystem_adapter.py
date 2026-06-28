@@ -8,10 +8,20 @@ content-addressed, descriptor-relative layout, exclusively via no-clobber rename
 
 It NEVER uses a clobbering rename/replace/link, never overwrites/repairs/retries/GCs, and never
 converts a failed persistence into success. It owns NO DB/S1/network/clock/randomness/market logic and
-authorizes nothing — PERSISTED_NEW / VERIFIED_EXISTING_NOOP are durability facts only. All metadata
-checks are descriptor-based (fstat), never path-level. Bounded temp cleanup removes only a temp created
-by this invocation, under reopened inode-identity proof, followed by a shard fsync; any ambiguity
-preserves residue and reports BLOCKED_RECOVERY_REQUIRED.
+authorizes nothing — PERSISTED_NEW / VERIFIED_EXISTING_NOOP are durability facts only.
+
+Hardening invariants (2B-2B.2):
+  * The validated construction root descriptor is pinned for the adapter lifetime; ``close()`` is
+    explicit and idempotent. A fresh no-follow root open + st_dev/st_ino identity check still runs on
+    every persist.
+  * All permission checks use exact ``stat.S_IMODE(st_mode) == expected`` — setuid/setgid/sticky bits
+    are rejected. All metadata checks are descriptor-based (fstat), never path-level.
+  * After any EEXIST-target outcome (noop OR collision OR metadata block), a failed bounded temp
+    cleanup escalates to BLOCKED_RECOVERY_REQUIRED / TEMP_CLEANUP_AMBIGUOUS.
+  * Target-file fsync failure maps to FILE_FSYNC_FAILED; shard-directory fsync failure maps to
+    DIRECTORY_FSYNC_FAILED.
+  * Tracked descriptors are closed in reverse order; a close failure after an otherwise-successful
+    persist downgrades the result to BLOCKED_RECOVERY_REQUIRED / AMBIGUOUS_PUBLICATION_STATE.
 """
 import errno
 import hashlib
@@ -31,6 +41,7 @@ _BLOB_MODE = 0o600
 _PAYLOAD_KIND = "diag-edge-probe-v1"
 _REF_PREFIX = _PAYLOAD_KIND + ":sha256:"
 _HEX = frozenset("0123456789abcdef")
+_SUCCESS = (_S.PERSISTED_NEW, _S.VERIFIED_EXISTING_NOOP)
 
 
 def _is_lower_hex64(value) -> bool:
@@ -44,19 +55,39 @@ class FilesystemBlobPersistAdapter:
         self._store_root = store_root
         self._uid = expected_owner_uid
         self._sc = syscalls
-        # Pin + validate the root descriptor at construction (precondition).
+        # Pin + validate the root descriptor at construction; keep it open for the adapter lifetime.
         fd = syscalls.open_root(store_root)
         try:
             st = syscalls.fstat(fd)
             if not stat.S_ISDIR(st.st_mode):
                 raise ValueError("store root is not a directory")
-            if (st.st_mode & 0o777) != _ROOT_MODE:
-                raise ValueError("store root mode is not 0o700")
+            if stat.S_IMODE(st.st_mode) != _ROOT_MODE:
+                raise ValueError("store root mode is not exactly 0o700")
             if st.st_uid != expected_owner_uid:
                 raise ValueError("store root owner mismatch")
             self._root_identity = (st.st_dev, st.st_ino)
-        finally:
-            syscalls.close(fd)
+            self._root_fd = fd
+        except BaseException:
+            try:
+                syscalls.close(fd)
+            except OSError:
+                pass
+            raise
+
+    def close(self):
+        """Idempotently close the pinned construction root descriptor."""
+        fd = self._root_fd
+        if fd is None:
+            return
+        self._root_fd = None
+        self._sc.close(fd)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
 
     # ---------------------------------------------------------------------------------------------
     def persist_snapshot_blob(self, snapshot) -> BlobPersistResult:
@@ -87,7 +118,6 @@ class FilesystemBlobPersistAdapter:
         temp_name = "." + digest + ".tmp"
         open_fds = []
 
-        # -- bounded helpers (close over sc / open_fds / self) --
         def track(fd):
             open_fds.append(fd)
             return fd
@@ -116,7 +146,7 @@ class FilesystemBlobPersistAdapter:
                 out += chunk
             return bytes(out)
 
-        def cleanup_temp(temp_id):
+        def cleanup_temp(shard_fd, temp_id):
             # Remove ONLY a temp we created, under reopened inode-identity proof. False => ambiguous.
             if temp_id is None:
                 return False
@@ -144,12 +174,58 @@ class FilesystemBlobPersistAdapter:
             except OSError:
                 return False
 
-        def fail_after_cleanup(temp_id, status, reason):
-            if cleanup_temp(temp_id):
+        def fail_after_cleanup(shard_fd, temp_id, status, reason):
+            if cleanup_temp(shard_fd, temp_id):
                 return fail(status, reason)
             return fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.TEMP_CLEANUP_AMBIGUOUS)
 
-        try:
+        def existing_target(shard_fd, temp_id):
+            try:
+                tgt_fd = track(sc.open_existing_blob(target_name, shard_fd))
+            except OSError as e:
+                outcome = fail(_S.BLOCKED_RECOVERY_REQUIRED,
+                               _R.SYMLINK_OR_NONREGULAR if e.errno == errno.ELOOP
+                               else _R.AMBIGUOUS_PUBLICATION_STATE)
+                return _finish_existing(shard_fd, temp_id, outcome)
+            try:
+                st = sc.fstat(tgt_fd)
+            except OSError:
+                return _finish_existing(shard_fd, temp_id,
+                                        fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.AMBIGUOUS_PUBLICATION_STATE))
+            if not stat.S_ISREG(st.st_mode):
+                outcome = fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.SYMLINK_OR_NONREGULAR)
+            elif st.st_uid != self._uid:
+                outcome = fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.OWNER_MISMATCH)
+            elif stat.S_IMODE(st.st_mode) != _BLOB_MODE:
+                outcome = fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.MODE_MISMATCH)
+            elif st.st_size != blen:
+                outcome = fail(_S.CRITICAL_COLLISION_DETECTED, _R.CONTENT_HASH_MISMATCH)
+            else:
+                rb = read_back(tgt_fd)
+                if rb is None or len(rb) != blen or hashlib.sha256(rb).hexdigest() != digest:
+                    outcome = fail(_S.CRITICAL_COLLISION_DETECTED, _R.CONTENT_HASH_MISMATCH)
+                else:
+                    try:
+                        sc.fsync(tgt_fd)
+                    except OSError:
+                        return _finish_existing(shard_fd, temp_id,
+                                                fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.FILE_FSYNC_FAILED))
+                    try:
+                        sc.fsync(shard_fd)
+                    except OSError:
+                        return _finish_existing(shard_fd, temp_id,
+                                                fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.DIRECTORY_FSYNC_FAILED))
+                    outcome = BlobPersistResult(_S.VERIFIED_EXISTING_NOOP, _R.NONE, digest, ref,
+                                                blen, False, True)
+            return _finish_existing(shard_fd, temp_id, outcome)
+
+        def _finish_existing(shard_fd, temp_id, outcome):
+            # Any EEXIST-target outcome (noop/collision/block) escalates on cleanup ambiguity.
+            if not cleanup_temp(shard_fd, temp_id):
+                return fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.TEMP_CLEANUP_AMBIGUOUS)
+            return outcome
+
+        def body():
             # -- phase 1: fresh root open + descriptor identity/metadata --
             try:
                 root_fd = track(sc.open_root(self._store_root))
@@ -178,43 +254,42 @@ class FilesystemBlobPersistAdapter:
                 temp_fd = track(sc.create_exclusive_rw(temp_name, shard_fd, _BLOB_MODE))
             except OSError as e:
                 if e.errno == errno.EEXIST:
-                    # Pre-existing deterministic temp: never delete it; ambiguous residue.
                     return fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.AMBIGUOUS_PUBLICATION_STATE)
                 return fail(_S.BLOB_PERSIST_FAILED, _R.TEMP_CREATE_FAILED)
             try:
                 tst = sc.fstat(temp_fd)
                 temp_id = (tst.st_dev, tst.st_ino)
             except OSError:
-                return fail_after_cleanup(None, _S.BLOB_PERSIST_FAILED, _R.TEMP_VERIFY_FAILED)
+                return fail_after_cleanup(shard_fd, None, _S.BLOB_PERSIST_FAILED, _R.TEMP_VERIFY_FAILED)
 
             if not write_all(temp_fd):
-                return fail_after_cleanup(temp_id, _S.BLOB_PERSIST_FAILED, _R.WRITE_FAILED)
+                return fail_after_cleanup(shard_fd, temp_id, _S.BLOB_PERSIST_FAILED, _R.WRITE_FAILED)
             try:
                 sc.fchmod(temp_fd, _BLOB_MODE)
                 vst = sc.fstat(temp_fd)
             except OSError:
-                return fail_after_cleanup(temp_id, _S.BLOB_PERSIST_FAILED, _R.TEMP_VERIFY_FAILED)
+                return fail_after_cleanup(shard_fd, temp_id, _S.BLOB_PERSIST_FAILED, _R.TEMP_VERIFY_FAILED)
             if not (stat.S_ISREG(vst.st_mode) and vst.st_uid == self._uid
-                    and (vst.st_mode & 0o777) == _BLOB_MODE and vst.st_size == blen):
-                return fail_after_cleanup(temp_id, _S.BLOB_PERSIST_FAILED, _R.TEMP_VERIFY_FAILED)
+                    and stat.S_IMODE(vst.st_mode) == _BLOB_MODE and vst.st_size == blen):
+                return fail_after_cleanup(shard_fd, temp_id, _S.BLOB_PERSIST_FAILED, _R.TEMP_VERIFY_FAILED)
             try:
                 sc.fsync(temp_fd)
             except OSError:
-                return fail_after_cleanup(temp_id, _S.BLOB_PERSIST_FAILED, _R.FILE_FSYNC_FAILED)
+                return fail_after_cleanup(shard_fd, temp_id, _S.BLOB_PERSIST_FAILED, _R.FILE_FSYNC_FAILED)
             rb = read_back(temp_fd)
             if rb is None or len(rb) != blen or hashlib.sha256(rb).hexdigest() != digest:
-                return fail_after_cleanup(temp_id, _S.BLOB_PERSIST_FAILED, _R.TEMP_VERIFY_FAILED)
+                return fail_after_cleanup(shard_fd, temp_id, _S.BLOB_PERSIST_FAILED, _R.TEMP_VERIFY_FAILED)
 
             # -- phase 4: no-clobber publication --
             try:
                 sc.rename_noreplace(shard_fd, temp_name, shard_fd, target_name)
             except OSError as e:
                 if e.errno == errno.EEXIST:
-                    return self._existing_target(shard_fd, target_name, temp_name, temp_id,
-                                                 data, digest, blen, fail, cleanup_temp, read_back, track)
+                    return existing_target(shard_fd, temp_id)
                 if e.errno == errno.ENOSYS:
-                    return fail_after_cleanup(temp_id, _S.BLOB_PERSIST_FAILED, _R.NO_CLOBBER_UNAVAILABLE)
-                return fail_after_cleanup(temp_id, _S.BLOB_PERSIST_FAILED, _R.PUBLISH_FAILED)
+                    return fail_after_cleanup(shard_fd, temp_id, _S.BLOB_PERSIST_FAILED,
+                                              _R.NO_CLOBBER_UNAVAILABLE)
+                return fail_after_cleanup(shard_fd, temp_id, _S.BLOB_PERSIST_FAILED, _R.PUBLISH_FAILED)
 
             # published: temp consumed by rename. Durably commit the new directory entry.
             try:
@@ -225,42 +300,53 @@ class FilesystemBlobPersistAdapter:
             # reopen target, verify metadata + read-back hash, fsync target + shard.
             try:
                 tgt_fd = track(sc.open_existing_blob(target_name, shard_fd))
-            except OSError:
-                return fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.FINAL_READBACK_FAILED)
-            try:
                 fst = sc.fstat(tgt_fd)
             except OSError:
                 return fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.FINAL_READBACK_FAILED)
             if not (stat.S_ISREG(fst.st_mode) and fst.st_uid == self._uid
-                    and (fst.st_mode & 0o777) == _BLOB_MODE and fst.st_size == blen):
+                    and stat.S_IMODE(fst.st_mode) == _BLOB_MODE and fst.st_size == blen):
                 return fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.FINAL_READBACK_FAILED)
             try:
-                sc.fsync(tgt_fd)
+                sc.fsync(tgt_fd)        # target file durability
             except OSError:
-                return fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.DIRECTORY_FSYNC_FAILED)
+                return fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.FILE_FSYNC_FAILED)
             rb2 = read_back(tgt_fd)
             if rb2 is None or len(rb2) != blen or hashlib.sha256(rb2).hexdigest() != digest:
                 return fail(_S.CRITICAL_COLLISION_DETECTED, _R.CONTENT_HASH_MISMATCH)
             try:
-                sc.fsync(shard_fd)
+                sc.fsync(shard_fd)      # final directory-entry durability
             except OSError:
                 return fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.DIRECTORY_FSYNC_FAILED)
 
             return BlobPersistResult(_S.PERSISTED_NEW, _R.NONE, digest, ref, blen, True, True)
-        finally:
-            for fd in open_fds:
-                try:
-                    sc.close(fd)
-                except OSError:
-                    pass
+
+        try:
+            result = body()
+        except BaseException:
+            self._close_all_reverse(open_fds)
+            raise
+        # Close tracked descriptors in reverse order; do not swallow a close failure on success.
+        close_failed = self._close_all_reverse(open_fds)
+        if close_failed and result.status in _SUCCESS:
+            return fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.AMBIGUOUS_PUBLICATION_STATE)
+        return result
 
     # ---------------------------------------------------------------------------------------------
+    def _close_all_reverse(self, open_fds):
+        close_failed = False
+        for fd in reversed(open_fds):
+            try:
+                self._sc.close(fd)
+            except OSError:
+                close_failed = True
+        return close_failed
+
     def _dir_metadata_reason(self, st):
         if not stat.S_ISDIR(st.st_mode):
             return _R.SYMLINK_OR_NONREGULAR
         if st.st_uid != self._uid:
             return _R.OWNER_MISMATCH
-        if (st.st_mode & 0o777) != _SHARD_MODE:
+        if stat.S_IMODE(st.st_mode) != _SHARD_MODE:
             return _R.MODE_MISMATCH
         return None
 
@@ -276,7 +362,7 @@ class FilesystemBlobPersistAdapter:
         try:
             fd = track(sc.open_dir(name, parent_fd))
         except OSError as e:
-            if e.errno == errno.ELOOP or e.errno == errno.ENOTDIR:
+            if e.errno in (errno.ELOOP, errno.ENOTDIR):
                 return None, _R.SYMLINK_OR_NONREGULAR
             return None, _R.SHARD_DURABILITY_FAILED
         if created:
@@ -299,52 +385,8 @@ class FilesystemBlobPersistAdapter:
                 return None, _R.SHARD_DURABILITY_FAILED
         return fd, None
 
-    def _existing_target(self, shard_fd, target_name, temp_name, temp_id,
-                         data, digest, blen, fail, cleanup_temp, read_back, track):
-        sc = self._sc
-        try:
-            tgt_fd = track(sc.open_existing_blob(target_name, shard_fd))
-        except OSError as e:
-            cleanup_temp(temp_id)
-            if e.errno == errno.ELOOP:
-                return fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.SYMLINK_OR_NONREGULAR)
-            return fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.AMBIGUOUS_PUBLICATION_STATE)
-        try:
-            st = sc.fstat(tgt_fd)
-        except OSError:
-            cleanup_temp(temp_id)
-            return fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.AMBIGUOUS_PUBLICATION_STATE)
-
-        if not stat.S_ISREG(st.st_mode):
-            outcome = fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.SYMLINK_OR_NONREGULAR)
-        elif st.st_uid != self._uid:
-            outcome = fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.OWNER_MISMATCH)
-        elif (st.st_mode & 0o777) != _BLOB_MODE:
-            outcome = fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.MODE_MISMATCH)
-        elif st.st_size != blen:
-            outcome = fail(_S.CRITICAL_COLLISION_DETECTED, _R.CONTENT_HASH_MISMATCH)
-        else:
-            rb = read_back(tgt_fd)
-            if rb is None or len(rb) != blen or hashlib.sha256(rb).hexdigest() != digest:
-                outcome = fail(_S.CRITICAL_COLLISION_DETECTED, _R.CONTENT_HASH_MISMATCH)
-            else:
-                try:
-                    sc.fsync(tgt_fd)
-                    sc.fsync(shard_fd)
-                    outcome = BlobPersistResult(_S.VERIFIED_EXISTING_NOOP, _R.NONE, digest,
-                                                _REF_PREFIX + digest, blen, False, True)
-                except OSError:
-                    outcome = fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.DIRECTORY_FSYNC_FAILED)
-
-        clean = cleanup_temp(temp_id)
-        if outcome.status is _S.VERIFIED_EXISTING_NOOP and not clean:
-            return fail(_S.BLOCKED_RECOVERY_REQUIRED, _R.TEMP_CLEANUP_AMBIGUOUS)
-        return outcome
-
 
 def _root_open_reason(e):
     if e.errno == errno.ELOOP:
         return _R.SYMLINK_OR_NONREGULAR
-    if e.errno in (errno.ENOENT, errno.ENOTDIR):
-        return _R.ROOT_MISSING
     return _R.ROOT_MISSING

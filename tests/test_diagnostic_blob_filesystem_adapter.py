@@ -70,6 +70,10 @@ class FakeFS:
         self.rename_errno = None
         self.fchmod_errno = None
         self.unlink_errno = None
+        self.close_fail = False
+        self.fail_fsync_target = False
+        self.fail_fsync_dir_after_publish = False
+        self._published = False
 
     def _mk(self, kind, mode, uid):
         self._ino += 1
@@ -173,11 +177,15 @@ class FakeFS:
     def fsync(self, fd):
         self.calls.append(("fsync", fd))
         node = self._n(fd)
-        if self.fail_fsync_first_file and node.kind == "file" and not self._file_fsynced:
-            self._file_fsynced = True
-            raise OSError(errno.EIO, "fsync")
         if node.kind == "file":
+            if self.fail_fsync_first_file and not self._file_fsynced:
+                self._file_fsynced = True
+                raise OSError(errno.EIO, "fsync temp")
             self._file_fsynced = True
+            if self.fail_fsync_target and self._published:
+                raise OSError(errno.EIO, "fsync target")
+        if node.kind == "dir" and self.fail_fsync_dir_after_publish and self._published:
+            raise OSError(errno.EIO, "fsync dir")
 
     def rename_noreplace(self, old_dir_fd, old_name, new_dir_fd, new_name):
         self.calls.append(("rename_noreplace", old_dir_fd, old_name, new_dir_fd, new_name))
@@ -190,6 +198,7 @@ class FakeFS:
         if new_name in newp.children:
             raise OSError(errno.EEXIST, new_name)
         newp.children[new_name] = oldp.children.pop(old_name)
+        self._published = True
 
     def unlink(self, name, dir_fd):
         self.calls.append(("unlink", name, dir_fd))
@@ -202,6 +211,8 @@ class FakeFS:
 
     def close(self, fd):
         self.calls.append(("close", fd))
+        if self.close_fail:
+            raise OSError(errno.EIO, "close")
         self.fds.pop(fd, None)
 
 
@@ -516,3 +527,73 @@ def test_result_field_invariants_across_outcomes():
     assert bad.created_now is False
     assert bad.durability_verified is False
     assert bad.reason is not BlobPersistReason.NONE
+
+
+# ----------------------------------------------------------------------------- 2B-2B.2 hardening
+
+def test_root_fd_pinned_and_close_idempotent():
+    fs = FakeFS()
+    a = _adapter(fs)
+    assert len(fs.fds) == 1                       # construction kept the validated root fd open
+    a.persist_snapshot_blob(_snap())
+    assert len(fs.fds) == 1                       # persist closed only its own fds; pinned root remains
+    a.close()
+    assert len(fs.fds) == 0
+    a.close()                                     # idempotent: no error, no double close raised
+
+
+def test_descriptors_closed_in_reverse_order():
+    fs = FakeFS()
+    a = _adapter(fs)
+    n = len(fs.calls)
+    a.persist_snapshot_blob(_snap())
+    closes = [c[1] for c in fs.calls[n:] if c[0] == "close"]
+    assert len(closes) >= 4
+    assert closes == sorted(closes, reverse=True)  # reverse-order close of tracked descriptors
+
+
+def test_close_failure_downgrades_successful_persist():
+    fs = FakeFS()
+    a = _adapter(fs)
+    fs.close_fail = True
+    res = a.persist_snapshot_blob(_snap())
+    assert res.status is BlobPersistStatus.BLOCKED_RECOVERY_REQUIRED
+    assert res.reason is BlobPersistReason.AMBIGUOUS_PUBLICATION_STATE
+
+
+def test_setgid_root_mode_rejected():
+    fs = FakeFS()
+    a = _adapter(fs)
+    fs.root.mode = stat.S_IFDIR | stat.S_ISGID | 0o700   # exact-mode check rejects setgid
+    res = a.persist_snapshot_blob(_snap())
+    assert res.status is BlobPersistStatus.BLOCKED_RECOVERY_REQUIRED
+    assert res.reason is BlobPersistReason.MODE_MISMATCH
+
+
+def test_existing_collision_cleanup_failure_is_ambiguous():
+    fs = FakeFS()
+    snap = _snap()
+    aa, bb, target, temp = _shard_names(snap)
+    shard = fs.seed_dirs(aa, bb)
+    fs.seed_file(shard, target, b"Z" * snap.byte_length, mode=0o600)
+    fs.unlink_errno = errno.EIO                          # cleanup of our temp fails after collision
+    res = _adapter(fs).persist_snapshot_blob(snap)
+    assert res.status is BlobPersistStatus.BLOCKED_RECOVERY_REQUIRED
+    assert res.reason is BlobPersistReason.TEMP_CLEANUP_AMBIGUOUS
+    assert temp in shard.children                        # residue preserved
+
+
+def test_target_file_fsync_failure_is_file_fsync_failed():
+    fs = FakeFS()
+    fs.fail_fsync_target = True
+    res = _adapter(fs).persist_snapshot_blob(_snap())
+    assert res.status is BlobPersistStatus.BLOCKED_RECOVERY_REQUIRED
+    assert res.reason is BlobPersistReason.FILE_FSYNC_FAILED
+
+
+def test_post_publish_shard_fsync_failure_is_directory_fsync_failed():
+    fs = FakeFS()
+    fs.fail_fsync_dir_after_publish = True
+    res = _adapter(fs).persist_snapshot_blob(_snap())
+    assert res.status is BlobPersistStatus.BLOCKED_RECOVERY_REQUIRED
+    assert res.reason is BlobPersistReason.DIRECTORY_FSYNC_FAILED
