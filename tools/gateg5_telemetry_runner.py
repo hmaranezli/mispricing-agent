@@ -94,6 +94,10 @@ PROXY_ARM_TOKEN = "PROXY-BASIS-CONFIRMED"
 # Spread guard is CONFIGURABLE; live thresholds require separate authorization and are NOT
 # tuned from observed run outcomes.
 PROXY_SPREAD_BPS = os.environ.get("GATEG5_PROXY_SPREAD_BPS", "50")
+# Known DATA-level fetcher rejects (clean fail-closed -> NOT_COMPUTED diagnostic row). Any OTHER
+# reject_reason is a transport-class fault (client raised) -> surfaced as a no-retry PROXY_DIAG.
+_PROXY_DATA_REJECT_REASONS = frozenset(
+    {"missing_or_malformed_price", "quote_not_usd", "source_error", "malformed_payload"})
 
 # Live S1 container — the runner must NEVER write here.
 _LIVE_S1_DIR = "/root/mispricing_agent/var/s1"
@@ -215,6 +219,13 @@ def proxy_context(asset, hl_reference_price, ts_signal_ms, *, enabled, client, c
     started = clock()
     cb_tick, kr_tick = asyncio.run(_capture_proxy_legs(asset, client=client))
     completed = clock()
+    # A transport-class leg failure (client raised: timeout/HTTP/URL) is surfaced as a
+    # no-retry diagnostic — NOT a persisted NOT_COMPUTED measurement. Data-level rejects
+    # (missing/non-USD/malformed body) fall through to a fail-closed NOT_COMPUTED diagnostic.
+    for tick in (cb_tick, kr_tick):
+        reason = tick.get("reject_reason")
+        if reason and reason not in _PROXY_DATA_REJECT_REASONS:
+            raise TransportError(f"proxy transport failure [{tick.get('source_name')}]: {reason}")
     return g7.compute_post_signal_proxy_diagnostic(
         hl_reference_price=hl_reference_price,
         ts_signal_ms=ts_signal_ms,
