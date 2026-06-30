@@ -41,10 +41,15 @@ from urllib.parse import urlencode
 
 from analysis.forensic import gateg5_model as gm
 from analysis.forensic import gateg5_plumbing as plumbing
+from analysis.forensic import gateg7_prelaunch as prelaunch
 from analysis.forensic import gateg7_source_basis as g7
 from data import public_spot_fetchers as spot
 
 engine = plumbing.engine
+
+# Observational request-attempt counters (reset per run()). Incremented immediately before each
+# network call; NEVER read by the decision path; kept outside signal_log/mark_path.
+_REQUEST_COUNTERS = prelaunch.RequestCounters()
 
 # --- arming + hard bounds (constitution; bounds overridable via env for a run) ---
 TELEMETRY_ARM_ENV = "GATEG5_TELEMETRY_ARM"
@@ -178,6 +183,43 @@ def _write_proxy_basis(conn, signal_id: str, asset: str, diag: dict) -> None:
         tuple(row.get(c) for c in _PROXY_COLS))
 
 
+def _init_counters_table(conn) -> None:
+    """Additive, observational request-attempt counter snapshots (TEXT/INTEGER only)."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS gateg5_request_counters("
+        "  id INTEGER PRIMARY KEY, ts_ms INTEGER NOT NULL, note TEXT NOT NULL,"
+        "  gamma_get_attempts INTEGER, clob_book_get_attempts INTEGER, hl_post_attempts INTEGER,"
+        "  coinbase_get_attempts INTEGER, kraken_get_attempts INTEGER, observations INTEGER)")
+    conn.commit()
+
+
+def _write_counters_snapshot(conn, note: str, *, observations: int, now_ms: int) -> None:
+    """Persist a counter snapshot. FAILURE-ISOLATED: a snapshot error must never halt or mutate
+    the core telemetry path (it is logged and swallowed)."""
+    c = _REQUEST_COUNTERS
+    try:
+        conn.execute(
+            "INSERT INTO gateg5_request_counters(ts_ms,note,gamma_get_attempts,"
+            "clob_book_get_attempts,hl_post_attempts,coinbase_get_attempts,kraken_get_attempts,"
+            "observations) VALUES (?,?,?,?,?,?,?,?)",
+            (now_ms, note, c.gamma_get_attempts, c.clob_book_get_attempts, c.hl_post_attempts,
+             c.coinbase_get_attempts, c.kraken_get_attempts, observations))
+        conn.commit()
+    except Exception as e:        # noqa: BLE001 — observational; never fatal
+        sys.stderr.write(f"[counters] snapshot persist failed (non-fatal): {type(e).__name__}: {e}\n")
+
+
+def read_proxy_accounting(conn) -> dict:
+    """Build accounting inputs from the DB and run the pure auditor (observational only)."""
+    committed = [r[0] for r in conn.execute("SELECT signal_id FROM signal_log").fetchall()]
+    proxy_rows = [r[0] for r in conn.execute(
+        "SELECT signal_id FROM gateg7_proxy_basis").fetchall()]
+    proxy_diags = [r[0] for r in conn.execute(
+        "SELECT payload_digest FROM gateg5_telemetry_rejections "
+        "WHERE kind='PROXY_DIAG' AND payload_digest IS NOT NULL").fetchall()]
+    return prelaunch.audit_proxy_accounting(committed, proxy_rows, proxy_diags)
+
+
 def core_decision_projection(ns) -> dict:
     """The actionable decision projection — a PURE function of the existing G5 inputs.
 
@@ -199,6 +241,9 @@ def core_decision_projection(ns) -> dict:
 async def _capture_proxy_legs(asset: str, *, client):
     """Concurrent Coinbase + Kraken USD spot capture via an INJECTED async client.
     HL perp is NOT fetched here (kept strictly separate from the spot basket)."""
+    # count both proxy leg attempts before the concurrent fetch (no retries)
+    _REQUEST_COUNTERS.coinbase_get_attempts += 1
+    _REQUEST_COUNTERS.kraken_get_attempts += 1
     return await asyncio.gather(
         spot.fetch_coinbase_spot(asset, client=client),
         spot.fetch_kraken_spot(asset, client=client),
@@ -241,6 +286,11 @@ def proxy_context(asset, hl_reference_price, ts_signal_ms, *, enabled, client, c
 # Read-only public transport (native urllib, browser UA, normalized errors)
 # =============================================================================
 def _public_get(url: str, params: dict | None = None):
+    # count the attempt BEFORE the call (failed attempts count once; no retries)
+    if url == GAMMA_MARKETS:
+        _REQUEST_COUNTERS.gamma_get_attempts += 1
+    elif url == CLOB_BOOK:
+        _REQUEST_COUNTERS.clob_book_get_attempts += 1
     if params:
         url = f"{url}?{urlencode(params)}"
     req = urllib.request.Request(url, method="GET", headers=_HEADERS)
@@ -308,11 +358,14 @@ def _marks_for(conn, signal_id: str):
 # Bounded polling loop — the heart of the runner (DRAFT; NOT executed)
 # =============================================================================
 def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000)) -> dict:
+    global _REQUEST_COUNTERS
+    _REQUEST_COUNTERS = prelaunch.RequestCounters()    # fresh observational counters per run
     _assert_not_live_s1(db_path)                       # NO S1 PATH (refused here)
     conn = sqlite3.connect(db_path)
     plumbing.init_mock_db(conn)                        # G.5 signal_log / mark_path schema
     _init_telemetry_tables(conn)
     _init_proxy_table(conn)                            # additive; harmless when proxy OFF
+    _init_counters_table(conn)                         # additive observational counters
 
     # G7-lite proxy diagnostic is opt-in; default OFF -> zero proxy calls, G5/G5.1 unchanged.
     proxy_enabled = os.environ.get(PROXY_ARM_ENV, "") == PROXY_ARM_TOKEN
@@ -331,7 +384,7 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000)) -> dic
             stop_reason = "MAX_OBSERVATIONS"
             break
         if (now_ms - start_ms) // 1000 >= MAX_ELAPSED_S:
-            stop_reason = "MAX_ELAPSED_6H"
+            stop_reason = "MAX_ELAPSED"
             break
 
         # ---------- API READ-ONLY BOUNDARY: exact slug-targeted fetches ----------
@@ -382,8 +435,10 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000)) -> dic
                             _write_proxy_basis(conn, ns.signal.signal_id, market["asset"], diag)
                             conn.commit()
                         except Exception as pe:        # diagnostic failure never breaks the loop
+                            # digest carries the signal_id so proxy accounting maps DIAG->signal
                             _record_rejection(
-                                conn, "PROXY_DIAG", f"{slug}: {type(pe).__name__}: {pe}", obs_now)
+                                conn, "PROXY_DIAG", f"{slug}: {type(pe).__name__}: {pe}", obs_now,
+                                digest=ns.signal.signal_id)
                 except (TransportError, gm.ModelInputError) as me:  # reference/model unavailable
                     _record_rejection(conn, "MODEL_CONTEXT", f"{slug}: {type(me).__name__}: {me}", obs_now)
                 except engine.ForensicError as fe:     # toxic payload -> normalized rejection
@@ -397,10 +452,12 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000)) -> dic
             last_hb_ms = now_ms
         time.sleep(POLL_INTERVAL_S)
 
-    _heartbeat(conn, observations, (now_ms_provider() - start_ms) // 1000,
-               now_ms_provider(), f"STOP:{stop_reason}")
+    final_ms = now_ms_provider()
+    _heartbeat(conn, observations, (final_ms - start_ms) // 1000, final_ms, f"STOP:{stop_reason}")
+    _write_counters_snapshot(conn, f"STOP:{stop_reason}", observations=observations, now_ms=final_ms)
     conn.close()
-    return {"stop_reason": stop_reason, "observations": observations, "db_path": db_path}
+    return {"stop_reason": stop_reason, "observations": observations, "db_path": db_path,
+            "request_counters": _REQUEST_COUNTERS.as_dict()}
 
 
 def _fetch_market_and_book(raw_market: dict, now_ms: int):
@@ -459,6 +516,7 @@ def _marks_from_book(book: dict, sig, now_ms: int):
 # Hyperliquid public read-only reference (sync urllib; NO auth/wallet/order)
 # =============================================================================
 def _hl_post(payload: dict):
+    _REQUEST_COUNTERS.hl_post_attempts += 1     # count the attempt before the call (no retries)
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(HL_INFO, data=data, method="POST",
                                  headers={**_HEADERS, "Content-Type": "application/json"})
@@ -561,10 +619,12 @@ def _model_context(asset: str, market: dict, book: dict, now_ms: int) -> dict:
 
 
 def _banner() -> str:
+    hours = MAX_ELAPSED_S / 3600.0
     return (
         "Gate G.5 Bounded Telemetry Runner (DRAFT)\n"
         "  PUBLIC read-only GET only. NO auth/wallet/capital/orders. NO S1.\n"
-        "  Hard stop: 100 obs OR 6h. Writes only to isolated telemetry DB.\n"
+        f"  Hard stop: {MAX_OBSERVATIONS} obs OR {MAX_ELAPSED_S}s (~{hours:.2f}h). "
+        "Writes only to isolated telemetry DB.\n"
         "  Live S1: CREATED_EMPTY_LOCKED_CONTAINER; append DENIED / NOT PERFORMED; capacity 0.\n"
     )
 
