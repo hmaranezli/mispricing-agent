@@ -51,6 +51,7 @@ MAX_ELAPSED_S = 6 * 60 * 60     # hard stop (6 hours)
 POLL_INTERVAL_S = 30            # bounded inter-poll gap
 HEARTBEAT_EVERY_S = 300         # log a heartbeat at least this often
 TARGET_ASSETS = ("BTC", "SOL")  # BTC/SOL scope only
+TARGET_INTERVAL_S = 900         # 15m up/down window
 
 GAMMA_MARKETS = "https://gamma-api.polymarket.com/markets"
 CLOB_BOOK = "https://clob.polymarket.com/book"
@@ -115,22 +116,22 @@ def _public_get(url: str, params: dict | None = None):
         raise TransportError(f"non-JSON body from {url}: {e}") from None
 
 
-def _select_btc_sol(markets):
-    """In-memory BTC/SOL binary-market selection (no extra GET)."""
-    out = []
-    for m in (markets if isinstance(markets, list) else [markets]):
-        slug = (m.get("slug") or "").lower()
-        if not any(a.lower() in slug for a in TARGET_ASSETS):
-            continue
-        toks = m.get("clobTokenIds")
-        if isinstance(toks, str):
-            try:
-                toks = json.loads(toks)
-            except json.JSONDecodeError:
-                continue
-        if isinstance(toks, list) and len(toks) == 2 and (m.get("conditionId")):
-            out.append(m)
-    return out
+def _window_start_epoch(now_s: int, interval_s: int = TARGET_INTERVAL_S) -> int:
+    """Align an epoch-second to the current interval boundary."""
+    return (now_s // interval_s) * interval_s
+
+
+def _target_slugs(now_ms: int):
+    """Exact BTC/SOL 15m up/down slugs for the current AND next window.
+
+    Bounded: len(TARGET_ASSETS) * 2 == 4 slugs per cycle. No broad scan.
+    """
+    now_s = now_ms // 1000
+    start = _window_start_epoch(now_s)
+    for asset in TARGET_ASSETS:
+        a = asset.lower()
+        yield f"{a}-updown-15m-{start}"               # current window
+        yield f"{a}-updown-15m-{start + TARGET_INTERVAL_S}"  # next window (about to open)
 
 
 def _record_rejection(conn, kind: str, reason: str, now_ms: int, digest: str = None) -> None:
@@ -180,40 +181,46 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000)) -> dic
             stop_reason = "MAX_ELAPSED_6H"
             break
 
-        # ---------- API READ-ONLY BOUNDARY (public GET; no auth/order/wallet) ----------
-        try:
-            markets = _public_get(GAMMA_MARKETS,
-                                  {"active": "true", "closed": "false", "limit": "50"})
-            targets = _select_btc_sol(markets)
-        except TransportError as te:                   # toxic transport -> rejection, not crash
-            _record_rejection(conn, "TRANSPORT", str(te), now_ms)
-            time.sleep(POLL_INTERVAL_S)
-            continue
-
-        for m in targets:
+        # ---------- API READ-ONLY BOUNDARY: exact slug-targeted fetches ----------
+        # Bounded: <=4 slug market GETs/cycle (BTC/SOL x current/next window) + a
+        # book GET per hit. Public GET only; no auth/order/private/wallet endpoints.
+        for slug in _target_slugs(now_ms):
             if observations >= MAX_OBSERVATIONS:
                 break
             obs_now = now_ms_provider()
             try:
-                market, book = _fetch_market_and_book(m, obs_now)   # read-only GET only
-                ns = plumbing.normalize_signal(market, book, _context(obs_now),
-                                               capture_ts_ms=obs_now)
-                # ---------- DB WRITER BOUNDARY (own telemetry DB; NEVER Live S1) ----------
-                sig_prev = plumbing.write_signal(conn, ns, prev_hash=sig_prev)
-                mark_prev = "GENESIS"
-                for i, snap in enumerate(_marks_from_book(book, ns.signal, obs_now), start=1):
-                    nm = plumbing.normalize_mark(snap, ns.signal, seq=i)
-                    mark_prev = plumbing.write_mark(conn, nm, prev_hash=mark_prev)
-                conn.commit()
-                # ---------- HASH-CHAIN VERIFICATION HOOK (after each append batch) ----------
-                if not engine.verify_hash_chain(_marks_for(conn, ns.signal.signal_id)):
-                    raise TelemetryIntegrityError(
-                        f"hash-chain broken for {ns.signal.signal_id}")
-                observations += 1
-            except engine.ForensicError as fe:         # toxic payload -> normalized rejection
-                _record_rejection(conn, "NORMALIZER", f"{type(fe).__name__}: {fe}", obs_now)
-            except Exception as e:                      # last-resort: skip, never crash the loop
-                _record_rejection(conn, "UNEXPECTED", f"{type(e).__name__}: {e}", obs_now)
+                hits = _public_get(GAMMA_MARKETS, {"slug": slug})   # 0-1 market
+            except TransportError as te:               # toxic transport -> rejection, not crash
+                _record_rejection(conn, "TRANSPORT", f"{slug}: {te}", obs_now)
+                continue
+            markets = [m for m in (hits if isinstance(hits, list) else [hits])
+                       if m and m.get("conditionId")]
+            if not markets:                            # slug not live this window -> diagnostic
+                _record_rejection(conn, "TARGET_MISS", f"no live market for slug {slug}", obs_now)
+                continue
+            for m in markets:
+                if observations >= MAX_OBSERVATIONS:
+                    break
+                try:
+                    market, book = _fetch_market_and_book(m, obs_now)   # read-only GET only
+                    ns = plumbing.normalize_signal(market, book, _context(obs_now),
+                                                   capture_ts_ms=obs_now)
+                    # ---------- DB WRITER BOUNDARY (own telemetry DB; NEVER Live S1) ----------
+                    sig_prev = plumbing.write_signal(conn, ns, prev_hash=sig_prev)
+                    mark_prev = "GENESIS"
+                    for i, snap in enumerate(_marks_from_book(book, ns.signal, obs_now), start=1):
+                        nm = plumbing.normalize_mark(snap, ns.signal, seq=i)
+                        mark_prev = plumbing.write_mark(conn, nm, prev_hash=mark_prev)
+                    conn.commit()
+                    # ---------- HASH-CHAIN VERIFICATION HOOK (after each append batch) ----------
+                    if not engine.verify_hash_chain(_marks_for(conn, ns.signal.signal_id)):
+                        raise TelemetryIntegrityError(
+                            f"hash-chain broken for {ns.signal.signal_id}")
+                    observations += 1
+                except engine.ForensicError as fe:     # toxic payload -> normalized rejection
+                    _record_rejection(conn, "NORMALIZER", f"{slug}: {type(fe).__name__}: {fe}", obs_now)
+                except Exception as e:                  # last-resort: skip, never crash the loop
+                    _record_rejection(conn, "UNEXPECTED", f"{slug}: {type(e).__name__}: {e}", obs_now)
 
         # ---------- bounded heartbeat ----------
         if (now_ms - last_hb_ms) >= HEARTBEAT_EVERY_S * 1000:
