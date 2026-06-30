@@ -294,10 +294,218 @@ def test_proxy_accounting_reader_roundtrip(tmp_path, monkeypatch):
                 spread_bps_threshold="50")
             runner._write_proxy_basis(conn, ns.signal.signal_id, "BTC", diag)
         else:
-            runner._record_rejection(conn, "PROXY_DIAG", "boom", now, digest=ns.signal.signal_id)
+            runner._record_rejection(conn, "PROXY_DIAG", "boom", now,
+                                     signal_id=ns.signal.signal_id)
     conn.commit()
     r = runner.read_proxy_accounting(conn)
     assert r["ok"] is True
+    conn.close()
+
+
+# ===========================================================================
+# 1. Dedicated PROXY_DIAG signal_id column + legacy migration
+# ===========================================================================
+def _rej_cols(conn):
+    return {r[1] for r in conn.execute("PRAGMA table_info(gateg5_telemetry_rejections)").fetchall()}
+
+
+def test_new_schema_has_signal_id(tmp_path):
+    conn = sqlite3.connect(str(tmp_path / "new.sqlite3"))
+    runner._init_telemetry_tables(conn)
+    assert "signal_id" in _rej_cols(conn)
+    conn.close()
+
+
+def test_legacy_migration_adds_signal_id_preserving_rows(tmp_path):
+    db = str(tmp_path / "legacy.sqlite3")
+    conn = sqlite3.connect(db)
+    # legacy schema: NO signal_id column
+    conn.execute("CREATE TABLE gateg5_telemetry_rejections("
+                 " id INTEGER PRIMARY KEY, ts_ms INTEGER NOT NULL, kind TEXT NOT NULL,"
+                 " reason TEXT NOT NULL, payload_digest TEXT)")
+    conn.execute("INSERT INTO gateg5_telemetry_rejections(ts_ms,kind,reason,payload_digest) "
+                 "VALUES (1,'TARGET_MISS','old','dig')")
+    conn.commit()
+    assert "signal_id" not in _rej_cols(conn)
+    runner._init_telemetry_tables(conn)               # additive migration
+    assert "signal_id" in _rej_cols(conn)
+    row = conn.execute("SELECT kind, reason, payload_digest, signal_id FROM "
+                       "gateg5_telemetry_rejections").fetchone()
+    assert row == ("TARGET_MISS", "old", "dig", None)  # legacy row preserved, signal_id NULL
+    conn.close()
+
+
+def test_non_proxy_rejection_signal_id_null(tmp_path):
+    conn = sqlite3.connect(str(tmp_path / "np.sqlite3"))
+    runner._init_telemetry_tables(conn)
+    runner._record_rejection(conn, "MODEL_CONTEXT", "boom", 1)
+    row = conn.execute("SELECT kind, signal_id FROM gateg5_telemetry_rejections").fetchone()
+    assert row == ("MODEL_CONTEXT", None)
+    conn.close()
+
+
+def test_proxy_diag_stores_signal_id_not_digest(tmp_path):
+    conn = sqlite3.connect(str(tmp_path / "pd.sqlite3"))
+    runner._init_telemetry_tables(conn)
+    # payload_digest carries a DIFFERENT (content) value; signal_id is the identity key
+    runner._record_rejection(conn, "PROXY_DIAG", "x: TimeoutError", 9,
+                             digest="content-digest", signal_id="sig-123")
+    row = conn.execute("SELECT signal_id, payload_digest FROM "
+                       "gateg5_telemetry_rejections").fetchone()
+    assert row == ("sig-123", "content-digest")        # digest is NOT the identity key
+    conn.close()
+
+
+def test_reader_uses_signal_id_column_not_digest(tmp_path):
+    conn = sqlite3.connect(str(tmp_path / "rd.sqlite3"))
+    runner._init_telemetry_tables(conn)
+    # payload_digest deliberately set to a WRONG value; identity must come from signal_id
+    runner._record_rejection(conn, "PROXY_DIAG", "boom", 1, digest="WRONG", signal_id="s1")
+    diags = [r[0] for r in conn.execute(
+        "SELECT signal_id FROM gateg5_telemetry_rejections "
+        "WHERE kind='PROXY_DIAG' AND signal_id IS NOT NULL").fetchall()]
+    assert diags == ["s1"]                              # reader keys on signal_id, never digest
+    conn.close()
+
+
+# ===========================================================================
+# 2. Counter-snapshot transaction isolation (same connection continues)
+# ===========================================================================
+class _CounterFailConn:
+    """Wraps a real connection; raises ONLY on the counter-snapshot INSERT."""
+
+    def __init__(self, real):
+        self._r = real
+
+    def execute(self, sql, *a, **k):
+        s = sql.strip().lower()
+        if s.startswith("insert into gateg5_request_counters"):
+            raise sqlite3.OperationalError("database is locked")
+        return self._r.execute(sql, *a, **k)
+
+    def __getattr__(self, n):
+        return getattr(self._r, n)
+
+
+def _make_ns(monkeypatch, now, tok="tokDown"):
+    def fake_pf(coin, ts_ms):
+        return (Decimal("59000"), now - 30_000) if ts_ms == now else (Decimal("60000"), ts_ms)
+
+    monkeypatch.setattr(runner, "_hl_price_feedts", fake_pf)
+    monkeypatch.setattr(runner, "_hl_sigma_annual", lambda c, n: 0.8)
+    market = dict(asset="BTC", side="NO", condition_id="c-" + tok, token_id=tok,
+                  outcome_index=1, outcome_label="Down", slug="btc-updown-15m-1",
+                  market_end_ts=now // 1000 + 600, clobTokenIds=["tokUp", tok],
+                  outcomes=["Up", "Down"])
+    book = {"asks": [["0.10", "1000"]], "bids": [["0.05", "1000"]], "quote_ts_ms": now - 100}
+    ns = plumb.normalize_signal(market, book, runner._model_context("BTC", market, book, now),
+                                capture_ts_ms=now)
+    return ns, book
+
+
+def test_snapshot_failure_same_connection_continues(tmp_path, monkeypatch):
+    real = sqlite3.connect(str(tmp_path / "iso.sqlite3"))
+    plumb.init_mock_db(real)
+    runner._init_telemetry_tables(real)
+    runner._init_proxy_table(real)
+    runner._init_counters_table(real)
+    conn = _CounterFailConn(real)
+    _reset_counters()
+    now = 1_900_000_000_000
+
+    # snapshot write fails but is isolated (no raise, no poisoned connection)
+    runner._write_counters_snapshot(conn, "final", observations=1, now_ms=now)
+
+    # SAME connection: a normal signal_log + mark_path write must persist with valid chains
+    ns, book = _make_ns(monkeypatch, now)
+    plumb.write_signal(conn, ns, prev_hash="GENESIS")
+    mark_prev = "GENESIS"
+    for i, snap in enumerate(runner._marks_from_book(book, ns.signal, now), start=1):
+        nm = plumb.normalize_mark(snap, ns.signal, seq=i)
+        mark_prev = plumb.write_mark(conn, nm, prev_hash=mark_prev)
+    conn.commit()
+
+    sigs = [dict(zip(plumb._SIGNAL_COLS, r)) for r in
+            real.execute(f"SELECT {','.join(plumb._SIGNAL_COLS)} FROM signal_log").fetchall()]
+    assert len(sigs) == 1 and engine.verify_hash_chain(sigs)
+    assert engine.verify_hash_chain(runner._marks_for(conn, ns.signal.signal_id))
+
+    # later proxy/accounting writes still succeed on the same connection
+    diag = runner.g7.compute_post_signal_proxy_diagnostic(
+        hl_reference_price="60010", ts_signal_ms=now, coinbase="60020", kraken="60040",
+        capture_started_ts_ms=now + 1, capture_completed_ts_ms=now + 2, spread_bps_threshold="50")
+    runner._write_proxy_basis(conn, ns.signal.signal_id, "BTC", diag)
+    conn.commit()
+    r = runner.read_proxy_accounting(conn)
+    assert ns.signal.signal_id not in r["missing"] and r["ok"] is True
+    real.close()
+
+
+# ===========================================================================
+# 3. Combined external-timeout + integrity precedence
+# ===========================================================================
+def test_classify_external_timeout_outranks_combined_integrity_failure():
+    out = _clf(external_exit_code=124, signal_chain_ok=False, mark_chain_ok=False,
+               proxy_accounting_ok=False, unexpected_count=3, core_isolation_ok=False,
+               stop_reason="UNSET")
+    assert out == pre.EXTERNAL_TIMEOUT_FAIL            # never replaced by MECHANICAL_FAIL/PASS
+    # integrity failure alone (no external timeout) -> MECHANICAL_FAIL
+    assert _clf(signal_chain_ok=False) == pre.MECHANICAL_FAIL
+    # neither path can become PASS
+    assert _clf(external_exit_code=124) != pre.MECHANICAL_PASS
+
+
+# ===========================================================================
+# 4. Strengthened counter-placement (before attempt, fail counts once)
+# ===========================================================================
+def test_failed_hl_counts_once(monkeypatch):
+    c = _reset_counters()
+    monkeypatch.setattr(runner.urllib.request, "urlopen",
+                        lambda *a, **k: (_ for _ in ()).throw(urllib.error.URLError("e")))
+    with pytest.raises(runner.TransportError):
+        runner._hl_post({"type": "x"})
+    assert c.hl_post_attempts == 1                      # counted before the call; no retry
+
+
+def test_failed_proxy_leg_counts_once():
+    class _Raises:
+        async def __call__(self, url):
+            raise TimeoutError("boom")
+
+    c = _reset_counters()
+    asyncio.run(runner._capture_proxy_legs("BTC", client=_Raises()))
+    assert c.coinbase_get_attempts == 1 and c.kraken_get_attempts == 1   # counted before gather
+
+
+def test_single_call_no_double_increment(monkeypatch):
+    c = _reset_counters()
+    monkeypatch.setattr(runner.urllib.request, "urlopen", _ok_urlopen(b"[]"))
+    runner._public_get(runner.GAMMA_MARKETS, {"slug": "x"})
+    assert (c.gamma_get_attempts, c.clob_book_get_attempts, c.hl_post_attempts) == (1, 0, 0)
+
+
+# ===========================================================================
+# 5. Accounting orphan-diag (sixth negative case, independent)
+# ===========================================================================
+def test_accounting_orphan_diag():
+    r = pre.audit_proxy_accounting(["s1"], ["s1"], ["ghost"])
+    assert r["ok"] is False and r["orphan_diag"] == ["ghost"]
+
+
+# ===========================================================================
+# 6. Post-run tooling boundary (read-only; no DB writes)
+# ===========================================================================
+def test_read_proxy_accounting_is_read_only(tmp_path):
+    conn = sqlite3.connect(str(tmp_path / "ro.sqlite3"))
+    plumb.init_mock_db(conn)
+    runner._init_telemetry_tables(conn)
+    runner._init_proxy_table(conn)
+    before = {t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+              for t in ("signal_log", "gateg7_proxy_basis", "gateg5_telemetry_rejections")}
+    runner.read_proxy_accounting(conn)                  # observational read only
+    after = {t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+             for t in ("signal_log", "gateg7_proxy_basis", "gateg5_telemetry_rejections")}
+    assert before == after
     conn.close()
 
 

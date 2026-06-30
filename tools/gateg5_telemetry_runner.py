@@ -132,7 +132,15 @@ def _init_telemetry_tables(conn) -> None:
     conn.execute(
         "CREATE TABLE IF NOT EXISTS gateg5_telemetry_rejections("
         "  id INTEGER PRIMARY KEY, ts_ms INTEGER NOT NULL, kind TEXT NOT NULL,"
-        "  reason TEXT NOT NULL, payload_digest TEXT)")
+        "  reason TEXT NOT NULL, payload_digest TEXT, signal_id TEXT)")
+    # additive migration for legacy DBs created before the dedicated signal_id column
+    rej_cols = {r[1] for r in conn.execute(
+        "PRAGMA table_info(gateg5_telemetry_rejections)").fetchall()}
+    if "signal_id" not in rej_cols:
+        conn.execute("ALTER TABLE gateg5_telemetry_rejections ADD COLUMN signal_id TEXT")
+    # index justified: read_proxy_accounting filters by (kind, signal_id)
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_rej_kind_signal "
+                 "ON gateg5_telemetry_rejections(kind, signal_id)")
     conn.execute(
         "CREATE TABLE IF NOT EXISTS gateg5_telemetry_heartbeat("
         "  id INTEGER PRIMARY KEY, ts_ms INTEGER NOT NULL, observations INTEGER NOT NULL,"
@@ -194,9 +202,16 @@ def _init_counters_table(conn) -> None:
 
 
 def _write_counters_snapshot(conn, note: str, *, observations: int, now_ms: int) -> None:
-    """Persist a counter snapshot. FAILURE-ISOLATED: a snapshot error must never halt or mutate
-    the core telemetry path (it is logged and swallowed)."""
+    """Persist a counter snapshot inside its OWN SAVEPOINT so a failed write cannot poison the
+    shared connection: on error we ROLLBACK TO the savepoint (undoing only the failed INSERT,
+    never an enclosing transaction) and RELEASE, then log and continue. Observational only — a
+    snapshot failure never halts, mutates, or rolls back the core telemetry path. No retry."""
     c = _REQUEST_COUNTERS
+    try:
+        conn.execute("SAVEPOINT g5_counter_snap")
+    except Exception as e:        # noqa: BLE001 — observational; never fatal
+        sys.stderr.write(f"[counters] savepoint open failed (non-fatal): {type(e).__name__}: {e}\n")
+        return
     try:
         conn.execute(
             "INSERT INTO gateg5_request_counters(ts_ms,note,gamma_get_attempts,"
@@ -204,9 +219,17 @@ def _write_counters_snapshot(conn, note: str, *, observations: int, now_ms: int)
             "observations) VALUES (?,?,?,?,?,?,?,?)",
             (now_ms, note, c.gamma_get_attempts, c.clob_book_get_attempts, c.hl_post_attempts,
              c.coinbase_get_attempts, c.kraken_get_attempts, observations))
+        conn.execute("RELEASE g5_counter_snap")
         conn.commit()
     except Exception as e:        # noqa: BLE001 — observational; never fatal
-        sys.stderr.write(f"[counters] snapshot persist failed (non-fatal): {type(e).__name__}: {e}\n")
+        sys.stderr.write(
+            f"[counters] snapshot persist failed (non-fatal; rolled back to savepoint): "
+            f"{type(e).__name__}: {e}\n")
+        try:
+            conn.execute("ROLLBACK TO g5_counter_snap")
+            conn.execute("RELEASE g5_counter_snap")
+        except Exception:         # noqa: BLE001 — best-effort cleanup
+            pass
 
 
 def read_proxy_accounting(conn) -> dict:
@@ -215,8 +238,8 @@ def read_proxy_accounting(conn) -> dict:
     proxy_rows = [r[0] for r in conn.execute(
         "SELECT signal_id FROM gateg7_proxy_basis").fetchall()]
     proxy_diags = [r[0] for r in conn.execute(
-        "SELECT payload_digest FROM gateg5_telemetry_rejections "
-        "WHERE kind='PROXY_DIAG' AND payload_digest IS NOT NULL").fetchall()]
+        "SELECT signal_id FROM gateg5_telemetry_rejections "
+        "WHERE kind='PROXY_DIAG' AND signal_id IS NOT NULL").fetchall()]
     return prelaunch.audit_proxy_accounting(committed, proxy_rows, proxy_diags)
 
 
@@ -332,10 +355,13 @@ def _target_slugs(now_ms: int):
         yield f"{a}-updown-15m-{start + TARGET_INTERVAL_S}"  # next window (about to open)
 
 
-def _record_rejection(conn, kind: str, reason: str, now_ms: int, digest: str = None) -> None:
+def _record_rejection(conn, kind: str, reason: str, now_ms: int, digest: str = None,
+                      signal_id: str = None) -> None:
+    """Append a rejection. `payload_digest` keeps content-digest semantics (never an identity
+    key); `signal_id` is the dedicated relational binding (NULL for non-proxy rejections)."""
     conn.execute(
-        "INSERT INTO gateg5_telemetry_rejections(ts_ms,kind,reason,payload_digest) "
-        "VALUES (?,?,?,?)", (now_ms, kind, reason, digest))
+        "INSERT INTO gateg5_telemetry_rejections(ts_ms,kind,reason,payload_digest,signal_id) "
+        "VALUES (?,?,?,?,?)", (now_ms, kind, reason, digest, signal_id))
     conn.commit()
 
 
@@ -435,10 +461,10 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000)) -> dic
                             _write_proxy_basis(conn, ns.signal.signal_id, market["asset"], diag)
                             conn.commit()
                         except Exception as pe:        # diagnostic failure never breaks the loop
-                            # digest carries the signal_id so proxy accounting maps DIAG->signal
+                            # signal_id (dedicated column) maps DIAG->signal for proxy accounting
                             _record_rejection(
                                 conn, "PROXY_DIAG", f"{slug}: {type(pe).__name__}: {pe}", obs_now,
-                                digest=ns.signal.signal_id)
+                                signal_id=ns.signal.signal_id)
                 except (TransportError, gm.ModelInputError) as me:  # reference/model unavailable
                     _record_rejection(conn, "MODEL_CONTEXT", f"{slug}: {type(me).__name__}: {me}", obs_now)
                 except engine.ForensicError as fe:     # toxic payload -> normalized rejection
