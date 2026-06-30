@@ -28,30 +28,40 @@ network-capable operator utility, guarded.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sqlite3
 import sys
 import time
 import urllib.error
 import urllib.request
+from decimal import Decimal
 from urllib.parse import urlencode
 
+from analysis.forensic import gateg5_model as gm
 from analysis.forensic import gateg5_plumbing as plumbing
 
 engine = plumbing.engine
 
-# --- arming + hard bounds (constitution) ---
+# --- arming + hard bounds (constitution; bounds overridable via env for a run) ---
 TELEMETRY_ARM_ENV = "GATEG5_TELEMETRY_ARM"
 TELEMETRY_ARM_TOKEN = "PUBLIC-READONLY-TELEMETRY-CONFIRMED"
 DB_ENV = "GATEG5_TELEMETRY_DB"
 DEFAULT_DB = "/tmp/gateg5_telemetry.sqlite3"
 
-MAX_OBSERVATIONS = 100          # hard stop (count)
-MAX_ELAPSED_S = 6 * 60 * 60     # hard stop (6 hours)
+MAX_OBSERVATIONS = int(os.environ.get("GATEG5_MAX_OBSERVATIONS", "100"))  # hard stop (count)
+MAX_ELAPSED_S = int(os.environ.get("GATEG5_MAX_ELAPSED_S", str(6 * 60 * 60)))  # hard stop (s)
 POLL_INTERVAL_S = 30            # bounded inter-poll gap
 HEARTBEAT_EVERY_S = 300         # log a heartbeat at least this often
 TARGET_ASSETS = ("BTC", "SOL")  # BTC/SOL scope only
 TARGET_INTERVAL_S = 900         # 15m up/down window
+INTENDED_STAKE = "25"           # diagnostic stake (paper-only)
+REFERENCE_SOURCE = "HL_DIAGNOSTIC_BASIS"  # HL reference is diagnostic, not the Chainlink oracle
+
+# Hyperliquid public read-only info endpoint (no auth, no wallet).
+HL_INFO = "https://api.hyperliquid.xyz/info"
+SIGMA_FALLBACK = 0.80           # mirrors data/hl_candles.calculate_realized_volatility fallback
+SIGMA_CLAMP = (0.30, 3.00)      # mirrors hl_candles guardrail
 
 GAMMA_MARKETS = "https://gamma-api.polymarket.com/markets"
 CLOB_BOOK = "https://clob.polymarket.com/book"
@@ -203,8 +213,9 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000)) -> dic
                     break
                 try:
                     market, book = _fetch_market_and_book(m, obs_now)   # read-only GET only
-                    ns = plumbing.normalize_signal(market, book, _context(obs_now),
-                                                   capture_ts_ms=obs_now)
+                    # ---------- HL-basis READ-ONLY model context (no order/wallet/S1) ----------
+                    context = _model_context(market["asset"], market, book, obs_now)
+                    ns = plumbing.normalize_signal(market, book, context, capture_ts_ms=obs_now)
                     # ---------- DB WRITER BOUNDARY (own telemetry DB; NEVER Live S1) ----------
                     sig_prev = plumbing.write_signal(conn, ns, prev_hash=sig_prev)
                     mark_prev = "GENESIS"
@@ -217,6 +228,8 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000)) -> dic
                         raise TelemetryIntegrityError(
                             f"hash-chain broken for {ns.signal.signal_id}")
                     observations += 1
+                except (TransportError, gm.ModelInputError) as me:  # reference/model unavailable
+                    _record_rejection(conn, "MODEL_CONTEXT", f"{slug}: {type(me).__name__}: {me}", obs_now)
                 except engine.ForensicError as fe:     # toxic payload -> normalized rejection
                     _record_rejection(conn, "NORMALIZER", f"{slug}: {type(fe).__name__}: {fe}", obs_now)
                 except Exception as e:                  # last-resort: skip, never crash the loop
@@ -286,13 +299,108 @@ def _marks_from_book(book: dict, sig, now_ms: int):
     }]
 
 
-def _context(now_ms: int) -> dict:
-    """Placeholder model context (no model run here; shape-only)."""
+# =============================================================================
+# Hyperliquid public read-only reference (sync urllib; NO auth/wallet/order)
+# =============================================================================
+def _hl_post(payload: dict):
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(HL_INFO, data=data, method="POST",
+                                 headers={**_HEADERS, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:   # noqa: S310 (public URL)
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        raise TransportError(f"HL HTTP {e.code} {e.reason}") from None
+    except urllib.error.URLError as e:
+        raise TransportError(f"HL URLError {e.reason}") from None
+    except json.JSONDecodeError as e:
+        raise TransportError(f"HL non-JSON: {e}") from None
+
+
+def _hl_candles(coin: str, start_ms: int, end_ms: int, interval: str = "1m"):
+    cs = _hl_post({"type": "candleSnapshot",
+                   "req": {"coin": coin, "interval": interval,
+                           "startTime": int(start_ms), "endTime": int(end_ms)}})
+    if not isinstance(cs, list) or not cs:
+        raise TransportError(f"HL empty candles for {coin} [{start_ms},{end_ms}]")
+    return cs
+
+
+def _hl_price_feedts(coin: str, ts_ms: int):
+    """(close_price Decimal, feed_ts_ms int) for the latest candle at/just before ts_ms.
+
+    Picking a candle with t <= ts_ms guarantees a non-negative reference age (no lookahead).
+    """
+    cs = _hl_candles(coin, ts_ms - 120_000, ts_ms + 120_000)
+    past = [c for c in cs if int(c["t"]) <= ts_ms]
+    chosen = max(past, key=lambda c: int(c["t"])) if past else \
+        min(cs, key=lambda c: abs(int(c["t"]) - ts_ms))
+    return Decimal(str(chosen["c"])), int(chosen["t"])
+
+
+def _realized_vol_annual(candles) -> float:
+    """Annualized realized vol from 1m candles; mirrors hl_candles.calculate_realized_volatility
+    (clamp [0.30, 3.00]; fallback 0.80). Inlined to avoid an aiohttp import in this sync runner."""
+    if not candles or len(candles) < 2:
+        return SIGMA_FALLBACK
+    rets = []
+    for i in range(1, len(candles)):
+        prev, curr = float(candles[i - 1]["c"]), float(candles[i]["c"])
+        if prev > 0 and curr > 0:
+            rets.append(math.log(curr / prev))
+    if len(rets) < 2:
+        return SIGMA_FALLBACK
+    mean = sum(rets) / len(rets)
+    var = sum((x - mean) ** 2 for x in rets) / (len(rets) - 1)
+    raw = math.sqrt(var) * math.sqrt(525_600)
+    return max(SIGMA_CLAMP[0], min(raw, SIGMA_CLAMP[1]))
+
+
+def _hl_sigma_annual(coin: str, now_ms: int) -> float:
+    return _realized_vol_annual(_hl_candles(coin, now_ms - 60 * 60 * 1000, now_ms))
+
+
+def _model_context(asset: str, market: dict, book: dict, now_ms: int) -> dict:
+    """Real read-only HL-basis diagnostic model context (Decimal-safe via gateg5_model).
+
+    Reference/strike are a Hyperliquid DIAGNOSTIC BASIS (REFERENCE_SOURCE), NOT the
+    Chainlink settlement oracle; edge here is HL-basis diagnostic, not alpha.
+    Observation-only: feeds signal_log/diagnostics; no trade routing.
+    """
+    market_end_ts = int(market["market_end_ts"])
+    window_start_ms = (market_end_ts - TARGET_INTERVAL_S) * 1000
+
+    p_now, feed_ts = _hl_price_feedts(asset, now_ms)            # current underlying + feed ts
+    strike, _ = _hl_price_feedts(asset, window_start_ms)        # window-open price = strike
+    sigma_annual = _hl_sigma_annual(asset, now_ms)
+
+    tte_s = market_end_ts - (now_ms // 1000)
+    if tte_s <= 0:
+        raise gm.ModelInputError("nonpositive tte for market window")
+    tte_years = Decimal(tte_s) / gm.SECONDS_PER_YEAR
+
+    fair_yes = gm.fair_yes_gbm(p_now, strike, sigma_annual, tte_years)  # P(up), Decimal
+
+    # exec_ask_vwap computed exactly as plumbing.normalize_signal will (deterministic),
+    # so the NO-leg edge is consistent with the stored exec_ask_vwap.
+    asks_json = plumbing.ladder_to_decimal_json(book["asks"])
+    fill = plumbing.walk_ask_ladder_for_stake(
+        plumbing.parse_ask_ladder(asks_json), Decimal(INTENDED_STAKE))
+    # zero-cost convention preserved explicitly (fee/slippage/margin = 0)
+    entry_edge = gm.no_side_entry_edge(fair_yes, fill.exec_ask_vwap)
+
     return {
-        "reference_feed_ts": now_ms, "intended_stake": "25", "decision_cost_buffer": "0",
-        "realized_entry_cost": "0", "realized_fee_cost": "0", "fair_yes": "0.50",
-        "fair_yes_sigma": "0.05", "fair_model_version": "telemetry-shape-only",
-        "strike": "0", "reference_price": "0", "underlying_spot_price": "0", "entry_edge": "0",
+        "reference_feed_ts": feed_ts,           # real HL candle ts -> nonzero reference_age_ms
+        "intended_stake": INTENDED_STAKE,
+        "decision_cost_buffer": "0",
+        "realized_entry_cost": "0", "realized_fee_cost": "0",   # zero-cost convention
+        "fair_yes": str(fair_yes),
+        "fair_yes_sigma": str(Decimal(str(sigma_annual))),
+        "fair_model_version": f"hl-basis-gbm-digital-v0/{REFERENCE_SOURCE}",
+        "strike": str(strike),
+        "reference_price": str(p_now),
+        "underlying_spot_price": str(p_now),
+        "entry_edge": str(entry_edge),
     }
 
 
