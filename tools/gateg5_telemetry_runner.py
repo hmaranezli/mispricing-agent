@@ -31,6 +31,7 @@ import asyncio
 import json
 import math
 import os
+import signal
 import sqlite3
 import sys
 import time
@@ -106,6 +107,68 @@ _PROXY_DATA_REJECT_REASONS = frozenset(
 
 # Live S1 container — the runner must NEVER write here.
 _LIVE_S1_DIR = "/root/mispricing_agent/var/s1"
+_TMP_ROOT = os.path.realpath("/tmp")
+
+# --- graceful SIGTERM -> OPERATOR_ABORT (handler sets a FLAG ONLY; no SQLite/network in it) ---
+_ABORT_REQUESTED = False
+
+
+def _sigterm_handler(signum, frame):  # noqa: ARG001 — signal API
+    """Set the abort flag only. No I/O / SQLite / network here; the loop observes the flag
+    at a safe synchronous boundary and stops cleanly as OPERATOR_ABORT."""
+    global _ABORT_REQUESTED
+    _ABORT_REQUESTED = True
+
+
+def _install_signal_handlers() -> None:
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+
+
+# =============================================================================
+# Fresh artifact / path / PID safety (refuse pre-existing; /tmp-only; S1 refusal;
+# atomic exclusive claim; never append a new GENESIS to an existing live-run DB)
+# =============================================================================
+def _require_under_tmp(path: str, kind: str) -> None:
+    if not os.path.isabs(path):
+        raise PermissionError(f"{kind} path must be absolute: {path!r}")
+    real = os.path.realpath(path)
+    if real != _TMP_ROOT and not real.startswith(_TMP_ROOT + os.sep):
+        raise PermissionError(f"{kind} path must resolve under /tmp: {path!r} -> {real!r}")
+
+
+def _refuse_existing(path: str, kind: str) -> None:
+    if os.path.lexists(path):    # lexists catches dangling symlinks too
+        raise FileExistsError(f"refusing pre-existing {kind} artifact: {path!r}")
+
+
+def _claim_exclusive(path: str) -> int:
+    """Atomically create+own a file (O_EXCL). FileExistsError if it already exists."""
+    return os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+
+
+def _claim_pid(pid_path: str) -> None:
+    """Exclusively create the PID file and write+fsync this process's own PID."""
+    fd = _claim_exclusive(pid_path)
+    try:
+        os.write(fd, str(os.getpid()).encode())
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _release_pid_if_owned(pid_path: str) -> None:
+    """Remove the PID file ONLY if it holds this process's PID (normal/graceful cleanup).
+    A foreign/stale PID (SIGKILL/crash) is preserved as evidence for operator review."""
+    try:
+        with open(pid_path, encoding="utf-8") as f:
+            content = f.read().strip()
+    except FileNotFoundError:
+        return
+    if content == str(os.getpid()):
+        try:
+            os.remove(pid_path)
+        except FileNotFoundError:
+            pass
 
 
 class TransportError(Exception):
@@ -383,10 +446,23 @@ def _marks_for(conn, signal_id: str):
 # =============================================================================
 # Bounded polling loop — the heart of the runner (DRAFT; NOT executed)
 # =============================================================================
-def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000)) -> dict:
-    global _REQUEST_COUNTERS
+def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000),
+        monotonic_provider=time.monotonic, abort_check=None, pid_path=None) -> dict:
+    global _REQUEST_COUNTERS, _ABORT_REQUESTED
     _REQUEST_COUNTERS = prelaunch.RequestCounters()    # fresh observational counters per run
-    _assert_not_live_s1(db_path)                       # NO S1 PATH (refused here)
+    _ABORT_REQUESTED = False
+    if abort_check is None:
+        abort_check = lambda: _ABORT_REQUESTED         # noqa: E731
+
+    # ---- fresh artifact / path / PID safety (before any SQLite init) ----
+    _assert_not_live_s1(db_path)                       # explicit Live-S1 refusal
+    _require_under_tmp(db_path, "DB")                  # resolved /tmp only (rejects symlink escape)
+    _refuse_existing(db_path, "DB")                    # never append a new GENESIS to an existing DB
+    if pid_path is not None:
+        _require_under_tmp(pid_path, "PID")
+        _refuse_existing(pid_path, "PID")              # live/stale PID -> refuse until operator review
+        _claim_pid(pid_path)                           # atomic exclusive ownership
+
     conn = sqlite3.connect(db_path)
     plumbing.init_mock_db(conn)                        # G.5 signal_log / mark_path schema
     _init_telemetry_tables(conn)
@@ -397,19 +473,25 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000)) -> dic
     proxy_enabled = os.environ.get(PROXY_ARM_ENV, "") == PROXY_ARM_TOKEN
     proxy_client = _default_async_http_client if proxy_enabled else None
 
-    start_ms = now_ms_provider()
-    last_hb_ms = start_ms
+    # Internal elapsed bound uses MONOTONIC time (immune to NTP / wall-clock jumps); wall-clock
+    # ms is used ONLY for persisted timestamps.
+    start_mono = monotonic_provider()
+    last_hb_mono = start_mono
     observations = 0
     sig_prev = "GENESIS"
     stop_reason = "UNSET"
 
     while True:
-        now_ms = now_ms_provider()
-        # ---------- HARD STOP (count OR elapsed; whichever first) ----------
+        now_ms = now_ms_provider()                     # wall-clock ms -> persisted timestamps
+        elapsed_s = int(monotonic_provider() - start_mono)
+        # ---------- safe-boundary OPERATOR_ABORT + HARD STOP (count OR monotonic elapsed) -------
+        if abort_check():
+            stop_reason = "OPERATOR_ABORT"
+            break
         if observations >= MAX_OBSERVATIONS:
             stop_reason = "MAX_OBSERVATIONS"
             break
-        if (now_ms - start_ms) // 1000 >= MAX_ELAPSED_S:
+        if elapsed_s >= MAX_ELAPSED_S:
             stop_reason = "MAX_ELAPSED"
             break
 
@@ -417,6 +499,9 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000)) -> dic
         # Bounded: <=4 slug market GETs/cycle (BTC/SOL x current/next window) + a
         # book GET per hit. Public GET only; no auth/order/private/wallet endpoints.
         for slug in _target_slugs(now_ms):
+            if abort_check():                          # safe boundary: previous unit committed
+                stop_reason = "OPERATOR_ABORT"
+                break
             if observations >= MAX_OBSERVATIONS:
                 break
             obs_now = now_ms_provider()
@@ -472,16 +557,23 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000)) -> dic
                 except Exception as e:                  # last-resort: skip, never crash the loop
                     _record_rejection(conn, "UNEXPECTED", f"{slug}: {type(e).__name__}: {e}", obs_now)
 
-        # ---------- bounded heartbeat ----------
-        if (now_ms - last_hb_ms) >= HEARTBEAT_EVERY_S * 1000:
-            _heartbeat(conn, observations, (now_ms - start_ms) // 1000, now_ms, "tick")
-            last_hb_ms = now_ms
+        if stop_reason == "OPERATOR_ABORT":            # abort observed mid-cycle -> stop cleanly
+            break
+
+        # ---------- bounded heartbeat (monotonic cadence; immune to wall-clock jumps) ----------
+        mono_now = monotonic_provider()
+        if (mono_now - last_hb_mono) >= HEARTBEAT_EVERY_S:
+            _heartbeat(conn, observations, int(mono_now - start_mono), now_ms_provider(), "tick")
+            last_hb_mono = mono_now
         time.sleep(POLL_INTERVAL_S)
 
     final_ms = now_ms_provider()
-    _heartbeat(conn, observations, (final_ms - start_ms) // 1000, final_ms, f"STOP:{stop_reason}")
+    final_elapsed = int(monotonic_provider() - start_mono)
+    _heartbeat(conn, observations, final_elapsed, final_ms, f"STOP:{stop_reason}")
     _write_counters_snapshot(conn, f"STOP:{stop_reason}", observations=observations, now_ms=final_ms)
     conn.close()
+    if pid_path is not None:                            # release ONLY on normal / graceful stop
+        _release_pid_if_owned(pid_path)
     return {"stop_reason": stop_reason, "observations": observations, "db_path": db_path,
             "request_counters": _REQUEST_COUNTERS.as_dict()}
 
@@ -664,7 +756,19 @@ def main(argv=None) -> int:
         return 2
     argv = sys.argv[1:] if argv is None else argv
     db_path = (argv[0] if argv else os.environ.get(DB_ENV, DEFAULT_DB))
-    result = run(db_path)
+    pid_path = db_path + ".pid"
+    log_path = db_path + ".log"
+
+    _install_signal_handlers()                         # SIGTERM -> graceful OPERATOR_ABORT
+    # Entrypoint OWNS the log via exclusive creation (no wrapper `tee`, no shell pre-create) and
+    # redirects this process's stderr into it; the launch wrapper performs no log redirection.
+    _require_under_tmp(log_path, "log")
+    _refuse_existing(log_path, "log")
+    log_fd = _claim_exclusive(log_path)
+    os.dup2(log_fd, sys.stderr.fileno())
+    os.close(log_fd)
+
+    result = run(db_path, pid_path=pid_path)
     sys.stderr.write(f"[telemetry] done: {result}\n")
     return 0
 

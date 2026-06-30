@@ -563,8 +563,11 @@ def test_runner_stops_on_overridden_elapsed(tmp_path, monkeypatch):
     m = _load_runner("g7_runner_stop")
     monkeypatch.setattr(m, "_target_slugs", lambda now_ms: iter(()))   # no markets
     monkeypatch.setattr(m.time, "sleep", lambda *a, **k: None)
-    times = iter([0, 7_300_000, 7_300_000, 7_300_000, 7_300_000])
-    result = m.run(str(tmp_path / "stop.sqlite3"), now_ms_provider=lambda: next(times))
+    # elapsed is monotonic-driven: wall clock stays constant, monotonic crosses 7200
+    mono = iter([0.0, 0.0, 7300.0, 7300.0, 7300.0])
+    result = m.run(str(tmp_path / "stop.sqlite3"),
+                   now_ms_provider=lambda: 1_900_000_000_000,
+                   monotonic_provider=lambda: next(mono))
     assert result["stop_reason"] == "MAX_ELAPSED"
     assert result["observations"] == 0
 

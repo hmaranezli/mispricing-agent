@@ -23,6 +23,11 @@ MECHANICAL_PASS = "MECHANICAL_PASS"
 INSUFFICIENT_PROXY_COVERAGE = "INSUFFICIENT_PROXY_COVERAGE"
 MECHANICAL_FAIL = "MECHANICAL_FAIL"
 EXTERNAL_TIMEOUT_FAIL = "EXTERNAL_TIMEOUT_FAIL"
+OPERATOR_ABORT = "OPERATOR_ABORT"
+
+# Wrapper exit codes that mean external/emergency termination (124=timeout, 137=SIGKILL,
+# 143=SIGTERM). Never converted to 0; always EXTERNAL_TIMEOUT_FAIL.
+EXTERNAL_TERMINATION_CODES = frozenset({124, 137, 143})
 
 # --- heartbeat statuses ---
 STUCK_OR_BLOCKED_PROCESS = "STUCK_OR_BLOCKED_PROCESS"
@@ -55,17 +60,21 @@ def classify_terminal(*, external_exit_code=None, external_terminated=False, sto
                       target_assets=(), covered_assets=()) -> str:
     """Pure terminal classifier producing exactly one classification.
 
-    Priority: external/emergency termination outranks everything (never PASS); then integrity;
-    then per-asset coverage. A clean internal stop with full integrity and full coverage is the
-    only MECHANICAL_PASS.
+    Priority (headline): (1) external/emergency termination outranks everything (never PASS);
+    (2) integrity/core/accounting failure; (3) clean operator abort; (4) insufficient coverage;
+    (5) mechanical pass. A clean internal stop with full integrity and full coverage is the only
+    MECHANICAL_PASS.
     """
-    if external_terminated or external_exit_code == 124:
+    if external_terminated or external_exit_code in EXTERNAL_TERMINATION_CODES:
         return EXTERNAL_TIMEOUT_FAIL
 
     integrity_ok = (signal_chain_ok and mark_chain_ok and proxy_accounting_ok
                     and core_isolation_ok and unexpected_count == 0)
     if not integrity_ok:
         return MECHANICAL_FAIL
+
+    if stop_reason == OPERATOR_ABORT:             # clean operator stop; never PASS
+        return OPERATOR_ABORT
 
     if stop_reason not in CLEAN_INTERNAL_STOPS:   # abnormal stop, no external timeout
         return MECHANICAL_FAIL
@@ -74,6 +83,22 @@ def classify_terminal(*, external_exit_code=None, external_terminated=False, sto
     if missing:
         return INSUFFICIENT_PROXY_COVERAGE
     return MECHANICAL_PASS
+
+
+def is_external_termination(exit_code) -> bool:
+    """True iff a wrapper exit code denotes external/emergency termination (124/137/143)."""
+    return exit_code in EXTERNAL_TERMINATION_CODES
+
+
+def record_exit_code(path: str, exit_code: int) -> None:
+    """Persist the EXACT wrapper exit code (never coerced) to an isolated artifact."""
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(str(int(exit_code)))
+
+
+def read_exit_code(path: str) -> int:
+    with open(path, encoding="utf-8") as f:
+        return int(f.read().strip())
 
 
 def audit_proxy_accounting(committed_signal_ids, proxy_row_signal_ids,
