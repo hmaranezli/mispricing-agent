@@ -123,6 +123,21 @@ def test_low_no_edge_stays_unfilled_edge_lost(monkeypatch):
     assert ns.signal.fill_decision == FillDecision.UNFILLED_EDGE_LOST
 
 
+def test_parse_target_assets_default():
+    assert runner._parse_target_assets(None) == ("BTC", "SOL")
+    assert runner._parse_target_assets("") == ("BTC", "SOL")
+
+
+def test_parse_target_assets_four():
+    assert runner._parse_target_assets("BTC,SOL,ETH,XRP") == ("BTC", "SOL", "ETH", "XRP")
+
+
+def test_parse_target_assets_normalizes_and_drops_empties():
+    assert runner._parse_target_assets(" btc , sol ,, eth ") == ("BTC", "SOL", "ETH")
+    # all-empty/garbage commas fail closed to default
+    assert runner._parse_target_assets(" , , ") == ("BTC", "SOL")
+
+
 def test_stale_quote_unchanged(monkeypatch):
     # even with a strong edge, a stale book quote -> UNFILLED_QUOTE_STALE (precedence preserved)
     _patch_hl(monkeypatch, p_now="59000", strike="60000")

@@ -53,7 +53,16 @@ MAX_OBSERVATIONS = int(os.environ.get("GATEG5_MAX_OBSERVATIONS", "100"))  # hard
 MAX_ELAPSED_S = int(os.environ.get("GATEG5_MAX_ELAPSED_S", str(6 * 60 * 60)))  # hard stop (s)
 POLL_INTERVAL_S = 30            # bounded inter-poll gap
 HEARTBEAT_EVERY_S = 300         # log a heartbeat at least this often
-TARGET_ASSETS = ("BTC", "SOL")  # BTC/SOL scope only
+def _parse_target_assets(raw, default=("BTC", "SOL")):
+    """Parse GATEG5_TARGET_ASSETS (comma list): strip, uppercase, drop empties.
+    Fail closed to the default if nothing valid remains."""
+    if not raw:
+        return tuple(default)
+    assets = tuple(t.strip().upper() for t in raw.split(",") if t.strip())
+    return assets if assets else tuple(default)
+
+
+TARGET_ASSETS = _parse_target_assets(os.environ.get("GATEG5_TARGET_ASSETS"))  # default BTC,SOL
 TARGET_INTERVAL_S = 900         # 15m up/down window
 INTENDED_STAKE = "25"           # diagnostic stake (paper-only)
 REFERENCE_SOURCE = "HL_DIAGNOSTIC_BASIS"  # HL reference is diagnostic, not the Chainlink oracle
