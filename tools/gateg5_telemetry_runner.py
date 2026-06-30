@@ -27,6 +27,7 @@ network-capable operator utility, guarded.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import os
@@ -40,6 +41,8 @@ from urllib.parse import urlencode
 
 from analysis.forensic import gateg5_model as gm
 from analysis.forensic import gateg5_plumbing as plumbing
+from analysis.forensic import gateg7_source_basis as g7
+from data import public_spot_fetchers as spot
 
 engine = plumbing.engine
 
@@ -81,6 +84,17 @@ _HEADERS = {
     "Content-Type": "application/json",
 }
 
+# --- G7-lite POST-SIGNAL proxy diagnostic (default OFF; diagnostic-only; no-alpha) ---
+# Opt-in ONLY. When unarmed: zero proxy calls, byte-identical G5/G5.1 behavior, proxy
+# columns stay null/NOT_COMPUTED. Coinbase+Kraken USD spot only; HL perp kept separate
+# (never merged into the spot basket); USD/USDT and spot/perp never mixed. The proxy is
+# captured AFTER an immutable ts_signal and is NEVER an at-entry/canonical/Chainlink ref.
+PROXY_ARM_ENV = "GATEG5_PROXY_BASIS"
+PROXY_ARM_TOKEN = "PROXY-BASIS-CONFIRMED"
+# Spread guard is CONFIGURABLE; live thresholds require separate authorization and are NOT
+# tuned from observed run outcomes.
+PROXY_SPREAD_BPS = os.environ.get("GATEG5_PROXY_SPREAD_BPS", "50")
+
 # Live S1 container — the runner must NEVER write here.
 _LIVE_S1_DIR = "/root/mispricing_agent/var/s1"
 
@@ -118,6 +132,101 @@ def _init_telemetry_tables(conn) -> None:
 
 
 # =============================================================================
+# G7-lite POST-SIGNAL proxy diagnostic — SEPARATE additive table (signal_log/hash
+# chain untouched). Rows are written ONLY after the original signal is finalized.
+# =============================================================================
+_PROXY_COLS = [
+    "signal_id", "asset", "ts_signal_ms", "source_basis_mode", "proxy_capture_status",
+    "proxy_ts_provenance", "proxy_source", "proxy_reference_price",
+    "proxy_basis_hl_minus_proxy", "proxy_capture_started_ts_ms",
+    "proxy_capture_completed_ts_ms", "proxy_capture_started_vs_signal_ms",
+    "proxy_lag_after_signal_ms", "proxy_labels", "chainlink_capture_status",
+    "chainlink_reference_price", "basis_hl_minus_chainlink", "chainlink_aligned_edge_status",
+]
+
+
+def _init_proxy_table(conn) -> None:
+    """Backward-compatible additive table (TEXT/INTEGER only; never REAL). Existing
+    signal_log / mark_path readers are unaffected by its presence."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS gateg7_proxy_basis("
+        "  id INTEGER PRIMARY KEY,"
+        "  signal_id TEXT NOT NULL, asset TEXT NOT NULL, ts_signal_ms INTEGER NOT NULL,"
+        "  source_basis_mode TEXT NOT NULL, proxy_capture_status TEXT NOT NULL,"
+        "  proxy_ts_provenance TEXT NOT NULL, proxy_source TEXT,"
+        "  proxy_reference_price TEXT, proxy_basis_hl_minus_proxy TEXT,"
+        "  proxy_capture_started_ts_ms INTEGER, proxy_capture_completed_ts_ms INTEGER,"
+        "  proxy_capture_started_vs_signal_ms INTEGER, proxy_lag_after_signal_ms INTEGER,"
+        "  proxy_labels TEXT, chainlink_capture_status TEXT, chainlink_reference_price TEXT,"
+        "  basis_hl_minus_chainlink TEXT, chainlink_aligned_edge_status TEXT)")
+    conn.commit()
+
+
+def _write_proxy_basis(conn, signal_id: str, asset: str, diag: dict) -> None:
+    """Persist one post-signal proxy diagnostic row keyed by an ALREADY-persisted signal_id."""
+    row = dict(diag)
+    row["signal_id"] = signal_id
+    row["asset"] = asset
+    row["proxy_labels"] = json.dumps(diag.get("proxy_labels") or [], separators=(",", ":"))
+    conn.execute(
+        f"INSERT INTO gateg7_proxy_basis({','.join(_PROXY_COLS)}) "
+        f"VALUES ({','.join('?' for _ in _PROXY_COLS)})",
+        tuple(row.get(c) for c in _PROXY_COLS))
+
+
+def core_decision_projection(ns) -> dict:
+    """The actionable decision projection — a PURE function of the existing G5 inputs.
+
+    Used to prove proxy ON vs OFF non-interference offline: this projection must be
+    bit-identical regardless of the proxy path. Proxy data feeds NONE of these fields.
+    """
+    s = ns.signal
+    return {
+        "asset": s.asset, "side": s.side, "condition_id": s.condition_id,
+        "token_id": s.token_id, "outcome_index": s.outcome_index,
+        "outcome_label": s.outcome_label, "fair_yes": s.fair_yes,
+        "entry_edge": s.entry_edge, "exec_ask_vwap": s.exec_ask_vwap,
+        "exec_fill_qty_avail": s.exec_fill_qty_avail, "intended_stake": s.intended_stake,
+        "edge_bucket": s.edge_bucket, "tte_bucket": s.tte_bucket,
+        "fill_decision": s.fill_decision,   # already a canonical string constant
+    }
+
+
+async def _capture_proxy_legs(asset: str, *, client):
+    """Concurrent Coinbase + Kraken USD spot capture via an INJECTED async client.
+    HL perp is NOT fetched here (kept strictly separate from the spot basket)."""
+    return await asyncio.gather(
+        spot.fetch_coinbase_spot(asset, client=client),
+        spot.fetch_kraken_spot(asset, client=client),
+    )
+
+
+def proxy_context(asset, hl_reference_price, ts_signal_ms, *, enabled, client, clock,
+                  spread_bps_threshold):
+    """Return a POST-SIGNAL proxy diagnostic dict, or None when disabled.
+
+    When `enabled` is False: performs ZERO proxy calls and returns None (G5/G5.1 unchanged).
+    When True: records capture-start/complete around a concurrent injected fetch and delegates
+    all basis/label/skew logic to g7.compute_post_signal_proxy_diagnostic. `ts_signal_ms` is
+    passed through immutably; the proxy is never treated as an at-entry reference.
+    """
+    if not enabled:
+        return None
+    started = clock()
+    cb_tick, kr_tick = asyncio.run(_capture_proxy_legs(asset, client=client))
+    completed = clock()
+    return g7.compute_post_signal_proxy_diagnostic(
+        hl_reference_price=hl_reference_price,
+        ts_signal_ms=ts_signal_ms,
+        coinbase=cb_tick.get("price_decimal_text"),
+        kraken=kr_tick.get("price_decimal_text"),
+        capture_started_ts_ms=started,
+        capture_completed_ts_ms=completed,
+        spread_bps_threshold=spread_bps_threshold,
+    )
+
+
+# =============================================================================
 # Read-only public transport (native urllib, browser UA, normalized errors)
 # =============================================================================
 def _public_get(url: str, params: dict | None = None):
@@ -133,6 +242,15 @@ def _public_get(url: str, params: dict | None = None):
         raise TransportError(f"URLError {e.reason} from {url}") from None
     except json.JSONDecodeError as e:
         raise TransportError(f"non-JSON body from {url}: {e}") from None
+
+
+async def _default_async_http_client(url: str) -> dict:
+    """Injected-client contract for public_spot_fetchers (live path only; tests inject fakes).
+
+    Public read-only GET, browser UA, no auth/wallet. urllib runs in a worker thread so the
+    sync runner can drive the async fetchers. Never invoked when proxy is OFF or under tests.
+    """
+    return await asyncio.to_thread(_public_get, url)
 
 
 def _window_start_epoch(now_s: int, interval_s: int = TARGET_INTERVAL_S) -> int:
@@ -183,6 +301,11 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000)) -> dic
     conn = sqlite3.connect(db_path)
     plumbing.init_mock_db(conn)                        # G.5 signal_log / mark_path schema
     _init_telemetry_tables(conn)
+    _init_proxy_table(conn)                            # additive; harmless when proxy OFF
+
+    # G7-lite proxy diagnostic is opt-in; default OFF -> zero proxy calls, G5/G5.1 unchanged.
+    proxy_enabled = os.environ.get(PROXY_ARM_ENV, "") == PROXY_ARM_TOKEN
+    proxy_client = _default_async_http_client if proxy_enabled else None
 
     start_ms = now_ms_provider()
     last_hb_ms = start_ms
@@ -237,6 +360,19 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000)) -> dic
                         raise TelemetryIntegrityError(
                             f"hash-chain broken for {ns.signal.signal_id}")
                     observations += 1
+                    # ---- G7-lite POST-SIGNAL proxy diagnostic (AFTER signal finalized) ----
+                    # Strictly observational: never touches the decision/signal_log/hash chain.
+                    if proxy_enabled:
+                        try:
+                            diag = proxy_context(
+                                market["asset"], context["reference_price"], obs_now,
+                                enabled=True, client=proxy_client,
+                                clock=now_ms_provider, spread_bps_threshold=PROXY_SPREAD_BPS)
+                            _write_proxy_basis(conn, ns.signal.signal_id, market["asset"], diag)
+                            conn.commit()
+                        except Exception as pe:        # diagnostic failure never breaks the loop
+                            _record_rejection(
+                                conn, "PROXY_DIAG", f"{slug}: {type(pe).__name__}: {pe}", obs_now)
                 except (TransportError, gm.ModelInputError) as me:  # reference/model unavailable
                     _record_rejection(conn, "MODEL_CONTEXT", f"{slug}: {type(me).__name__}: {me}", obs_now)
                 except engine.ForensicError as fe:     # toxic payload -> normalized rejection

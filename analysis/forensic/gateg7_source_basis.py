@@ -66,6 +66,10 @@ PROXY_REFERENCE_STALE = "PROXY_REFERENCE_STALE"
 PROXY_TIMESTAMP_AFTER_SIGNAL = "PROXY_TIMESTAMP_AFTER_SIGNAL"
 PROXY_SPREAD_GUARD_FAIL = "PROXY_SPREAD_GUARD_FAIL"
 
+# --- G7-lite post-signal diagnostic (proxy captured AFTER an immutable signal) ---
+PROXY_POST_SIGNAL_DIAGNOSTIC = "PROXY_POST_SIGNAL_DIAGNOSTIC"
+PROXY_TS_PROVENANCE_CAPTURE_ONLY = "CAPTURE_TIME_ONLY"
+
 _BPS = Decimal(10000)
 _PCT = Decimal(100)
 
@@ -302,3 +306,69 @@ def compute_source_basis(*, hl_reference, ts_signal_ms, chainlink=None, proxy=No
     else:
         record["source_basis_mode"] = NOT_COMPUTED
     return record
+
+
+def compute_post_signal_proxy_diagnostic(*, hl_reference_price, ts_signal_ms,
+                                         coinbase, kraken, capture_started_ts_ms,
+                                         capture_completed_ts_ms, spread_bps_threshold):
+    """G7-lite: asynchronous POST-SIGNAL HL-perp vs Coinbase+Kraken USD-spot diagnostic.
+
+    The proxy is NEVER an at-entry/lookahead-safe/canonical/Chainlink-aligned reference.
+    `ts_signal_ms` is IMMUTABLE and echoed unchanged (never shifted to a capture time). The
+    proxy capture happens AFTER the signal; we persist capture-start/complete timestamps and
+    the two SEPARATE signed skew metrics (started-vs-signal, lag-after-signal) — never collapsed.
+
+    TRUE_CHAINLINK / Chainlink-aligned fields stay NOT_COMPUTED/null. The basis is computed
+    (mode CHAINLINK_PROXY_ONLY, status PROXY_POST_SIGNAL_DIAGNOSTIC) ONLY when both USD spot legs
+    are valid AND the Decimal spread guard passes; otherwise fail closed to NOT_COMPUTED.
+    Decimal/string-safe (no float/REAL). Pure: no fetch, no DB, no clock.
+    """
+    ts_signal = _int(ts_signal_ms)
+    started = _int(capture_started_ts_ms)
+    completed = _int(capture_completed_ts_ms)
+    hl = _dec(hl_reference_price)
+    cb = _dec(coinbase)
+    kr = _dec(kraken)
+    thr = _dec(spread_bps_threshold)
+    used = [n for n, v in (("coinbase", cb), ("kraken", kr)) if v is not None]
+
+    rec = {
+        "source_basis_mode": NOT_COMPUTED,
+        "ts_signal_ms": ts_signal,                       # IMMUTABLE — echoed, never shifted
+        "hl_reference_price": str(hl) if hl is not None else None,
+        "proxy_source": "+".join(used) if used else None,
+        "proxy_reference_price": None,
+        "proxy_basis_hl_minus_proxy": None,
+        "proxy_capture_status": PROXY_REFERENCE_UNAVAILABLE,
+        "proxy_ts_provenance": PROXY_TS_PROVENANCE_CAPTURE_ONLY,
+        "proxy_capture_started_ts_ms": started,
+        "proxy_capture_completed_ts_ms": completed,
+        "proxy_capture_started_vs_signal_ms":
+            (started - ts_signal) if (started is not None and ts_signal is not None) else None,
+        "proxy_lag_after_signal_ms":
+            (completed - ts_signal) if (completed is not None and ts_signal is not None) else None,
+        "proxy_labels": [CHAINLINK_PROXY_ONLY, CHAINLINK_PROXY_NOT_CANONICAL],
+        # Chainlink-aligned fields are NEVER populated by proxy data.
+        "chainlink_reference_price": None,
+        "chainlink_capture_status": CHAINLINK_REFERENCE_UNAVAILABLE,
+        "chainlink_access_mode": ACCESS_NOT_COMPUTED,
+        "basis_hl_minus_chainlink": None,
+        "chainlink_aligned_edge_status": NOT_COMPUTED,
+    }
+
+    # both USD spot legs required (single-source is not blessed); HL reference required
+    if cb is None or kr is None or hl is None or thr is None or thr <= 0:
+        rec["proxy_capture_status"] = PROXY_REFERENCE_UNAVAILABLE
+        return rec
+
+    mid = (cb + kr) / Decimal(2)
+    spread_bps = (abs(cb - kr) / mid * _BPS) if mid != 0 else None
+    if spread_bps is None or spread_bps > thr:
+        rec["proxy_capture_status"] = PROXY_SPREAD_GUARD_FAIL
+        return rec
+
+    rec["proxy_reference_price"] = str(mid)
+    rec["proxy_basis_hl_minus_proxy"] = str(hl - mid)
+    rec["proxy_capture_status"] = PROXY_POST_SIGNAL_DIAGNOSTIC
+    rec["source_basis_mode"] = CHAINLINK_PROXY_ONLY
+    return rec
