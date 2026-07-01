@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 from decimal import ROUND_HALF_UP, Decimal
 
+from analysis.forensic import gateg5_plumbing as _plumb
 from analysis.forensic.gateg5_plumbing import walk_ask_ladder_for_stake, ladder_to_decimal_json, \
     parse_ask_ladder
 
@@ -35,7 +36,52 @@ NO_PAPER_ENTRY = "NO_PAPER_ENTRY"
 EDGE_TIE_NO_ENTRY = "EDGE_TIE_NO_ENTRY"
 NOT_ADMITTED_UNSUPPORTED_FEE = "NOT_ADMITTED_UNSUPPORTED_FEE"
 
+# G8 forward dual-book capture statuses (paper/shadow only; never an order)
+PAPER_OPEN = "PAPER_OPEN"
+DUAL_BOOK_SKEW_EXCEEDED = "DUAL_BOOK_SKEW_EXCEEDED"
+FUTURE_TIMESTAMP_REJECTED = "FUTURE_TIMESTAMP_REJECTED"
+STALE_QUOTE_REJECTED = "STALE_QUOTE_REJECTED"
+INSUFFICIENT_DEPTH_REJECTED = "INSUFFICIENT_DEPTH_REJECTED"
+DUPLICATE_CONDITION_SKIPPED = "DUPLICATE_CONDITION_SKIPPED"
+
+# Reuse the EXISTING quote-staleness guard constant (never invent a new threshold).
+QUOTE_STALE_MS = _plumb.QUOTE_STALE_MS
+
 _FIVE_DP = Decimal("0.00001")
+
+
+class OutcomeBindingError(Exception):
+    """Missing/duplicate/ambiguous/unknown outcome label -> fail closed. Never guessed."""
+
+
+_YES_UP_LABELS = frozenset({"yes", "up"})
+_NO_DOWN_LABELS = frozenset({"no", "down"})
+
+
+def bind_yes_no_tokens(outcomes, token_ids) -> dict:
+    """Bind YES/Up and NO/Down tokens by NORMALIZED label (case/whitespace-insensitive),
+    NEVER by a fixed array index. Works regardless of outcome/token ordering. Rejects
+    missing, duplicate, ambiguous, or unknown labels -- never falls back to a guess."""
+    if not isinstance(outcomes, list) or not isinstance(token_ids, list) \
+            or len(outcomes) != 2 or len(token_ids) != 2:
+        raise OutcomeBindingError(
+            f"expected exactly 2 outcomes and 2 token_ids: {outcomes!r} / {token_ids!r}")
+    norm = []
+    for o in outcomes:
+        if not isinstance(o, str):
+            raise OutcomeBindingError(f"non-string outcome label: {o!r}")
+        n = o.strip().lower()
+        if n in _YES_UP_LABELS:
+            norm.append("YES")
+        elif n in _NO_DOWN_LABELS:
+            norm.append("NO")
+        else:
+            raise OutcomeBindingError(f"unknown outcome label: {o!r}")
+    if norm.count("YES") != 1 or norm.count("NO") != 1:
+        raise OutcomeBindingError(f"missing/duplicate/ambiguous outcome labels: {outcomes!r}")
+    yes_idx, no_idx = norm.index("YES"), norm.index("NO")
+    return {"yes_index": yes_idx, "no_index": no_idx,
+            "yes_token_id": str(token_ids[yes_idx]), "no_token_id": str(token_ids[no_idx])}
 
 
 def _d(v):
@@ -287,3 +333,105 @@ def realized_effective_n(resolved_rows: list) -> dict:
             windows.setdefault(w, set()).add(r.get("asset"))
     correlated = {w: sorted(a) for w, a in windows.items() if len(a) > 1}
     return {"resolved_unique_windows": len(windows), "correlated_windows": correlated}
+
+
+# ===========================================================================
+# G8 — forward dual-book paper decision (pure; caller supplies already-fetched books +
+# already-computed fair_yes/tte_s; NO resolution/outcome parameter anywhere -> no-lookahead)
+# ===========================================================================
+def build_paper_decision(*, market: dict, yes_book: dict, no_book: dict, fair_yes,
+                         feed_ts: int, tte_s: int, max_skew_ms: int, decision_ts: int,
+                         intended_stake: Decimal = Decimal("25"),
+                         cost_buffer: Decimal = Decimal("0")) -> dict:
+    """Pure: no network/DB/clock. Binds YES/NO tokens by label (never index), enforces the
+    dual-book skew bound, rejects any input with a capture/quote timestamp AFTER decision_ts
+    (no-lookahead) or a stale quote (reusing QUOTE_STALE_MS) or insufficient executable depth,
+    reads feeSchedule canonically (never takerBaseFee), then delegates the actual edge math to
+    the COMMITTED evaluate_bidirectional_entry (never duplicated). `decision_ts` must be
+    created by the caller only after every input (both books + HL fair-value) is available.
+    """
+    cid, slug = market["conditionId"], market.get("slug")
+    binding = bind_yes_no_tokens(market["outcomes"], market["clobTokenIds"])   # fail closed first
+
+    skew_ms = abs(yes_book["capture_completed_ms"] - no_book["capture_completed_ms"])
+    if skew_ms > max_skew_ms:
+        return {"status": DUAL_BOOK_SKEW_EXCEEDED, "dual_book_skew_ms": skew_ms,
+                "condition_id": cid, "slug": slug}
+
+    for field, ts in (("yes_quote_ts_ms", yes_book["quote_ts_ms"]),
+                      ("yes_capture_completed_ms", yes_book["capture_completed_ms"]),
+                      ("no_quote_ts_ms", no_book["quote_ts_ms"]),
+                      ("no_capture_completed_ms", no_book["capture_completed_ms"]),
+                      ("hl_feed_ts", feed_ts)):
+        if ts > decision_ts:
+            return {"status": FUTURE_TIMESTAMP_REJECTED, "field": field,
+                    "condition_id": cid, "slug": slug}
+
+    for side_label, book in (("YES", yes_book), ("NO", no_book)):
+        if (decision_ts - book["quote_ts_ms"]) > QUOTE_STALE_MS:
+            return {"status": STALE_QUOTE_REJECTED, "side": side_label,
+                    "condition_id": cid, "slug": slug}
+
+    yes_exec = compute_side_execution(yes_book["asks"], intended_stake)
+    no_exec = compute_side_execution(no_book["asks"], intended_stake)
+    if not yes_exec["depth_sufficient"] or not no_exec["depth_sufficient"]:
+        return {"status": INSUFFICIENT_DEPTH_REJECTED, "condition_id": cid, "slug": slug}
+
+    fee_cfg = parse_fee_config(market)     # canonical feeSchedule; never takerBaseFee (see above)
+    decision = evaluate_bidirectional_entry(
+        fair_yes=fair_yes, yes_ask_levels=yes_book["asks"], no_ask_levels=no_book["asks"],
+        yes_fee_config=fee_cfg, no_fee_config=fee_cfg, cost_buffer=cost_buffer,
+        intended_stake=intended_stake, reference_age_ms=decision_ts - feed_ts, tte_s=tte_s)
+
+    selected = decision["selected_side"]
+    selected_leg = decision["yes"] if selected == "YES" else decision["no"] if selected == "NO" else None
+    selected_token = (binding["yes_token_id"] if selected == "YES"
+                      else binding["no_token_id"] if selected == "NO" else None)
+    selected_notional = (str(Decimal(selected_leg["exec_ask_vwap"]) * Decimal(selected_leg["filled_qty"]))
+                         if selected_leg else None)
+
+    return {
+        "status": PAPER_OPEN if selected else NO_PAPER_ENTRY,
+        "condition_id": cid, "slug": slug, "asset": market.get("asset"), "window": window_of(slug),
+        "paper_decision_ts": decision_ts, "fair_yes": decision["fair_yes"],
+        "reference_age_ms": decision["reference_age_ms"], "tte_s": decision["tte_s"],
+        "yes_token_id": binding["yes_token_id"], "no_token_id": binding["no_token_id"],
+        "yes_quote_ts_ms": yes_book["quote_ts_ms"], "no_quote_ts_ms": no_book["quote_ts_ms"],
+        "yes_capture_started_ms": yes_book["capture_started_ms"],
+        "yes_capture_completed_ms": yes_book["capture_completed_ms"],
+        "no_capture_started_ms": no_book["capture_started_ms"],
+        "no_capture_completed_ms": no_book["capture_completed_ms"],
+        "dual_book_skew_ms": skew_ms,
+        "yes_exec_ask_vwap": decision["yes"]["exec_ask_vwap"], "yes_filled_qty": decision["yes"]["filled_qty"],
+        "no_exec_ask_vwap": decision["no"]["exec_ask_vwap"], "no_filled_qty": decision["no"]["filled_qty"],
+        "fee_rate": (str(fee_cfg["fee_rate"]) if fee_cfg["fee_rate"] is not None else None),
+        "fee_exponent": (1 if fee_cfg["fee_status"] == FEE_VERIFIED_RATE else None),
+        "yes_gross_edge": decision["yes"]["gross_edge"],
+        "yes_net_edge": (str(decision["yes"]["net_edge"]) if decision["yes"]["net_edge"] is not None else None),
+        "no_gross_edge": decision["no"]["gross_edge"],
+        "no_net_edge": (str(decision["no"]["net_edge"]) if decision["no"]["net_edge"] is not None else None),
+        "selected_side": selected, "selected_token_id": selected_token,
+        "no_entry_reason": decision["no_entry_reason"],
+        "selected_filled_qty": (str(selected_leg["filled_qty"]) if selected_leg else None),
+        "selected_entry_notional": selected_notional,
+        "raw_decision": decision,
+    }
+
+
+def enforce_one_entry_per_condition(decisions: list) -> list:
+    """At most ONE PAPER_OPEN per condition_id (the first encountered). Any additional
+    PAPER_OPEN for an already-opened condition_id is downgraded to DUPLICATE_CONDITION_SKIPPED
+    (recorded as evidence, never a second position). Non-PAPER_OPEN rows pass through untouched."""
+    seen_open = set()
+    out = []
+    for d in decisions:
+        if d.get("status") == PAPER_OPEN:
+            cid = d["condition_id"]
+            if cid in seen_open:
+                d = dict(d)
+                d["status"] = DUPLICATE_CONDITION_SKIPPED
+                out.append(d)
+                continue
+            seen_open.add(cid)
+        out.append(d)
+    return out
