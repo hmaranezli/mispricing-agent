@@ -735,3 +735,221 @@ def test_write_paper_ledger_different_conditions_both_open(tmp_path):
     s2 = fwd.write_paper_ledger(conn, _open_decision("cid-b", NOW_MS))
     assert s1 == "PAPER_OPEN" and s2 == "PAPER_OPEN"
     conn.close()
+
+
+# ===========================================================================
+# G8 FAILURE OBSERVABILITY PATCH — evidence-only diagnostics (RED-first).
+# Deterministic injected clocks; no real sleeps or network. No behavioral change.
+# ===========================================================================
+import json as _json
+import re as _re
+
+
+class _SeqFailBookClient:
+    """CLOB book source that returns a real-shaped book for the first N calls and raises
+    TransportError on the (fail_index)-th call (0-based). No retry."""
+    def __init__(self, books_in_order, fail_index=None, exc=None):
+        self.books_in_order = books_in_order
+        self.fail_index = fail_index
+        self.exc = exc
+        self.calls = []
+
+    def __call__(self, url, params=None):
+        i = len(self.calls)
+        self.calls.append(params["token_id"])
+        if self.fail_index is not None and i == self.fail_index:
+            raise self.exc
+        return self.books_in_order[i]
+
+
+def _ok_books():
+    return [_real_shaped_book("0.40", ts=NOW_MS - 100), _real_shaped_book("0.55", ts=NOW_MS - 90)]
+
+
+def _clock():
+    return iter(list(range(NOW_MS, NOW_MS + 200000)))
+
+
+# --- 1. STALE evidence: raw ts, capture ts, age-at-capture, age-at-decision, side ---
+def test_stale_rejection_persists_raw_ts_capture_ts_and_both_ages():
+    yes, no = _clean_books()
+    no["quote_ts_ms"] = NOW_MS - 5000                     # 5s stale on NO
+    d = pp.build_paper_decision(market=_market(), yes_book=yes, no_book=no, fair_yes=Decimal("0.70"),
+                                feed_ts=NOW_MS - 30_000, tte_s=300, max_skew_ms=5000, decision_ts=NOW_MS)
+    assert d["status"] == "STALE_QUOTE_REJECTED"
+    assert d["stale_side"] == "NO"
+    assert d["no_quote_ts_ms"] == NOW_MS - 5000            # raw quote timestamp retained
+    assert d["no_capture_started_ms"] == NOW_MS - 400
+    assert d["no_capture_completed_ms"] == NOW_MS - 300
+    assert d["quote_age_at_capture_ms"] == (NOW_MS - 300) - (NOW_MS - 5000)   # 4700
+    assert d["quote_age_at_decision_ms"] == NOW_MS - (NOW_MS - 5000)          # 5000
+    assert d["condition_id"] == "cid-1" and d["asset"] == "BTC" and d["window"] == "1000"
+
+
+def test_stale_evidence_present_on_yes_side_too():
+    yes, no = _clean_books()
+    yes["quote_ts_ms"] = NOW_MS - 9000
+    d = pp.build_paper_decision(market=_market(), yes_book=yes, no_book=no, fair_yes=Decimal("0.70"),
+                                feed_ts=NOW_MS - 30_000, tte_s=300, max_skew_ms=5000, decision_ts=NOW_MS)
+    assert d["status"] == "STALE_QUOTE_REJECTED" and d["stale_side"] == "YES"
+    assert d["quote_age_at_decision_ms"] == 9000
+
+
+# --- 2. stage timings persisted for every stage on the success/decision path ---
+_REQUIRED_STAGES = ("OUTCOME_BINDING", "YES_CLOB_FETCH", "NO_CLOB_FETCH", "HL_CURRENT_PRICE",
+                    "HL_WINDOW_STRIKE", "HL_SIGMA", "MODEL_CALCULATION", "TOTAL_CAPTURE_TO_DECISION")
+
+
+def test_capture_success_persists_all_stage_timings(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    client = _SeqFailBookClient(_ok_books())
+    pf, sig = _hl_fixture()
+    times = _clock()
+    d = fwd.capture_and_decide(_market(), now_ms_provider=lambda: next(times), max_skew_ms=5000,
+                               book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
+    assert d["status"] in ("PAPER_OPEN", "NO_PAPER_ENTRY", "STALE_QUOTE_REJECTED",
+                           "INSUFFICIENT_DEPTH_REJECTED")
+    st = _json.loads(d["stage_timings_json"])
+    for stage in _REQUIRED_STAGES:
+        assert stage in st, stage
+        assert set(st[stage]) >= {"start_ts", "completed_ts", "duration_ms"}
+        assert st[stage]["duration_ms"] == st[stage]["completed_ts"] - st[stage]["start_ts"]
+        assert st[stage]["duration_ms"] >= 0
+
+
+# --- 3. CAPTURE_FAILED: each failing stage retains stage + exception class ---
+def _fail_hl_pf(fail_call):
+    calls = {"n": 0}
+    def pf(coin, ts_ms):
+        i = calls["n"]; calls["n"] += 1
+        if i == fail_call:
+            raise fwd.TransportError("HL failure at call %d" % i)
+        return (Decimal("59000"), ts_ms - 30_000) if ts_ms >= NOW_MS - 1000 else (Decimal("60000"), ts_ms)
+    return pf
+
+
+@pytest.mark.parametrize("stage,mk_kwargs,client,pf,sig", [
+    ("OUTCOME_BINDING", dict(clobTokenIds=[None, "tokDown"]), _SeqFailBookClient(_ok_books()),
+     _hl_fixture()[0], _hl_fixture()[1]),
+    ("YES_CLOB_FETCH", {}, _SeqFailBookClient(_ok_books(), fail_index=0, exc=fwd.TransportError("boom")),
+     _hl_fixture()[0], _hl_fixture()[1]),
+    ("NO_CLOB_FETCH", {}, _SeqFailBookClient(_ok_books(), fail_index=1, exc=fwd.TransportError("boom")),
+     _hl_fixture()[0], _hl_fixture()[1]),
+    ("HL_CURRENT_PRICE", {}, _SeqFailBookClient(_ok_books()), _fail_hl_pf(0), _hl_fixture()[1]),
+    ("HL_WINDOW_STRIKE", {}, _SeqFailBookClient(_ok_books()), _fail_hl_pf(1), _hl_fixture()[1]),
+    ("HL_SIGMA", {}, _SeqFailBookClient(_ok_books()), _hl_fixture()[0],
+     (lambda coin, now_ms: (_ for _ in ()).throw(fwd.TransportError("sigma boom")))),
+    ("MODEL_CALCULATION", dict(market_end_ts=NOW_MS // 1000 - 10), _SeqFailBookClient(_ok_books()),
+     _hl_fixture()[0], _hl_fixture()[1]),
+])
+def test_capture_failure_attaches_failure_stage(monkeypatch, stage, mk_kwargs, client, pf, sig):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    times = _clock()
+    with pytest.raises((pp.OutcomeBindingError, fwd.TransportError, fwd.gm.ModelInputError)) as ei:
+        fwd.capture_and_decide(_market(**mk_kwargs), now_ms_provider=lambda: next(times),
+                               max_skew_ms=5000, book_fetch_client=client, hl_price_feedts=pf,
+                               hl_sigma_annual=sig)
+    assert getattr(ei.value, "_g8_failure_stage", None) == stage
+    # partial stage timings up to the failing stage must be attached
+    assert isinstance(getattr(ei.value, "_g8_stage_timings", None), dict)
+    assert stage in ei.value._g8_stage_timings
+
+
+# --- 4. exception sanitization: no URL, no token ID, length-capped ---
+def test_sanitize_exception_message_strips_url_token_and_caps():
+    raw = fwd.TransportError(
+        "HTTP 404 Not Found from https://clob.polymarket.com/book?token_id="
+        "72992098207167438785226794729055861537646282440410797118853672361701085335416")
+    msg = fwd._sanitize_exception_message(raw)
+    assert "://" not in msg                          # no URL scheme survives ("HTTP 404" status word is fine)
+    assert "polymarket.com" not in msg
+    assert not _re.search(r"\d{16,}", msg)          # no long token id survives
+    assert len(msg) <= 256
+
+
+# --- 5. run(): CAPTURE_FAILED row persists stage/class/sanitized-msg + flushed log line ---
+def _gamma_raw(slug):
+    return {"conditionId": "cid-run-1", "slug": slug, "outcomes": ["Up", "Down"],
+            "clobTokenIds": ["tokUp", "tokDown"], "endDate": "2027-01-01T00:00:00Z",
+            "feesEnabled": True, "feeSchedule": {"exponent": 1, "rate": 0.07, "takerOnly": True}}
+
+
+def _armed_g8_env(monkeypatch, max_obs="1"):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    monkeypatch.setenv("GATEG8_MAX_OBSERVATIONS", max_obs)
+    monkeypatch.setenv("GATEG8_MAX_ELAPSED_S", "600")
+    monkeypatch.setenv("GATEG8_MAX_SKEW_MS", "1500")
+    monkeypatch.setattr(fwd.time, "sleep", lambda *a, **k: None)
+
+
+def test_run_capture_failed_persists_evidence_and_logs(monkeypatch, tmp_path, capsys):
+    _armed_g8_env(monkeypatch)
+    leaky = ("HTTP 404 from https://clob.polymarket.com/book?token_id="
+             "72992098207167438785226794729055861537646282440410797118853672361701085335416")
+
+    def pg(url, params=None):
+        if url == fwd.runner.GAMMA_MARKETS:
+            return [_gamma_raw(params["slug"])]
+        raise fwd.TransportError(leaky)   # every CLOB book GET fails at YES_CLOB_FETCH
+
+    pf, sig = _hl_fixture()
+    db = str(tmp_path / "g8_obs.sqlite3")
+    times = _clock()
+    fwd.run(db, now_ms_provider=lambda: next(times), monotonic_provider=lambda: 0.0,
+            public_get=pg, hl_price_feedts=pf, hl_sigma_annual=sig)
+    import sqlite3
+    conn = sqlite3.connect(db)
+    row = conn.execute("SELECT status, failure_stage, exception_class, exception_message, asset "
+                      "FROM gateg8_paper_ledger WHERE status='CAPTURE_FAILED'").fetchone()
+    conn.close()
+    assert row is not None
+    status, stage, exc_class, exc_msg, asset = row
+    assert stage == "YES_CLOB_FETCH"
+    assert exc_class == "TransportError"
+    assert exc_msg and "://" not in exc_msg and "polymarket.com" not in exc_msg
+    assert not _re.search(r"\d{16,}", exc_msg)
+    # flushed per-observation log line on stderr
+    err = capsys.readouterr().err
+    assert "[g8obs]" in err
+    assert "status=CAPTURE_FAILED" in err and "stage=YES_CLOB_FETCH" in err
+    # never leaks a book payload / url / token id into the log
+    assert "asks" not in err and "://" not in err and "polymarket.com" not in err
+    assert not _re.search(r"\d{16,}", err)
+
+
+# --- 6. economic invariant unchanged (enrichment adds evidence keys only) ---
+def test_capture_and_decide_does_not_alter_economic_fields(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    client = _SeqFailBookClient(_ok_books())
+    pf, sig = _hl_fixture(p_now="60000", strike="59000")   # p_now>strike -> fair_yes>0.5 -> YES
+    times = _clock()
+    d = fwd.capture_and_decide(_market(), now_ms_provider=lambda: next(times), max_skew_ms=5000,
+                               book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
+    if d["status"] == "PAPER_OPEN":
+        sv = Decimal(d["yes_exec_ask_vwap"] if d["selected_side"] == "YES" else d["no_exec_ask_vwap"])
+        assert Decimal(d["selected_entry_notional"]) == sv * Decimal(d["selected_filled_qty"])
+
+
+# --- 7. next-window candidate evidence ---
+def test_next_window_evidence_flags_future_window(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    m = _market(market_end_ts=NOW_MS // 1000 + 100000)   # window_start well in the future
+    client = _SeqFailBookClient(_ok_books())
+    pf, sig = _hl_fixture()
+    times = _clock()
+    d = fwd.capture_and_decide(m, now_ms_provider=lambda: next(times), max_skew_ms=5000,
+                               book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
+    assert d["window_start_in_future"] == 1
+    assert d["window_start_ms"] > d["probe_now_ms"]
+    assert d["window_start_delta_ms"] == d["window_start_ms"] - d["probe_now_ms"]
+
+
+def test_current_window_evidence_not_future(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    d = None
+    client = _SeqFailBookClient(_ok_books())
+    pf, sig = _hl_fixture()
+    times = _clock()
+    d = fwd.capture_and_decide(_market(), now_ms_provider=lambda: next(times), max_skew_ms=5000,
+                               book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
+    assert d["window_start_in_future"] == 0

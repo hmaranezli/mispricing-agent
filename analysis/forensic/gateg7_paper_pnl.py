@@ -376,9 +376,22 @@ def build_paper_decision(*, market: dict, yes_book: dict, no_book: dict, fair_ye
     binding = bind_yes_no_tokens(market["outcomes"], market["clobTokenIds"])   # fail closed first
 
     skew_ms = abs(yes_book["capture_completed_ms"] - no_book["capture_completed_ms"])
+    # Shared diagnostic evidence merged into EVERY early-rejection dict so a rejected
+    # observation is fully diagnosable (raw quote/capture timestamps, tokens, skew,
+    # asset/window). Evidence-only: it never affects the decision below.
+    base_evidence = {
+        "condition_id": cid, "slug": slug, "asset": market.get("asset"),
+        "window": window_of(slug), "paper_decision_ts": decision_ts,
+        "yes_token_id": binding["yes_token_id"], "no_token_id": binding["no_token_id"],
+        "yes_quote_ts_ms": yes_book["quote_ts_ms"], "no_quote_ts_ms": no_book["quote_ts_ms"],
+        "yes_capture_started_ms": yes_book["capture_started_ms"],
+        "yes_capture_completed_ms": yes_book["capture_completed_ms"],
+        "no_capture_started_ms": no_book["capture_started_ms"],
+        "no_capture_completed_ms": no_book["capture_completed_ms"],
+        "dual_book_skew_ms": skew_ms, "tte_s": tte_s, "reference_age_ms": decision_ts - feed_ts,
+    }
     if skew_ms > max_skew_ms:
-        return {"status": DUAL_BOOK_SKEW_EXCEEDED, "dual_book_skew_ms": skew_ms,
-                "condition_id": cid, "slug": slug}
+        return {"status": DUAL_BOOK_SKEW_EXCEEDED, **base_evidence}
 
     no_lookahead_checks = [("yes_quote_ts_ms", yes_book["quote_ts_ms"]),
                            ("yes_capture_completed_ms", yes_book["capture_completed_ms"]),
@@ -389,18 +402,20 @@ def build_paper_decision(*, market: dict, yes_book: dict, no_book: dict, fair_ye
         no_lookahead_checks.append(("hl_capture_completed_ms", hl_capture_completed_ms))
     for field, ts in no_lookahead_checks:
         if ts > decision_ts:
-            return {"status": FUTURE_TIMESTAMP_REJECTED, "field": field,
-                    "condition_id": cid, "slug": slug}
+            return {"status": FUTURE_TIMESTAMP_REJECTED, "field": field, **base_evidence}
 
     for side_label, book in (("YES", yes_book), ("NO", no_book)):
         if (decision_ts - book["quote_ts_ms"]) > QUOTE_STALE_MS:
-            return {"status": STALE_QUOTE_REJECTED, "side": side_label,
-                    "condition_id": cid, "slug": slug}
+            # retain the raw quote timestamp and BOTH age measurements (age at capture
+            # completion vs age at decision) -- the exact evidence the audit found missing.
+            return {"status": STALE_QUOTE_REJECTED, "side": side_label, "stale_side": side_label,
+                    "quote_age_at_capture_ms": book["capture_completed_ms"] - book["quote_ts_ms"],
+                    "quote_age_at_decision_ms": decision_ts - book["quote_ts_ms"], **base_evidence}
 
     yes_exec = compute_side_execution(yes_book["asks"], intended_stake)
     no_exec = compute_side_execution(no_book["asks"], intended_stake)
     if not yes_exec["depth_sufficient"] or not no_exec["depth_sufficient"]:
-        return {"status": INSUFFICIENT_DEPTH_REJECTED, "condition_id": cid, "slug": slug}
+        return {"status": INSUFFICIENT_DEPTH_REJECTED, **base_evidence}
 
     fee_cfg = parse_fee_config(market)     # canonical feeSchedule; never takerBaseFee (see above)
     decision = evaluate_bidirectional_entry(

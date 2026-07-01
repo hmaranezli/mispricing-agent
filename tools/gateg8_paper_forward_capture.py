@@ -21,7 +21,10 @@ HARD BOUNDARIES:
 from __future__ import annotations
 
 import argparse
+import datetime
+import json
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -52,6 +55,10 @@ _LEDGER_COLS = [
     "fee_rate", "fee_exponent", "yes_gross_edge", "yes_net_edge", "no_gross_edge",
     "no_net_edge", "selected_side", "selected_token_id", "no_entry_reason",
     "selected_filled_qty", "selected_entry_notional", "status",
+    # --- diagnostic evidence (evidence-only; never feeds capture/economic decisions) ---
+    "stale_side", "quote_age_at_capture_ms", "quote_age_at_decision_ms",
+    "failure_stage", "exception_class", "exception_message", "stage_timings_json",
+    "window_start_ms", "probe_now_ms", "window_start_delta_ms", "window_start_in_future",
 ]
 
 _INTEGER_COLS = frozenset({
@@ -59,6 +66,9 @@ _INTEGER_COLS = frozenset({
     "yes_capture_started_ms", "yes_capture_completed_ms", "no_capture_started_ms",
     "no_capture_completed_ms", "dual_book_skew_ms", "hl_capture_started_ms",
     "hl_capture_completed_ms", "fee_exponent",
+    # diagnostic integer evidence
+    "quote_age_at_capture_ms", "quote_age_at_decision_ms", "window_start_ms",
+    "probe_now_ms", "window_start_delta_ms", "window_start_in_future",
 })
 
 
@@ -159,39 +169,117 @@ def capture_and_decide(market: dict, *, now_ms_provider, max_skew_ms: int,
     hl_pf = hl_price_feedts or _default_hl_price_feedts
     hl_sig = hl_sigma_annual or _default_hl_sigma_annual
 
-    binding = pp.bind_yes_no_tokens(market["outcomes"], market["clobTokenIds"])  # fail closed first
+    # --- evidence-only instrumentation: per-stage start/completed/duration + window facts.
+    # Never changes the decision. On an EXPECTED stage exception the ORIGINAL exception is
+    # re-raised (preserving the raise contract) with the failing stage + partial timings
+    # attached, so run()'s handler can persist diagnosable CAPTURE_FAILED evidence.
+    stage_timings: dict = {}
+    probe_now_ms = now_ms_provider()
+    window_start_ms = (market["market_end_ts"] - TARGET_INTERVAL_S) * 1000
+    window_evidence = {
+        "window_start_ms": window_start_ms, "probe_now_ms": probe_now_ms,
+        "window_start_delta_ms": window_start_ms - probe_now_ms,
+        "window_start_in_future": int(window_start_ms > probe_now_ms),
+    }
+    capture_start_ms: int | None = None
 
-    yes_book = _fetch_book(binding["yes_token_id"], now_ms_provider=now_ms_provider,
-                           public_get=public_get)   # GET #1
-    no_book = _fetch_book(binding["no_token_id"], now_ms_provider=now_ms_provider,
-                          public_get=public_get)     # GET #2 (sequential; no retry)
+    def _run_stage(name, fn):
+        nonlocal capture_start_ms
+        start = now_ms_provider()
+        if capture_start_ms is None:
+            capture_start_ms = start
+        try:
+            result = fn()
+        except _EXPECTED_STAGE_EXC as e:
+            completed = now_ms_provider()
+            stage_timings[name] = {"start_ts": start, "completed_ts": completed,
+                                   "duration_ms": completed - start}
+            stage_timings[STAGE_TOTAL] = {"start_ts": capture_start_ms, "completed_ts": completed,
+                                          "duration_ms": completed - capture_start_ms}
+            e._g8_failure_stage = name
+            e._g8_stage_timings = dict(stage_timings)
+            e._g8_window_evidence = dict(window_evidence)
+            e._g8_partial = {"condition_id": market.get("conditionId"),
+                             "slug": market.get("slug"), "asset": market.get("asset")}
+            raise
+        completed = now_ms_provider()
+        stage_timings[name] = {"start_ts": start, "completed_ts": completed,
+                               "duration_ms": completed - start}
+        return result
+
+    binding = _run_stage(STAGE_OUTCOME_BINDING,
+                         lambda: pp.bind_yes_no_tokens(market["outcomes"], market["clobTokenIds"]))
+    yes_book = _run_stage(STAGE_YES_CLOB_FETCH,
+                          lambda: _fetch_book(binding["yes_token_id"], now_ms_provider=now_ms_provider,
+                                              public_get=public_get))   # GET #1
+    no_book = _run_stage(STAGE_NO_CLOB_FETCH,
+                         lambda: _fetch_book(binding["no_token_id"], now_ms_provider=now_ms_provider,
+                                             public_get=public_get))     # GET #2 (sequential; no retry)
 
     now_ms = max(yes_book["capture_completed_ms"], no_book["capture_completed_ms"])
-    hl_capture_started_ms = now_ms_provider()
-    p_now, feed_ts = hl_pf(market["asset"], now_ms)
-    window_start_ms = (market["market_end_ts"] - TARGET_INTERVAL_S) * 1000
-    strike, _ = hl_pf(market["asset"], window_start_ms)
-    sigma_annual = hl_sig(market["asset"], now_ms)
-    hl_done_ms = now_ms_provider()
+    p_now, feed_ts = _run_stage(STAGE_HL_CURRENT_PRICE, lambda: hl_pf(market["asset"], now_ms))
+    strike, _ = _run_stage(STAGE_HL_WINDOW_STRIKE, lambda: hl_pf(market["asset"], window_start_ms))
+    sigma_annual = _run_stage(STAGE_HL_SIGMA, lambda: hl_sig(market["asset"], now_ms))
 
-    tte_s = market["market_end_ts"] - (hl_done_ms // 1000)
-    if tte_s <= 0:
-        raise gm.ModelInputError("nonpositive tte for market window")
-    tte_years = Decimal(tte_s) / gm.SECONDS_PER_YEAR
-    fair_yes = gm.fair_yes_gbm(p_now, strike, sigma_annual, tte_years)
-    hl_capture_completed_ms = now_ms_provider()   # covers the complete HL acquisition+calc
+    def _model():
+        tte_s = market["market_end_ts"] - (now_ms_provider() // 1000)
+        if tte_s <= 0:
+            raise gm.ModelInputError("nonpositive tte for market window")
+        tte_years = Decimal(tte_s) / gm.SECONDS_PER_YEAR
+        return tte_s, gm.fair_yes_gbm(p_now, strike, sigma_annual, tte_years)
+    tte_s, fair_yes = _run_stage(STAGE_MODEL_CALCULATION, _model)
+
+    # preserve the exact no-lookahead HL bracketing semantics: hl_capture_started_ms is the
+    # first HL clock read; hl_capture_completed_ms covers the full HL acquisition + fair calc.
+    hl_capture_started_ms = stage_timings[STAGE_HL_CURRENT_PRICE]["start_ts"]
+    hl_capture_completed_ms = stage_timings[STAGE_MODEL_CALCULATION]["completed_ts"]
 
     decision_ts = now_ms_provider()   # stamped ONLY after every input above is available
+    stage_timings[STAGE_TOTAL] = {"start_ts": capture_start_ms, "completed_ts": decision_ts,
+                                  "duration_ms": decision_ts - capture_start_ms}
 
-    return pp.build_paper_decision(
+    decision = pp.build_paper_decision(
         market=market, yes_book=yes_book, no_book=no_book, fair_yes=fair_yes, feed_ts=feed_ts,
         tte_s=tte_s, max_skew_ms=max_skew_ms, decision_ts=decision_ts,
         hl_capture_started_ms=hl_capture_started_ms,
         hl_capture_completed_ms=hl_capture_completed_ms,
         intended_stake=intended_stake, cost_buffer=cost_buffer)
+    # evidence-only enrichment (adds diagnostic keys; never mutates economic fields)
+    decision["stage_timings_json"] = json.dumps(stage_timings, separators=(",", ":"))
+    decision.update(window_evidence)
+    return decision
 
 
 CAPTURE_FAILED = "CAPTURE_FAILED"   # orchestrator-level classification; not an edge-model status
+
+# stages a capture can fail in (persisted as failure_stage; also keyed in stage_timings)
+STAGE_OUTCOME_BINDING = "OUTCOME_BINDING"
+STAGE_YES_CLOB_FETCH = "YES_CLOB_FETCH"
+STAGE_NO_CLOB_FETCH = "NO_CLOB_FETCH"
+STAGE_HL_CURRENT_PRICE = "HL_CURRENT_PRICE"
+STAGE_HL_WINDOW_STRIKE = "HL_WINDOW_STRIKE"
+STAGE_HL_SIGMA = "HL_SIGMA"
+STAGE_MODEL_CALCULATION = "MODEL_CALCULATION"
+STAGE_TOTAL = "TOTAL_CAPTURE_TO_DECISION"
+
+_EXPECTED_STAGE_EXC = (pp.OutcomeBindingError, TransportError, gm.ModelInputError)
+_URL_RE = re.compile(r"https?://\S+")
+_HEX_RE = re.compile(r"0x[0-9a-fA-F]{12,}")
+_LONGNUM_RE = re.compile(r"\d{16,}")
+
+
+def _sanitize_exception_message(exc, cap: int = 200) -> str:
+    """Redact full URLs, 0x-hashes and long token/condition IDs, collapse whitespace, and
+    length-cap. NEVER let a raw URL, token ID, payload or book leak into persisted evidence
+    or the log line."""
+    msg = str(exc)
+    msg = _URL_RE.sub("[URL]", msg)
+    msg = _HEX_RE.sub("[HEX]", msg)
+    msg = _LONGNUM_RE.sub("[ID]", msg)
+    msg = " ".join(msg.split())
+    if len(msg) > cap:
+        msg = msg[:cap] + "...[truncated]"
+    return msg
 
 
 def _map_gamma_market(raw: dict) -> dict:
@@ -229,6 +317,55 @@ def _require_env_int(name: str) -> int:
     if value <= 0:
         raise PermissionError(f"{name} must be a positive integer, got {value!r}")
     return value
+
+
+def _capture_failed_decision(exc, market: dict) -> dict:
+    """Build a fully-diagnosable CAPTURE_FAILED ledger row from a stage-instrumented
+    exception: failure_stage, exception class, SANITIZED message, partial stage timings,
+    window evidence, and the identifiers available before the failure."""
+    partial = getattr(exc, "_g8_partial", None) or {}
+    decision = {
+        "status": CAPTURE_FAILED,
+        "condition_id": partial.get("condition_id", market.get("conditionId")),
+        "slug": partial.get("slug", market.get("slug")),
+        "asset": partial.get("asset", market.get("asset")),
+        "failure_stage": getattr(exc, "_g8_failure_stage", "UNCLASSIFIED"),
+        "exception_class": type(exc).__name__,
+        "exception_message": _sanitize_exception_message(exc),
+    }
+    stages = getattr(exc, "_g8_stage_timings", None)
+    if stages is not None:
+        decision["stage_timings_json"] = json.dumps(stages, separators=(",", ":"))
+    window = getattr(exc, "_g8_window_evidence", None)
+    if window is not None:
+        decision.update(window)
+    return decision
+
+
+def _emit_observation_log(n: int, decision: dict) -> None:
+    """One concise, FLUSHED structured stderr line per persisted observation. Never prints
+    a full order book, URL, or token ID -- only status + sanitized diagnostic summary."""
+    status = decision.get("status")
+    ts = decision.get("paper_decision_ts") or decision.get("probe_now_ms")
+    try:
+        utc = datetime.datetime.fromtimestamp((ts or 0) / 1000, datetime.timezone.utc).isoformat()
+    except (TypeError, ValueError, OSError, OverflowError):
+        utc = "NA"
+    parts = ["[g8obs]", f"n={n}", f"utc={utc}", f"asset={decision.get('asset')}",
+             f"slug={decision.get('slug')}", f"status={status}"]
+    if status == pp.PAPER_OPEN:
+        side = decision.get("selected_side")
+        net_edge = decision.get("yes_net_edge") if side == "YES" else decision.get("no_net_edge")
+        parts += [f"selected_side={side}", f"selected_net_edge={net_edge}"]
+    elif status == pp.STALE_QUOTE_REJECTED:
+        parts += [f"stale_side={decision.get('stale_side')}",
+                  f"age_cap_ms={decision.get('quote_age_at_capture_ms')}",
+                  f"age_dec_ms={decision.get('quote_age_at_decision_ms')}"]
+    elif status == CAPTURE_FAILED:
+        parts += [f"stage={decision.get('failure_stage')}",
+                  f"exc={decision.get('exception_class')}",
+                  f"msg={decision.get('exception_message')}"]
+    print(" ".join(str(p) for p in parts), file=sys.stderr, flush=True)
 
 
 def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000),
@@ -301,10 +438,10 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000),
                         book_fetch_client=public_get, hl_price_feedts=hl_pf,
                         hl_sigma_annual=hl_sig)
                 except (pp.OutcomeBindingError, TransportError, gm.ModelInputError) as e:
-                    decision = {"status": CAPTURE_FAILED, "condition_id": market.get("conditionId"),
-                               "slug": market.get("slug"), "asset": market.get("asset")}
+                    decision = _capture_failed_decision(e, market)
                 write_paper_ledger(conn, decision)
                 observations += 1
+                _emit_observation_log(observations, decision)
         if stop_reason == "OPERATOR_ABORT":
             break
         time.sleep(POLL_INTERVAL_S)
