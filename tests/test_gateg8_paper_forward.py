@@ -835,8 +835,10 @@ def _fail_hl_pf(fail_call):
      _hl_fixture()[0], _hl_fixture()[1]),
     ("NO_CLOB_FETCH", {}, _SeqFailBookClient(_ok_books(), fail_index=1, exc=fwd.TransportError("boom")),
      _hl_fixture()[0], _hl_fixture()[1]),
-    ("HL_CURRENT_PRICE", {}, _SeqFailBookClient(_ok_books()), _fail_hl_pf(0), _hl_fixture()[1]),
-    ("HL_WINDOW_STRIKE", {}, _SeqFailBookClient(_ok_books()), _fail_hl_pf(1), _hl_fixture()[1]),
+    # new capture order acquires the window strike FIRST, then current price: strike is HL pf
+    # call 0, current price is HL pf call 1.
+    ("HL_WINDOW_STRIKE", {}, _SeqFailBookClient(_ok_books()), _fail_hl_pf(0), _hl_fixture()[1]),
+    ("HL_CURRENT_PRICE", {}, _SeqFailBookClient(_ok_books()), _fail_hl_pf(1), _hl_fixture()[1]),
     ("HL_SIGMA", {}, _SeqFailBookClient(_ok_books()), _hl_fixture()[0],
      (lambda coin, now_ms: (_ for _ in ()).throw(fwd.TransportError("sigma boom")))),
     ("MODEL_CALCULATION", dict(market_end_ts=NOW_MS // 1000 - 10), _SeqFailBookClient(_ok_books()),
@@ -953,3 +955,266 @@ def test_current_window_evidence_not_future(monkeypatch):
     d = fwd.capture_and_decide(_market(), now_ms_provider=lambda: next(times), max_skew_ms=5000,
                                book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
     assert d["window_start_in_future"] == 0
+
+
+# ===========================================================================
+# G8 CAPTURE-ORDER + FUTURE-WINDOW FIX (RED-first).
+# Design A+D: HL inputs acquired first, CLOB books last; future window gated pre-network;
+# mandatory strike no-lookahead guard. No economic/threshold change. Injected clocks only.
+# ===========================================================================
+class _MonoClock:
+    """Single shared monotone millisecond clock. read() advances 1ms per call (used as the
+    now_ms_provider); advance() injects per-stage acquisition latency. Models the real
+    invariant that a freshly fetched CLOB quote is timestamped at ~wall-clock at fetch time."""
+
+    def __init__(self, start=NOW_MS):
+        self.now = start
+
+    def read(self):
+        self.now += 1
+        return self.now
+
+    def advance(self, ms):
+        self.now += ms
+
+
+def _ordered_hl(clock, log, *, strike_ts=None, p_now="60000", strike="59000", sigma=0.8,
+                strike_latency_ms=0, price_latency_ms=0, sigma_latency_ms=0,
+                strike_feed_offset_ms=0):
+    """Injected HL providers that (a) record call order into shared `log` and (b) advance the
+    shared clock to simulate real per-call latency. The window-open strike query is identified
+    by exact `strike_ts` match when supplied (robust at the equality boundary), else by
+    magnitude. Strike feed_ts defaults to exactly window_start_ms (no lookahead);
+    strike_feed_offset_ms forces a future-dated strike candle for the guard test."""
+    def _is_strike(ts):
+        return ts == strike_ts if strike_ts is not None else ts < NOW_MS - 1000
+
+    def pf(coin, ts_ms):
+        if _is_strike(ts_ms):
+            log.append(("HL_STRIKE", ts_ms))
+            clock.advance(strike_latency_ms)
+            return Decimal(strike), ts_ms + strike_feed_offset_ms
+        log.append(("HL_PRICE", ts_ms))
+        clock.advance(price_latency_ms)
+        return Decimal(p_now), ts_ms - 30_000
+
+    def sig(coin, now_ms):
+        log.append(("HL_SIGMA", now_ms))
+        clock.advance(sigma_latency_ms)
+        return sigma
+
+    return pf, sig
+
+
+def _quote_client(clock, log, prices, *, age_ms=0):
+    """CLOB book source: real /book shape; quote timestamp == clock.now - age_ms at fetch
+    (age_ms=0 => a genuinely fresh quote). Records ('CLOB', token) call order into `log`."""
+    def _get(url, params=None):
+        tid = params["token_id"]
+        log.append(("CLOB", tid))
+        return {"asks": [{"price": prices[tid], "size": "1000"}], "bids": [],
+                "timestamp": clock.now - age_ms}
+    return _get
+
+
+def _wsm(market):
+    return (market["market_end_ts"] - fwd.TARGET_INTERVAL_S) * 1000
+
+
+# --- exact provider/client call order: HL inputs first, books the FINAL acquisition ---
+def test_capture_order_hl_inputs_before_books(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    clock, log, m = _MonoClock(), [], _market()
+    pf, sig = _ordered_hl(clock, log, strike_ts=_wsm(m))
+    client = _quote_client(clock, log, {"tokUp": "0.40", "tokDown": "0.55"})
+    fwd.capture_and_decide(m, now_ms_provider=clock.read, max_skew_ms=5000,
+                           book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
+    kinds = [k for (k, _) in log]
+    assert kinds == ["HL_STRIKE", "HL_SIGMA", "HL_PRICE", "CLOB", "CLOB"]
+    # both CLOB books strictly after every HL input
+    assert min(i for i, k in enumerate(kinds) if k == "CLOB") > max(
+        i for i, k in enumerate(kinds) if k != "CLOB")
+
+
+# --- simulated 6s HL latency must NOT stale a freshly fetched quote ---
+def test_hl_latency_does_not_stale_fresh_quote(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    clock, log, m = _MonoClock(), [], _market()
+    pf, sig = _ordered_hl(clock, log, strike_ts=_wsm(m), strike_latency_ms=6000)
+    client = _quote_client(clock, log, {"tokUp": "0.40", "tokDown": "0.55"})
+    d = fwd.capture_and_decide(m, now_ms_provider=clock.read, max_skew_ms=5000,
+                               book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
+    assert d["status"] != pp.STALE_QUOTE_REJECTED
+    assert d["status"] in (pp.PAPER_OPEN, pp.NO_PAPER_ENTRY, pp.INSUFFICIENT_DEPTH_REJECTED)
+
+
+# --- a genuinely old CLOB quote still becomes STALE (decision-time freshness preserved) ---
+def test_genuinely_old_quote_still_stale(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    clock, log, m = _MonoClock(), [], _market()
+    pf, sig = _ordered_hl(clock, log, strike_ts=_wsm(m))
+    client = _quote_client(clock, log, {"tokUp": "0.40", "tokDown": "0.55"}, age_ms=5000)
+    d = fwd.capture_and_decide(m, now_ms_provider=clock.read, max_skew_ms=5000,
+                               book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
+    assert d["status"] == pp.STALE_QUOTE_REJECTED
+    assert d["stale_side"] in ("YES", "NO")
+    assert d["quote_age_at_decision_ms"] >= 5000
+
+
+# --- future next-window: WINDOW_NOT_STARTED with ZERO provider/network calls ---
+def test_future_window_not_started_zero_network(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    clock, log = _MonoClock(), []
+    m = _market(market_end_ts=NOW_MS // 1000 + 100_000)   # window_start well in the future
+    pf, sig = _ordered_hl(clock, log, strike_ts=_wsm(m))
+    client = _quote_client(clock, log, {"tokUp": "0.40", "tokDown": "0.55"})
+    d = fwd.capture_and_decide(m, now_ms_provider=clock.read, max_skew_ms=5000,
+                               book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
+    assert d["status"] == fwd.WINDOW_NOT_STARTED
+    assert log == []                                  # zero HL/CLOB calls before the gate
+    assert d["window_start_in_future"] == 1
+    assert d["status"] != pp.PAPER_OPEN               # structurally cannot open
+    assert d.get("selected_side") is None             # never reached edge evaluation
+
+
+# --- equality boundary window_start_ms == probe_now_ms remains ELIGIBLE ---
+def test_equality_boundary_window_eligible(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    clock = _MonoClock(start=NOW_MS - 1)              # first read (probe_now) == NOW_MS
+    log = []
+    m = _market(market_end_ts=NOW_MS // 1000 + fwd.TARGET_INTERVAL_S)
+    assert _wsm(m) == NOW_MS                          # window_start_ms == probe_now_ms
+    pf, sig = _ordered_hl(clock, log, strike_ts=_wsm(m))
+    client = _quote_client(clock, log, {"tokUp": "0.40", "tokDown": "0.55"})
+    d = fwd.capture_and_decide(m, now_ms_provider=clock.read, max_skew_ms=5000,
+                               book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
+    assert d["status"] != fwd.WINDOW_NOT_STARTED      # boundary is eligible
+    assert log != []                                  # proceeded to acquisition
+
+
+# --- mandatory strike no-lookahead guard: reject BEFORE any CLOB acquisition ---
+def test_strike_feed_ts_future_rejected_before_clob(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    clock, log, m = _MonoClock(), [], _market()
+    pf, sig = _ordered_hl(clock, log, strike_ts=_wsm(m), strike_feed_offset_ms=1)  # feed_ts > wsm
+    client = _quote_client(clock, log, {"tokUp": "0.40", "tokDown": "0.55"})
+    d = fwd.capture_and_decide(m, now_ms_provider=clock.read, max_skew_ms=5000,
+                               book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
+    assert d["status"] == pp.FUTURE_TIMESTAMP_REJECTED
+    assert d["field"] == "hl_strike_feed_ts"
+    assert all(k != "CLOB" for (k, _) in log)         # rejected before CLOB books
+    assert d["status"] != pp.PAPER_OPEN
+
+
+# --- decision_ts is final; every persisted evidence timestamp <= decision_ts ---
+def test_decision_ts_is_final_all_evidence_not_after(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    clock, log, m = _MonoClock(), [], _market()
+    pf, sig = _ordered_hl(clock, log, strike_ts=_wsm(m))
+    client = _quote_client(clock, log, {"tokUp": "0.40", "tokDown": "0.55"})
+    d = fwd.capture_and_decide(m, now_ms_provider=clock.read, max_skew_ms=5000,
+                               book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
+    dts = d["paper_decision_ts"]
+    st = _json.loads(d["stage_timings_json"])
+    for stage, t in st.items():
+        assert t["start_ts"] <= dts and t["completed_ts"] <= dts, stage
+    for key in ("yes_capture_completed_ms", "no_capture_completed_ms", "yes_quote_ts_ms",
+                "no_quote_ts_ms", "hl_capture_started_ms", "hl_capture_completed_ms",
+                "probe_now_ms"):
+        if d.get(key) is not None:
+            assert d[key] <= dts, key
+
+
+# --- eligible stage timings present & correct; TOTAL brackets first stage -> decision ---
+def test_eligible_stage_timings_and_total(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    clock, log, m = _MonoClock(), [], _market()
+    pf, sig = _ordered_hl(clock, log, strike_ts=_wsm(m))
+    client = _quote_client(clock, log, {"tokUp": "0.40", "tokDown": "0.55"})
+    d = fwd.capture_and_decide(m, now_ms_provider=clock.read, max_skew_ms=5000,
+                               book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
+    st = _json.loads(d["stage_timings_json"])
+    for stage in ("OUTCOME_BINDING", "HL_WINDOW_STRIKE", "HL_SIGMA", "HL_CURRENT_PRICE",
+                  "YES_CLOB_FETCH", "NO_CLOB_FETCH", "MODEL_CALCULATION",
+                  "TOTAL_CAPTURE_TO_DECISION"):
+        assert stage in st, stage
+        assert st[stage]["duration_ms"] == st[stage]["completed_ts"] - st[stage]["start_ts"] >= 0
+    total = st["TOTAL_CAPTURE_TO_DECISION"]
+    assert total["completed_ts"] == d["paper_decision_ts"]
+    assert total["start_ts"] == st["OUTCOME_BINDING"]["start_ts"]   # first stage anchors TOTAL
+
+
+# --- reorder preserves economics EXACTLY (golden via the unchanged economic functions) ---
+def test_reorder_preserves_economics_exactly(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    clock, log, m = _MonoClock(), [], _market()
+    P_NOW, STRIKE, SIGMA = Decimal("60000"), Decimal("59000"), 0.8
+    pf, sig = _ordered_hl(clock, log, strike_ts=_wsm(m), p_now=str(P_NOW), strike=str(STRIKE),
+                          sigma=SIGMA)
+    client = _quote_client(clock, log, {"tokUp": "0.40", "tokDown": "0.55"})
+    d = fwd.capture_and_decide(m, now_ms_provider=clock.read, max_skew_ms=5000,
+                               book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
+    # golden expectation: identical inputs through the COMMITTED, unmodified economic path.
+    # clock stays within one wall-second, so tte_s is deterministic.
+    tte_s = m["market_end_ts"] - (NOW_MS // 1000)
+    fair_yes = fwd.gm.fair_yes_gbm(P_NOW, STRIKE, SIGMA, Decimal(tte_s) / fwd.gm.SECONDS_PER_YEAR)
+    exp_yes = {"asks": [["0.40", "1000"]], "quote_ts_ms": NOW_MS,
+               "capture_started_ms": NOW_MS, "capture_completed_ms": NOW_MS}
+    exp_no = {"asks": [["0.55", "1000"]], "quote_ts_ms": NOW_MS,
+              "capture_started_ms": NOW_MS, "capture_completed_ms": NOW_MS}
+    golden = pp.build_paper_decision(market=m, yes_book=exp_yes, no_book=exp_no, fair_yes=fair_yes,
+                                     feed_ts=NOW_MS - 30_000, tte_s=tte_s, max_skew_ms=5000,
+                                     decision_ts=NOW_MS + 100, hl_capture_started_ms=NOW_MS,
+                                     hl_capture_completed_ms=NOW_MS + 1)
+    for field in ("fair_yes", "selected_side", "yes_net_edge", "no_net_edge",
+                  "yes_exec_ask_vwap", "no_exec_ask_vwap", "selected_entry_notional"):
+        assert d[field] == golden[field], field
+
+
+# --- run(): persists a current (eligible) AND a future (WINDOW_NOT_STARTED) observation ---
+def _gamma_from_slug(slug):
+    import datetime as _dt
+    epoch = int(slug.rsplit("-", 1)[1])
+    end_iso = _dt.datetime.fromtimestamp(epoch + fwd.TARGET_INTERVAL_S,
+                                         _dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return {"conditionId": f"0xcid-{epoch}", "slug": slug, "outcomes": ["Up", "Down"],
+            "clobTokenIds": ["tokUp", "tokDown"], "endDate": end_iso,
+            "feesEnabled": True, "feeSchedule": {"exponent": 1, "rate": 0.07, "takerOnly": True}}
+
+
+def test_run_persists_current_and_future_window(monkeypatch, tmp_path, capsys):
+    _armed_g8_env(monkeypatch, max_obs="2")
+    clock, log = _MonoClock(), []
+
+    def pg(url, params=None):
+        if url == fwd.runner.GAMMA_MARKETS:
+            return [_gamma_from_slug(params["slug"])]
+        log.append(("CLOB", params["token_id"]))
+        return {"asks": [{"price": "0.99", "size": "1000"}], "bids": [], "timestamp": clock.now}
+
+    def pf(coin, ts_ms):
+        if ts_ms < NOW_MS - 1000:                     # window-open strike query (past)
+            log.append(("HL_STRIKE", ts_ms))
+            return Decimal("59000"), ts_ms
+        log.append(("HL_PRICE", ts_ms))
+        return Decimal("60000"), ts_ms - 30_000
+
+    def sig(coin, now_ms):
+        log.append(("HL_SIGMA", now_ms))
+        return 0.8
+
+    db = str(tmp_path / "run_cur_fut.sqlite3")
+    fwd.run(db, now_ms_provider=clock.read, monotonic_provider=lambda: 0.0,
+            public_get=pg, hl_price_feedts=pf, hl_sigma_annual=sig)
+    import sqlite3
+    conn = sqlite3.connect(db)
+    rows = conn.execute(
+        "SELECT status, window_start_in_future FROM gateg8_paper_ledger ORDER BY id").fetchall()
+    conn.close()
+    assert len(rows) == 2
+    statuses = [r[0] for r in rows]
+    fut = [r for r in rows if r[0] == fwd.WINDOW_NOT_STARTED]
+    assert len(fut) == 1 and fut[0][1] == 1           # exactly one future row, flagged
+    assert any(s != fwd.WINDOW_NOT_STARTED for s in statuses)   # eligible row reached capture
+    err = capsys.readouterr().err
+    assert err.count("[g8obs]") == 2                  # exactly one log line per observation

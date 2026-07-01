@@ -174,13 +174,24 @@ def capture_and_decide(market: dict, *, now_ms_provider, max_skew_ms: int,
     # re-raised (preserving the raise contract) with the failing stage + partial timings
     # attached, so run()'s handler can persist diagnosable CAPTURE_FAILED evidence.
     stage_timings: dict = {}
-    probe_now_ms = now_ms_provider()
+    probe_now_ms = now_ms_provider()   # FIRST clock read; taken before any provider/network call
     window_start_ms = (market["market_end_ts"] - TARGET_INTERVAL_S) * 1000
     window_evidence = {
         "window_start_ms": window_start_ms, "probe_now_ms": probe_now_ms,
         "window_start_delta_ms": window_start_ms - probe_now_ms,
         "window_start_in_future": int(window_start_ms > probe_now_ms),
     }
+
+    # Future-window eligibility gate (design D): a candidate whose window has not opened yet has
+    # no realized window-open strike candle, so it can never be priced. Reject fail-closed
+    # BEFORE any HL/CLOB/network call. Boundary window_start_ms == probe_now_ms stays eligible.
+    # Structurally returns before edge evaluation -> can never PAPER_OPEN.
+    if window_start_ms > probe_now_ms:
+        decision = {"status": WINDOW_NOT_STARTED, "condition_id": market.get("conditionId"),
+                    "slug": market.get("slug"), "asset": market.get("asset")}
+        decision.update(window_evidence)
+        return decision
+
     capture_start_ms: int | None = None
 
     def _run_stage(name, fn):
@@ -209,17 +220,34 @@ def capture_and_decide(market: dict, *, now_ms_provider, max_skew_ms: int,
 
     binding = _run_stage(STAGE_OUTCOME_BINDING,
                          lambda: pp.bind_yes_no_tokens(market["outcomes"], market["clobTokenIds"]))
+
+    # HL inputs acquired FIRST (strike -> sigma -> current price); the executable CLOB books are
+    # the FINAL network acquisition before model+decision, so quote freshness is measured at a
+    # decision stamp that immediately follows book capture (design A). Economics unchanged.
+    strike, strike_feed_ts = _run_stage(
+        STAGE_HL_WINDOW_STRIKE, lambda: hl_pf(market["asset"], window_start_ms))
+
+    # Mandatory strike no-lookahead guard: the window-open strike candle must not be timestamped
+    # after the window opened. Fail closed with the COMMITTED FUTURE_TIMESTAMP_REJECTED status
+    # (never a new schema column; never mutates the shared G5 helper) BEFORE any CLOB acquisition.
+    if strike_feed_ts > window_start_ms:
+        decision = {"status": pp.FUTURE_TIMESTAMP_REJECTED, "field": "hl_strike_feed_ts",
+                    "condition_id": market.get("conditionId"), "slug": market.get("slug"),
+                    "asset": market.get("asset"),
+                    "stage_timings_json": json.dumps(dict(stage_timings), separators=(",", ":"))}
+        decision.update(window_evidence)
+        return decision
+
+    sigma_annual = _run_stage(STAGE_HL_SIGMA, lambda: hl_sig(market["asset"], now_ms_provider()))
+    p_now, feed_ts = _run_stage(
+        STAGE_HL_CURRENT_PRICE, lambda: hl_pf(market["asset"], now_ms_provider()))
+
     yes_book = _run_stage(STAGE_YES_CLOB_FETCH,
                           lambda: _fetch_book(binding["yes_token_id"], now_ms_provider=now_ms_provider,
-                                              public_get=public_get))   # GET #1
+                                              public_get=public_get))   # GET #1 (final acquisitions)
     no_book = _run_stage(STAGE_NO_CLOB_FETCH,
                          lambda: _fetch_book(binding["no_token_id"], now_ms_provider=now_ms_provider,
                                              public_get=public_get))     # GET #2 (sequential; no retry)
-
-    now_ms = max(yes_book["capture_completed_ms"], no_book["capture_completed_ms"])
-    p_now, feed_ts = _run_stage(STAGE_HL_CURRENT_PRICE, lambda: hl_pf(market["asset"], now_ms))
-    strike, _ = _run_stage(STAGE_HL_WINDOW_STRIKE, lambda: hl_pf(market["asset"], window_start_ms))
-    sigma_annual = _run_stage(STAGE_HL_SIGMA, lambda: hl_sig(market["asset"], now_ms))
 
     def _model():
         tte_s = market["market_end_ts"] - (now_ms_provider() // 1000)
@@ -229,9 +257,9 @@ def capture_and_decide(market: dict, *, now_ms_provider, max_skew_ms: int,
         return tte_s, gm.fair_yes_gbm(p_now, strike, sigma_annual, tte_years)
     tte_s, fair_yes = _run_stage(STAGE_MODEL_CALCULATION, _model)
 
-    # preserve the exact no-lookahead HL bracketing semantics: hl_capture_started_ms is the
-    # first HL clock read; hl_capture_completed_ms covers the full HL acquisition + fair calc.
-    hl_capture_started_ms = stage_timings[STAGE_HL_CURRENT_PRICE]["start_ts"]
+    # no-lookahead HL bracketing: hl_capture_started_ms is the first HL clock read (strike);
+    # hl_capture_completed_ms covers through the fair calc. Both remain < decision_ts.
+    hl_capture_started_ms = stage_timings[STAGE_HL_WINDOW_STRIKE]["start_ts"]
     hl_capture_completed_ms = stage_timings[STAGE_MODEL_CALCULATION]["completed_ts"]
 
     decision_ts = now_ms_provider()   # stamped ONLY after every input above is available
@@ -251,6 +279,7 @@ def capture_and_decide(market: dict, *, now_ms_provider, max_skew_ms: int,
 
 
 CAPTURE_FAILED = "CAPTURE_FAILED"   # orchestrator-level classification; not an edge-model status
+WINDOW_NOT_STARTED = "WINDOW_NOT_STARTED"   # future-window candidate gated pre-network (never opens)
 
 # stages a capture can fail in (persisted as failure_stage; also keyed in stage_timings)
 STAGE_OUTCOME_BINDING = "OUTCOME_BINDING"
@@ -365,6 +394,11 @@ def _emit_observation_log(n: int, decision: dict) -> None:
         parts += [f"stage={decision.get('failure_stage')}",
                   f"exc={decision.get('exception_class')}",
                   f"msg={decision.get('exception_message')}"]
+    elif status == WINDOW_NOT_STARTED:
+        parts += [f"window_start_delta_ms={decision.get('window_start_delta_ms')}",
+                  f"future={decision.get('window_start_in_future')}"]
+    elif status == pp.FUTURE_TIMESTAMP_REJECTED:
+        parts += [f"field={decision.get('field')}"]
     print(" ".join(str(p) for p in parts), file=sys.stderr, flush=True)
 
 
