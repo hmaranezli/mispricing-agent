@@ -523,6 +523,31 @@ def test_validate_monitoring_timing_never_uses_resolution_data():
     assert "outcome" not in inspect.signature(ge.validate_monitoring_timing).parameters
 
 
+# --- ENTRY->MONITOR timing: poll_decision_ts must be >= the position's preserved entry_ts
+# (a poll can never predate its own entry). Reuses the existing fail-closed rejection. ---
+def test_validate_monitoring_timing_rejects_poll_before_entry_ts():
+    out = ge.validate_monitoring_timing(**_timing_kwargs(), entry_ts=NOW_MS + 1)  # entry after poll
+    assert out["ok"] is False
+    assert out["status"] == ge.MONITORING_TIMESTAMP_REJECTED
+    assert out["field"] == "entry_ts"
+
+
+def test_validate_monitoring_timing_accepts_poll_equal_entry_ts():
+    out = ge.validate_monitoring_timing(**_timing_kwargs(), entry_ts=NOW_MS)  # equal to poll_decision_ts
+    assert out == {"ok": True}
+
+
+def test_validate_monitoring_timing_accepts_poll_after_entry_ts():
+    out = ge.validate_monitoring_timing(**_timing_kwargs(), entry_ts=NOW_MS - 1000)  # entry before poll
+    assert out == {"ok": True}
+
+
+def test_validate_monitoring_timing_entry_ts_optional_backward_compat():
+    # entry_ts is optional; omitting it preserves the prior behavior exactly.
+    out = ge.validate_monitoring_timing(**_timing_kwargs())
+    assert out == {"ok": True}
+
+
 def test_concurrent_exposure_tally():
     open_positions = [
         {"condition_id": "c1", "asset": "BTC", "selected_side": "YES", "entry_cost": Decimal("25")},

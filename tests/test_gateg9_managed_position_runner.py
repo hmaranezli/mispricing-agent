@@ -370,6 +370,107 @@ def test_capture_monitoring_snapshot_never_takes_resolution_param():
     assert "resolution" not in params and "outcome" not in params
 
 
+# --- ENTRY->MONITOR timing guard: the runtime passes the position's stored entry_ts into
+# the validator; a poll stamped before entry fails closed with the existing rejection. ---
+def test_capture_monitoring_snapshot_rejects_poll_before_entry_ts(monkeypatch):
+    monkeypatch.setenv(mpr.MANAGED_ARM_ENV, mpr.MANAGED_ARM_TOKEN)
+    pos = _position()
+    pos["entry_ts"] = NOW_MS + 10_000_000   # entry stamped far AFTER every poll timestamp
+
+    def fake_public_get(url, params=None):
+        if params["token_id"] == "tokUp":
+            return _book_payload("0.55", "0.50", ts=NOW_MS - 100)
+        return _book_payload("0.48", "0.45", ts=NOW_MS - 90)
+
+    pf, sig = _hl_fixture()
+    times = iter(list(range(NOW_MS, NOW_MS + 1000)))
+    snap = mpr.capture_monitoring_snapshot(pos, poll_seq=1, now_ms_provider=lambda: next(times),
+                                           public_get=fake_public_get, hl_price_feedts=pf,
+                                           hl_sigma_annual=sig)
+    assert snap["status"] == ge.MONITORING_TIMESTAMP_REJECTED
+    assert snap["field"] == "entry_ts"
+
+
+def test_advance_position_poll_before_entry_writes_no_trigger_fill_terminal(tmp_path, monkeypatch):
+    monkeypatch.setenv(mpr.MANAGED_ARM_ENV, mpr.MANAGED_ARM_TOKEN)
+    db = str(tmp_path / "g9_before_entry.sqlite3")
+    conn = sqlite3.connect(db)
+    mpr.init_managed_ledger(conn)
+    pos = _position("cid-1")
+    pos["entry_ts"] = NOW_MS + 10_000_000   # poll can never predate entry
+    mpr.write_managed_position(conn, pos)
+    runtimes = mpr._fresh_overlay_runtimes()
+    pf, sig = _hl_fixture()
+    times = iter(list(range(NOW_MS, NOW_MS + 1000)))
+    snap = mpr.advance_position_one_poll(conn, pos, poll_seq=1, now_ms_provider=lambda: next(times),
+                                         public_get=_rising_bid_book, hl_price_feedts=pf,
+                                         hl_sigma_annual=sig, overlay_runtimes=runtimes)
+    assert snap["status"] == ge.MONITORING_TIMESTAMP_REJECTED
+    n_ev = conn.execute("SELECT COUNT(*) FROM gateg9_overlay_events WHERE position_id='cid-1'").fetchone()[0]
+    n_term = conn.execute("SELECT COUNT(*) FROM gateg9_overlay_terminal WHERE position_id='cid-1'").fetchone()[0]
+    assert (n_ev, n_term) == (0, 0)   # no trigger/fill/terminal row on a pre-entry poll
+    conn.close()
+
+
+# --- SAME-FILE GUARD: --db and --g8-db resolving to the same filesystem target fail
+# closed BEFORE any DB open/create/write or network. ---
+def test_run_rejects_identical_db_and_g8_db_path(monkeypatch, tmp_path):
+    _armed_managed_env(monkeypatch)
+    same = str(tmp_path / "same.sqlite3")
+    calls = []
+
+    def no_network(url, params=None):
+        calls.append(url)
+        raise AssertionError("no GET expected")
+
+    with pytest.raises(PermissionError):
+        mpr.run(same, same, public_get=no_network)
+    assert calls == []
+    import os
+    assert not os.path.exists(same)   # zero mutation: target never created
+
+
+def test_run_rejects_symlink_aliased_same_file(monkeypatch, tmp_path):
+    _armed_managed_env(monkeypatch)
+    import os
+    g8_db = str(tmp_path / "g8_real.sqlite3")
+    open(g8_db, "w").close()                       # real g8 file exists
+    link = str(tmp_path / "g8_link.sqlite3")
+    os.symlink(g8_db, link)                         # --db is a symlink to the g8 file
+    calls = []
+
+    def no_network(url, params=None):
+        calls.append(url)
+        raise AssertionError("no GET expected")
+
+    with pytest.raises(PermissionError):
+        mpr.run(link, g8_db, public_get=no_network)
+    assert calls == []
+    # the real g8 file was never mutated with G9 tables
+    conn = sqlite3.connect(g8_db)
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    conn.close()
+    assert not any(t.startswith("gateg9_") for t in tables)
+
+
+def test_run_rejects_relative_absolute_alias_same_file(monkeypatch, tmp_path):
+    _armed_managed_env(monkeypatch)
+    import os
+    g8_db = str(tmp_path / "g8.sqlite3")
+    open(g8_db, "w").close()
+    # a relative/".."-laden alias that resolves to the same absolute target
+    alias = str(tmp_path / "sub" / ".." / "g8.sqlite3")
+    calls = []
+
+    def no_network(url, params=None):
+        calls.append(url)
+        raise AssertionError("no GET expected")
+
+    with pytest.raises(PermissionError):
+        mpr.run(alias, g8_db, public_get=no_network)
+    assert calls == []
+
+
 # ===========================================================================
 # PHASE B — stateful multi-poll managed vertical
 # ===========================================================================

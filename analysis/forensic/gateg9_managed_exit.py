@@ -514,11 +514,16 @@ def record_entry_depth_persistence(*, entry_ask_vwap: Decimal, entry_filled_qty:
 def validate_monitoring_timing(*, selected_quote_ts_ms, selected_capture_completed_ms,
                                opposite_quote_ts_ms, opposite_capture_completed_ms,
                                hl_feed_ts, hl_capture_completed_ms, poll_decision_ts,
-                               quote_stale_ms) -> dict:
+                               quote_stale_ms, entry_ts=None) -> dict:
     """poll_decision_ts must be >= every capture-completion timestamp (no-lookahead); a
     missing or future timestamp fails closed. Only the two BOOK quote timestamps are
     additionally checked for staleness (mirrors the committed G8 discipline, which never
-    applies a staleness bound to the HL feed timestamp itself)."""
+    applies a staleness bound to the HL feed timestamp itself).
+
+    When the position's preserved G8 entry_ts is supplied (optional; None preserves the
+    prior behavior exactly), poll_decision_ts must ALSO be >= entry_ts -- a monitoring poll
+    can never predate its own entry. A poll before entry (entry_ts > poll_decision_ts) is
+    rejected via the SAME fail-closed MONITORING_TIMESTAMP_REJECTED path (field=entry_ts)."""
     ordering_checks = [
         ("selected_quote_ts_ms", selected_quote_ts_ms),
         ("selected_capture_completed_ms", selected_capture_completed_ms),
@@ -527,6 +532,8 @@ def validate_monitoring_timing(*, selected_quote_ts_ms, selected_capture_complet
         ("hl_feed_ts", hl_feed_ts),
         ("hl_capture_completed_ms", hl_capture_completed_ms),
     ]
+    if entry_ts is not None:
+        ordering_checks.append(("entry_ts", entry_ts))
     for field, ts in ordering_checks:
         if ts is None:
             return {"ok": False, "status": MONITORING_TIMESTAMP_REJECTED, "field": field,

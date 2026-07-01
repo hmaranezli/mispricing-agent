@@ -269,7 +269,8 @@ def capture_monitoring_snapshot(position: dict, *, poll_seq: int, now_ms_provide
         opposite_quote_ts_ms=opposite_book["quote_ts_ms"],
         opposite_capture_completed_ms=opposite_book["capture_completed_ms"],
         hl_feed_ts=hl_feed_ts, hl_capture_completed_ms=hl_capture_completed_ms,
-        poll_decision_ts=poll_ts_ms, quote_stale_ms=QUOTE_STALE_MS)
+        poll_decision_ts=poll_ts_ms, quote_stale_ms=QUOTE_STALE_MS,
+        entry_ts=position.get("entry_ts"))   # poll can never predate the preserved G8 entry_ts
     if not timing["ok"]:
         return {"status": timing["status"], "field": timing["field"], "reason": timing["reason"],
                "position_id": position["position_id"], "condition_id": position["condition_id"],
@@ -817,6 +818,16 @@ def run(db_path: str, g8_db_path: str, *, resume: bool = False,
 
     if abort_check is None:
         abort_check = lambda: runner._ABORT_REQUESTED   # noqa: E731
+
+    # SAME-FILE GUARD: refuse before ANY DB open/create/write (or network) when the target
+    # ledger and the read-only G8 source resolve to the same filesystem target -- identical
+    # path strings, relative/absolute aliases, or resolvable symlink aliases all collapse
+    # under realpath. Never let the source PAPER_OPEN ledger double as the writable target.
+    if os.path.realpath(db_path) == os.path.realpath(g8_db_path):
+        raise PermissionError(
+            f"--db and --g8-db resolve to the same filesystem target "
+            f"({os.path.realpath(db_path)!r}); refusing to use the G8 source ledger as the "
+            "G9 target (fail-closed before any DB open, creation, write, or network).")
 
     runner._require_under_tmp(db_path, "DB")
     if resume:
