@@ -14,15 +14,22 @@ from analysis.forensic import gateg7_paper_pnl as pp
 from tools import gateg7_paper_pnl_evaluator as ev
 
 
+_REAL_FEE_SCHEDULE = {"exponent": 1, "rate": 0.07, "takerOnly": True, "rebateRate": 0.2}
+
+
 def _gamma_market(slug, cid, *, outcomes=("Up", "Down"), token_ids=("tokUp", "tokDown"),
-                  winner_idx=1, fees_enabled=True, taker_base_fee=1000, closed=True):
+                  winner_idx=1, fees_enabled=True, taker_base_fee=1000,
+                  fee_schedule=_REAL_FEE_SCHEDULE, closed=True):
     prices = ["0.0", "0.0"]
     if winner_idx is not None:
         prices[winner_idx] = "1.0"
-    return [{"slug": slug, "conditionId": cid, "clobTokenIds": list(token_ids),
-            "outcomes": list(outcomes), "outcomePrices": prices, "closed": closed,
-            "umaResolutionStatus": "resolved", "feesEnabled": fees_enabled,
-            "takerBaseFee": taker_base_fee}]
+    market = {"slug": slug, "conditionId": cid, "clobTokenIds": list(token_ids),
+             "outcomes": list(outcomes), "outcomePrices": prices, "closed": closed,
+             "umaResolutionStatus": "resolved", "feesEnabled": fees_enabled,
+             "takerBaseFee": taker_base_fee}
+    if fee_schedule is not None:
+        market["feeSchedule"] = dict(fee_schedule)
+    return [market]
 
 
 def _clob_payload(cid, *, token_ids=("tokUp", "tokDown"), winner_idx=1, closed=True):
@@ -61,10 +68,18 @@ def test_evaluate_full_candidate_fetches_gamma_exactly_once():
 
 def test_evaluate_full_candidate_fee_piggybacks_on_cached_gamma():
     r = ev.evaluate_full_candidate(
-        _cand(), gamma_fetch=lambda s, c: _gamma_market(s, c, fees_enabled=True, taker_base_fee=1000),
+        _cand(), gamma_fetch=lambda s, c: _gamma_market(s, c, fees_enabled=True),
         clob_fetch=lambda c: _clob_payload(c))
     assert r["fee_status"] == pp.FEE_VERIFIED_RATE
-    assert r["fee_rate"] == str(Decimal("1000") / Decimal("50000"))
+    assert r["fee_rate"] == str(Decimal("0.07"))          # feeSchedule.rate, NOT takerBaseFee/50000
+
+
+def test_evaluate_full_candidate_missing_fee_schedule_is_unsupported():
+    r = ev.evaluate_full_candidate(
+        _cand(), gamma_fetch=lambda s, c: _gamma_market(s, c, fees_enabled=True, fee_schedule=None),
+        clob_fetch=lambda c: _clob_payload(c))
+    assert r["fee_status"] == pp.FEE_UNSUPPORTED_SCHEDULE
+    assert r["fee_rate"] is None
 
 
 def test_evaluate_full_candidate_verified_zero_fee():

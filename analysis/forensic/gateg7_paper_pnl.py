@@ -18,6 +18,9 @@ from __future__ import annotations
 import re
 from decimal import ROUND_HALF_UP, Decimal
 
+from analysis.forensic.gateg5_plumbing import walk_ask_ladder_for_stake, ladder_to_decimal_json, \
+    parse_ask_ladder
+
 _WINDOW_RE = re.compile(r"updown-15m-(\d+)")
 _ELIGIBLE_DECISIONS = frozenset({"FILLED_ACTIVE", "UNFILLED_EDGE_LOST"})
 
@@ -25,6 +28,12 @@ _ELIGIBLE_DECISIONS = frozenset({"FILLED_ACTIVE", "UNFILLED_EDGE_LOST"})
 FEE_VERIFIED_ZERO = "VERIFIED_ZERO_FEE"
 FEE_VERIFIED_RATE = "VERIFIED_FEE_RATE"
 FEE_METADATA_MISSING = "NOT_COMPUTED_FEE_METADATA_MISSING"   # also doubles as the net_pnl sentinel
+FEE_UNSUPPORTED_SCHEDULE = "FEE_NOT_COMPUTED_UNSUPPORTED_SCHEDULE"  # feeSchedule missing/exponent!=1/not takerOnly
+
+# bidirectional selection outcomes
+NO_PAPER_ENTRY = "NO_PAPER_ENTRY"
+EDGE_TIE_NO_ENTRY = "EDGE_TIE_NO_ENTRY"
+NOT_ADMITTED_UNSUPPORTED_FEE = "NOT_ADMITTED_UNSUPPORTED_FEE"
 
 _FIVE_DP = Decimal("0.00001")
 
@@ -112,13 +121,21 @@ def clamp_fill_qty(exec_fill_qty_avail: Decimal, exec_ask_vwap: Decimal,
 # fee config — verified-zero / verified-rate / unverifiable (never silent zero)
 # ---------------------------------------------------------------------------
 def parse_fee_config(market: dict | None) -> dict:
-    """Read feesEnabled + takerBaseFee from a raw Gamma market dict.
+    """Read feesEnabled + feeSchedule from a raw Gamma market dict.
 
-    feesEnabled is False  -> VERIFIED_ZERO_FEE, fee_rate=0 (an explicit verified signal).
-    feesEnabled is True and takerBaseFee numeric -> VERIFIED_FEE_RATE, fee_rate=raw/50000
-        (documented Polymarket convention: takerBaseFee=1000 -> 2%).
-    Anything else (missing feesEnabled, or enabled but unparseable takerBaseFee, or no
-    market at all) -> NOT_COMPUTED_FEE_METADATA_MISSING, fee_rate=None. Never silently 0.
+    feeSchedule is AUTHORITATIVE over takerBaseFee: takerBaseFee is NEVER divided/used here
+    (Gamma exposes both an integer takerBaseFee AND a decimal feeSchedule.rate on the same
+    payload; they are not proven to be the same unit/quantity, so only feeSchedule.rate is
+    trusted). rebateRate is maker-rebate metadata only and MUST NOT reduce the taker fee.
+
+    feesEnabled is False -> VERIFIED_ZERO_FEE, fee_rate=0 (an explicit verified signal).
+    feesEnabled is True and feeSchedule has exponent==1, takerOnly==True, numeric rate
+        (this taker-at-ask paper path only supports that shape) -> VERIFIED_FEE_RATE,
+        fee_rate=feeSchedule.rate exactly.
+    feesEnabled is True but feeSchedule is missing/unparseable/exponent!=1/takerOnly!=True
+        -> FEE_NOT_COMPUTED_UNSUPPORTED_SCHEDULE, fee_rate=None (candidate not admitted).
+    feesEnabled missing, or no market at all -> NOT_COMPUTED_FEE_METADATA_MISSING,
+        fee_rate=None. Never silently 0.
     """
     if not isinstance(market, dict):
         return {"fee_rate": None, "fee_status": FEE_METADATA_MISSING}
@@ -126,9 +143,13 @@ def parse_fee_config(market: dict | None) -> dict:
     if enabled is False:
         return {"fee_rate": Decimal("0"), "fee_status": FEE_VERIFIED_ZERO}
     if enabled is True:
-        raw = _d(market.get("takerBaseFee"))
-        if raw is not None:
-            return {"fee_rate": raw / Decimal("50000"), "fee_status": FEE_VERIFIED_RATE}
+        schedule = market.get("feeSchedule")
+        if isinstance(schedule, dict):
+            rate = _d(schedule.get("rate"))
+            if (rate is not None and schedule.get("exponent") == 1
+                    and schedule.get("takerOnly") is True):
+                return {"fee_rate": rate, "fee_status": FEE_VERIFIED_RATE}
+        return {"fee_rate": None, "fee_status": FEE_UNSUPPORTED_SCHEDULE}
     return {"fee_rate": None, "fee_status": FEE_METADATA_MISSING}
 
 
@@ -174,6 +195,10 @@ def aggregate_bucket(results: list) -> dict:
     wins = sum(1 for r in resolved_rows if r.get("matched"))
     losses = resolved - wins
     nets = [r["net_pnl"] for r in resolved_rows if isinstance(r.get("net_pnl"), Decimal)]
+    winner_nets = [r["net_pnl"] for r in resolved_rows
+                   if r.get("matched") and isinstance(r.get("net_pnl"), Decimal)]
+    loser_nets = [r["net_pnl"] for r in resolved_rows
+                  if r.get("matched") is False and isinstance(r.get("net_pnl"), Decimal)]
     windows = {window_of(r.get("slug")) for r in results if window_of(r.get("slug"))}
     return {
         "candidates": candidates, "resolved": resolved, "wins": wins, "losses": losses,
@@ -182,7 +207,83 @@ def aggregate_bucket(results: list) -> dict:
         "total_net_pnl": sum(nets, Decimal("0")),
         "mean_net_pnl": (sum(nets, Decimal("0")) / len(nets)) if nets else Decimal("0"),
         "median_net_pnl": _median(nets),
-        "worst_loss": min(nets) if nets else None,
-        "best_win": max(nets) if nets else None,
+        # never label a negative result "best win": best_win is None unless there IS a win.
+        "best_win": max(winner_nets) if winner_nets else None,
+        "least_loss": max(loser_nets) if loser_nets else None,     # smallest-magnitude loss
+        "worst_loss": min(loser_nets) if loser_nets else None,
         "unique_windows": len(windows),
     }
+
+
+def compute_side_execution(ask_levels, intended_stake: Decimal = Decimal("25")) -> dict:
+    """Entry-time executable price/qty for one side's ask ladder, via the PROVEN
+    stake-clamped ladder walk (validated/merged/sorted; no synthetic depth)."""
+    levels = parse_ask_ladder(ladder_to_decimal_json(ask_levels))
+    fill = walk_ask_ladder_for_stake(levels, intended_stake)
+    return {"exec_ask_vwap": fill.exec_ask_vwap, "filled_qty": fill.filled_qty,
+            "depth_sufficient": fill.depth_sufficient}
+
+
+def _evaluate_side(fair_component: Decimal, ask_levels, fee_cfg: dict, cost_buffer: Decimal,
+                   intended_stake: Decimal) -> dict:
+    exec_info = compute_side_execution(ask_levels, intended_stake)
+    ask, qty = exec_info["exec_ask_vwap"], exec_info["filled_qty"]
+    gross_edge = fair_component - ask
+    fee_rate = fee_cfg.get("fee_rate")
+    if fee_rate is None:
+        return {"exec_ask_vwap": str(ask), "filled_qty": str(qty), "gross_edge": str(gross_edge),
+                "fee_per_share": None, "net_edge": None, "admitted": False,
+                "not_admitted_reason": fee_cfg.get("fee_status")}
+    fee = entry_fee_quadratic(qty, fee_rate, ask) if qty > 0 else Decimal("0")
+    fee_per_share = (fee / qty) if qty > 0 else Decimal("0")
+    net_edge = gross_edge - fee_per_share - cost_buffer
+    return {"exec_ask_vwap": str(ask), "filled_qty": str(qty), "gross_edge": str(gross_edge),
+            "fee_per_share": str(fee_per_share), "net_edge": net_edge, "admitted": True,
+            "not_admitted_reason": None}
+
+
+def evaluate_bidirectional_entry(*, fair_yes, yes_ask_levels, no_ask_levels, yes_fee_config,
+                                 no_fee_config, cost_buffer: Decimal = Decimal("0"),
+                                 intended_stake: Decimal = Decimal("25"),
+                                 reference_age_ms=None, tte_s=None) -> dict:
+    """Pure, entry-time-only bidirectional selection. Takes BOTH token books (already fetched
+    at the SAME decision cycle by the caller); no resolution/outcome input exists in this
+    signature -- structurally no-lookahead. NEVER defaults to NO/Down: the side with the
+    larger strictly positive net edge wins; ties and non-positive edges fail closed.
+    reference_age_ms/tte_s are recorded as diagnostics only (not used in selection)."""
+    fair_yes = Decimal(str(fair_yes))
+    yes = _evaluate_side(fair_yes, yes_ask_levels, yes_fee_config, cost_buffer, intended_stake)
+    no = _evaluate_side(Decimal("1") - fair_yes, no_ask_levels, no_fee_config, cost_buffer,
+                        intended_stake)
+
+    yes_ne, no_ne = yes["net_edge"], no["net_edge"]
+    if yes_ne is None and no_ne is None:
+        selected, reason = None, NOT_ADMITTED_UNSUPPORTED_FEE
+    elif yes_ne is None:
+        selected, reason = ("NO", None) if no_ne > 0 else (None, NO_PAPER_ENTRY)
+    elif no_ne is None:
+        selected, reason = ("YES", None) if yes_ne > 0 else (None, NO_PAPER_ENTRY)
+    elif yes_ne <= 0 and no_ne <= 0:
+        selected, reason = None, NO_PAPER_ENTRY
+    elif yes_ne == no_ne:
+        selected, reason = None, EDGE_TIE_NO_ENTRY
+    elif yes_ne > no_ne:
+        selected, reason = "YES", None
+    else:
+        selected, reason = "NO", None
+
+    return {"fair_yes": str(fair_yes), "reference_age_ms": reference_age_ms, "tte_s": tte_s,
+            "yes": yes, "no": no, "selected_side": selected, "no_entry_reason": reason}
+
+
+def realized_effective_n(resolved_rows: list) -> dict:
+    """Realized effective-N counts RESOLVED unique 15m windows only (not all candidates).
+    Correlated (same-window, multi-asset) windows are flagged — those are NOT independent
+    trials and must not be double-counted toward statistical confidence."""
+    windows: dict[str, set] = {}
+    for r in resolved_rows:
+        w = window_of(r.get("slug"))
+        if w:
+            windows.setdefault(w, set()).add(r.get("asset"))
+    correlated = {w: sorted(a) for w, a in windows.items() if len(a) > 1}
+    return {"resolved_unique_windows": len(windows), "correlated_windows": correlated}

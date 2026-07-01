@@ -138,22 +138,40 @@ def diagnose_negative_pnl(deduped_candidates, results_by_signal_id):
     }
 
 
-def build_telegram_summary(cohort, bucket_reports, diagnosis, verdict):
+def build_telegram_summary(cohort, bucket_reports, diagnosis, verdict, realized_n=None):
+    eff_n_line = (f"Realized effective-N: {realized_n['resolved_unique_windows']} resolved windows"
+                  + (f" (correlated: {realized_n['correlated_windows']})"
+                     if realized_n.get("correlated_windows") else "")) if realized_n else \
+                 f"Effective-N: {cohort['unique_windows']} windows"
     lines = [f"G7 Paper Edge/PnL Smoke — {verdict}",
              f"Entries(>0 edge): {cohort['candidates']} | Resolved: {cohort['resolved']} "
              f"({cohort['wins']}W/{cohort['losses']}L, {cohort['win_rate']})",
-             f"Effective-N: {cohort['unique_windows']} windows",
+             eff_n_line,
              f"Net PnL total: ${cohort['total_net_pnl']} (mean ${cohort['mean_net_pnl']})"]
     for label in (">0", ">=0.03", ">=0.05", ">=0.10", ">=0.15", ">=0.25"):
         b = bucket_reports.get(label, {})
         lines.append(f"  {label}: n={b.get('candidates', 0)} resolved={b.get('resolved', 0)} "
                      f"net=${b.get('total_net_pnl', '0')}")
     if cohort.get("best_win") is not None:
-        lines.append(f"Best win: ${cohort['best_win']} | Worst loss: ${cohort['worst_loss']}")
+        lines.append(f"Best win: ${cohort['best_win']}")
+    if cohort.get("least_loss") is not None:
+        # never call a negative result "best win" — this cohort has zero wins.
+        lines.append(f"Least loss: ${cohort['least_loss']} | Worst loss: ${cohort['worst_loss']}")
     if diagnosis and "note" not in diagnosis:
         lines.append("Diagnosis: " + json.dumps(diagnosis, default=str))
     lines.append(ALPHA_WARNING)
     return "\n".join(lines)
+
+
+def build_decision_telegram_line(decision: dict) -> str:
+    """One bidirectional paper-decision line: selected side, executable entry, gross edge,
+    fee-adjusted net edge, and eventual net PnL (pending resolution until settled)."""
+    side = decision.get("selected_side")
+    if side is None:
+        return f"NO ENTRY ({decision.get('no_entry_reason')}) fair_yes={decision['fair_yes']}"
+    leg = decision["yes"] if side == "YES" else decision["no"]
+    return (f"{side} entry @ {leg['exec_ask_vwap']} | gross_edge={leg['gross_edge']} "
+           f"net_edge={leg['net_edge']} | net PnL: PENDING_RESOLUTION")
 
 
 def run_evaluation(db_path: str, *, gamma_fetch=gamma_fetch_live, clob_fetch=clob_fetch_live) -> dict:
@@ -177,6 +195,8 @@ def run_evaluation(db_path: str, *, gamma_fetch=gamma_fetch_live, clob_fetch=clo
         bucket_reports[label] = pp.aggregate_bucket(results)
 
     cohort = bucket_reports[">0"]
+    resolved_results = [r for r in results_by_signal_id.values() if r.get("status") == ST_RESOLVED]
+    realized_n = pp.realized_effective_n(resolved_results)   # resolved windows only; correlation-flagged
     diagnosis = None
     if cohort["resolved"] > 0 and cohort["total_net_pnl"] < 0:
         diagnosis = diagnose_negative_pnl(base_cohort, results_by_signal_id)
@@ -189,9 +209,11 @@ def run_evaluation(db_path: str, *, gamma_fetch=gamma_fetch_live, clob_fetch=clo
         verdict = "EDGE_NEGATIVE_DIAGNOSE"
 
     return {
-        "warning": ALPHA_WARNING, "effective_n": eff_n, "verdict": verdict,
-        "cohort": cohort, "bucket_reports": bucket_reports, "diagnosis": diagnosis,
-        "telegram_summary": build_telegram_summary(cohort, bucket_reports, diagnosis, verdict),
+        "warning": ALPHA_WARNING, "effective_n": eff_n, "realized_effective_n": realized_n,
+        "verdict": verdict, "cohort": cohort, "bucket_reports": bucket_reports,
+        "diagnosis": diagnosis,
+        "telegram_summary": build_telegram_summary(cohort, bucket_reports, diagnosis, verdict,
+                                                   realized_n=realized_n),
         "per_candidate": [results_by_signal_id[c["signal_id"]] for c in base_cohort],
     }
 
