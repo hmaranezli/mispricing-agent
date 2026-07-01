@@ -31,6 +31,16 @@ from tools import gateg8_paper_forward_capture as fwd  # noqa: E402
 NOW_MS = 1_900_000_000_000
 
 
+@pytest.fixture(autouse=True)
+def _block_live_network(monkeypatch):
+    """Every test in this module drives injected fakes only; hard-patch urlopen so any
+    accidentally-unmocked path fails loudly instead of silently reaching the live network.
+    urllib.request is a process-wide singleton module, so this also covers calls made
+    through tools.gateg8_paper_forward_capture's real gateg5_telemetry_runner import."""
+    monkeypatch.setattr(runner.urllib.request, "urlopen",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("live network")))
+
+
 # ===========================================================================
 # 1/2. outcome-label binding — never by index; swapped order; ambiguous fail-closed
 # ===========================================================================
@@ -276,6 +286,7 @@ def test_paper_decision_contains_all_required_ledger_fields():
                "reference_age_ms", "tte_s", "yes_token_id", "no_token_id", "yes_quote_ts_ms",
                "no_quote_ts_ms", "yes_capture_started_ms", "yes_capture_completed_ms",
                "no_capture_started_ms", "no_capture_completed_ms", "dual_book_skew_ms",
+               "hl_capture_started_ms", "hl_capture_completed_ms",
                "yes_exec_ask_vwap", "yes_filled_qty", "no_exec_ask_vwap", "no_filled_qty",
                "fee_rate", "fee_exponent", "yes_gross_edge", "yes_net_edge", "no_gross_edge",
                "no_net_edge", "selected_side", "selected_token_id", "no_entry_reason",
@@ -313,6 +324,7 @@ def _hl_fixture(p_now="59000", strike="60000", sigma=0.8):
 
 
 def test_orchestrator_exactly_two_book_gets_no_retry(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
     client = _FakeBookClient({
         "tokUp": _real_shaped_book("0.40", ts=NOW_MS - 100),
         "tokDown": _real_shaped_book("0.55", ts=NOW_MS - 90),
@@ -328,6 +340,7 @@ def test_orchestrator_exactly_two_book_gets_no_retry(monkeypatch):
 
 
 def test_orchestrator_decision_ordering_after_capture(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
     client = _FakeBookClient({
         "tokUp": _real_shaped_book("0.40", ts=NOW_MS - 100),
         "tokDown": _real_shaped_book("0.55", ts=NOW_MS - 90),
@@ -401,3 +414,324 @@ def test_existing_runner_defaults_unchanged():
     # importing the g8 module must not alter the g5 runner's armed-by-default state
     import os
     assert os.environ.get(runner.TELEMETRY_ARM_ENV, "") != runner.TELEMETRY_ARM_TOKEN
+
+
+# ===========================================================================
+# BLOCKER 5 — token-ID integrity: two distinct non-empty string token IDs required
+# before any CLOB GET. Never guessed, no invented numeric regex.
+# ===========================================================================
+def test_bind_yes_no_tokens_rejects_none_token_id():
+    with pytest.raises(pp.OutcomeBindingError):
+        pp.bind_yes_no_tokens(["Up", "Down"], [None, "tokDown"])
+
+
+def test_bind_yes_no_tokens_rejects_empty_token_id():
+    with pytest.raises(pp.OutcomeBindingError):
+        pp.bind_yes_no_tokens(["Up", "Down"], ["", "tokDown"])
+
+
+def test_bind_yes_no_tokens_rejects_whitespace_only_token_id():
+    with pytest.raises(pp.OutcomeBindingError):
+        pp.bind_yes_no_tokens(["Up", "Down"], ["   ", "tokDown"])
+
+
+def test_bind_yes_no_tokens_rejects_duplicate_token_ids():
+    with pytest.raises(pp.OutcomeBindingError):
+        pp.bind_yes_no_tokens(["Up", "Down"], ["tokSame", "tokSame"])
+
+
+def test_bind_yes_no_tokens_rejects_non_string_token_id():
+    with pytest.raises(pp.OutcomeBindingError):
+        pp.bind_yes_no_tokens(["Up", "Down"], [12345, "tokDown"])
+
+
+def test_capture_and_decide_invalid_token_ids_never_calls_book_client(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    client = _FakeBookClient({})
+    pf, sig = _hl_fixture()
+    market = _market(clobTokenIds=[None, "tokDown"])
+    with pytest.raises(pp.OutcomeBindingError):
+        fwd.capture_and_decide(market, now_ms_provider=lambda: NOW_MS, max_skew_ms=5000,
+                               book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
+    assert client.calls == []
+
+
+# ===========================================================================
+# BLOCKER 3 — complete HL timing proof: hl_capture_started_ms/completed_ms recorded,
+# persisted, and enforced in the same no-lookahead ordering as the dual books.
+# ===========================================================================
+def test_build_paper_decision_hl_capture_completed_future_rejected():
+    yes, no = _clean_books()
+    d = pp.build_paper_decision(market=_market(), yes_book=yes, no_book=no,
+                                fair_yes=Decimal("0.70"), feed_ts=NOW_MS - 30_000, tte_s=300,
+                                max_skew_ms=5000, decision_ts=NOW_MS,
+                                hl_capture_started_ms=NOW_MS - 200,
+                                hl_capture_completed_ms=NOW_MS + 1000)
+    assert d["status"] == "FUTURE_TIMESTAMP_REJECTED"
+    assert d["field"] == "hl_capture_completed_ms"
+
+
+def test_build_paper_decision_persists_hl_capture_timing():
+    yes, no = _clean_books()
+    d = pp.build_paper_decision(market=_market(), yes_book=yes, no_book=no,
+                                fair_yes=Decimal("0.70"), feed_ts=NOW_MS - 30_000, tte_s=300,
+                                max_skew_ms=5000, decision_ts=NOW_MS,
+                                hl_capture_started_ms=NOW_MS - 300,
+                                hl_capture_completed_ms=NOW_MS - 200)
+    assert d["hl_capture_started_ms"] == NOW_MS - 300
+    assert d["hl_capture_completed_ms"] == NOW_MS - 200
+    assert d["paper_decision_ts"] >= d["hl_capture_completed_ms"] >= d["hl_capture_started_ms"]
+
+
+def test_orchestrator_hl_capture_timing_actual_ordering(monkeypatch):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    client = _FakeBookClient({
+        "tokUp": _real_shaped_book("0.40", ts=NOW_MS - 100),
+        "tokDown": _real_shaped_book("0.55", ts=NOW_MS - 90),
+    })
+    pf, sig = _hl_fixture()
+    times = iter(list(range(NOW_MS, NOW_MS + 100)))
+    result = fwd.capture_and_decide(_market(), now_ms_provider=lambda: next(times),
+                                    max_skew_ms=5000, book_fetch_client=client,
+                                    hl_price_feedts=pf, hl_sigma_annual=sig)
+    assert result["hl_capture_started_ms"] is not None
+    assert result["hl_capture_completed_ms"] is not None
+    assert result["hl_capture_started_ms"] <= result["hl_capture_completed_ms"]
+    assert result["paper_decision_ts"] >= result["hl_capture_completed_ms"]
+    assert result["paper_decision_ts"] >= result["yes_capture_completed_ms"]
+    assert result["paper_decision_ts"] >= result["no_capture_completed_ms"]
+
+
+# ===========================================================================
+# BLOCKER 2 — hard arm enforcement: main() AND capture_and_decide() must both refuse
+# before ANY network call or DB write when unarmed. is_armed() alone is insufficient.
+# ===========================================================================
+def test_capture_and_decide_unarmed_rejects_before_network(monkeypatch):
+    monkeypatch.delenv(fwd.PAPER_ARM_ENV, raising=False)
+    client = _FakeBookClient({})
+    pf, sig = _hl_fixture()
+    with pytest.raises(PermissionError):
+        fwd.capture_and_decide(_market(), now_ms_provider=lambda: NOW_MS, max_skew_ms=5000,
+                               book_fetch_client=client, hl_price_feedts=pf, hl_sigma_annual=sig)
+    assert client.calls == []
+
+
+def test_main_unarmed_rejects_before_db_write(monkeypatch, tmp_path):
+    monkeypatch.delenv(fwd.PAPER_ARM_ENV, raising=False)
+    db = str(tmp_path / "g8_unarmed.sqlite3")
+    rc = fwd.main(["--db", db])
+    assert rc == 2
+    import os
+    assert not os.path.exists(db)
+
+
+def test_main_requires_db_argument():
+    with pytest.raises(SystemExit):
+        fwd.main([])
+
+
+def test_cli_accepts_db_argument(monkeypatch, tmp_path):
+    # unarmed -> guard triggers, but argv must parse successfully first (proves --db exists)
+    monkeypatch.delenv(fwd.PAPER_ARM_ENV, raising=False)
+    db = str(tmp_path / "g8_cli.sqlite3")
+    rc = fwd.main(["--db", db])
+    assert rc == 2
+
+
+# ===========================================================================
+# BLOCKER 1 — real bounded driver/CLI: explicit bounds, monotonic elapsed, one ledger
+# row per attempted market decision, reusing G5 market discovery/cadence/public client.
+# ===========================================================================
+def _armed_env(monkeypatch, *, max_obs="5", max_elapsed="600", max_skew="5000"):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    monkeypatch.setenv("GATEG8_MAX_OBSERVATIONS", max_obs)
+    monkeypatch.setenv("GATEG8_MAX_ELAPSED_S", max_elapsed)
+    monkeypatch.setenv("GATEG8_MAX_SKEW_MS", max_skew)
+    # time.sleep is a process-wide singleton attribute; patching it here also covers the
+    # bounded cadence sleep inside tools.gateg8_paper_forward_capture.run (no real 30s wait).
+    monkeypatch.setattr(runner.time, "sleep", lambda *a, **k: None)
+
+
+def _fake_gamma_and_book(url, params=None):
+    if url == runner.GAMMA_MARKETS:
+        return [{"conditionId": "cond-x", "clobTokenIds": ["tokUp", "tokDown"],
+                 "outcomes": ["Up", "Down"], "slug": params["slug"],
+                 "endDate": "2099-01-01T00:00:00Z"}]
+    if url == runner.CLOB_BOOK:
+        return _real_shaped_book("0.40")
+    raise AssertionError(f"unexpected GET {url}")
+
+
+def test_run_requires_explicit_bounds_env(monkeypatch, tmp_path):
+    monkeypatch.setenv(fwd.PAPER_ARM_ENV, fwd.PAPER_ARM_TOKEN)
+    monkeypatch.delenv("GATEG8_MAX_OBSERVATIONS", raising=False)
+    monkeypatch.delenv("GATEG8_MAX_ELAPSED_S", raising=False)
+    monkeypatch.delenv("GATEG8_MAX_SKEW_MS", raising=False)
+    db = str(tmp_path / "g8_run_noenv.sqlite3")
+    with pytest.raises(PermissionError):
+        fwd.run(db)
+
+
+@pytest.mark.parametrize("bad_value", ["0", "-1"])
+@pytest.mark.parametrize("env_name", [
+    "GATEG8_MAX_OBSERVATIONS", "GATEG8_MAX_ELAPSED_S", "GATEG8_MAX_SKEW_MS"])
+def test_run_rejects_non_positive_bound_before_network_or_db(monkeypatch, tmp_path, env_name, bad_value):
+    _armed_env(monkeypatch)   # sets all three to valid positive defaults first
+    monkeypatch.setenv(env_name, bad_value)   # then override exactly the one under test
+    db = str(tmp_path / f"g8_run_badbound_{env_name}_{bad_value}.sqlite3")
+    calls = []
+
+    def no_network(url, params=None):
+        calls.append(url)
+        raise AssertionError("no GET expected: non-positive bound must reject first")
+
+    with pytest.raises(PermissionError):
+        fwd.run(db, public_get=no_network)
+    assert calls == []
+    import os
+    assert not os.path.exists(db)
+
+
+def test_run_unarmed_rejects_before_network_or_db(monkeypatch, tmp_path):
+    monkeypatch.delenv(fwd.PAPER_ARM_ENV, raising=False)
+    db = str(tmp_path / "g8_run_unarmed.sqlite3")
+    with pytest.raises(PermissionError):
+        fwd.run(db)
+    import os
+    assert not os.path.exists(db)
+
+
+def test_run_stops_on_max_observations(monkeypatch, tmp_path):
+    _armed_env(monkeypatch, max_obs="1")
+    db = str(tmp_path / "g8_run_obs.sqlite3")
+    pf, sig = _hl_fixture()
+    times = iter(list(range(NOW_MS, NOW_MS + 100_000)))
+    result = fwd.run(db, now_ms_provider=lambda: next(times), monotonic_provider=lambda: 0.0,
+                     public_get=_fake_gamma_and_book, hl_price_feedts=pf, hl_sigma_annual=sig)
+    assert result["stop_reason"] == "MAX_OBSERVATIONS"
+    assert result["observations"] >= 1
+
+
+def test_run_stops_on_monotonic_elapsed(monkeypatch, tmp_path):
+    _armed_env(monkeypatch, max_obs="1000", max_elapsed="10")
+    db = str(tmp_path / "g8_run_elapsed.sqlite3")
+    mono = iter([0.0, 20.0])   # loop-top check already exceeds the 10s bound
+    calls = []
+
+    def no_network(url, params=None):
+        calls.append(url)
+        raise AssertionError("no GET expected before the elapsed bound trips")
+
+    result = fwd.run(db, now_ms_provider=lambda: NOW_MS,
+                     monotonic_provider=lambda: next(mono),
+                     public_get=no_network)
+    assert result["stop_reason"] == "MAX_ELAPSED"
+    assert calls == []
+
+
+def test_run_writes_one_ledger_row_per_attempted_market(monkeypatch, tmp_path):
+    _armed_env(monkeypatch, max_obs="1")
+    db = str(tmp_path / "g8_run_ledger.sqlite3")
+    pf, sig = _hl_fixture()
+    times = iter(list(range(NOW_MS, NOW_MS + 100_000)))
+    fwd.run(db, now_ms_provider=lambda: next(times), monotonic_provider=lambda: 0.0,
+           public_get=_fake_gamma_and_book, hl_price_feedts=pf, hl_sigma_annual=sig)
+    import sqlite3
+    conn = sqlite3.connect(db)
+    n = conn.execute("SELECT COUNT(*) FROM gateg8_paper_ledger").fetchone()[0]
+    conn.close()
+    assert n == 1
+
+
+def test_run_no_retry_on_transport_error_still_writes_a_row(monkeypatch, tmp_path):
+    _armed_env(monkeypatch, max_obs="1")
+    db = str(tmp_path / "g8_run_toxic.sqlite3")
+    attempts = {"n": 0}
+
+    def toxic_market(url, params=None):
+        if url == runner.GAMMA_MARKETS:
+            return [{"conditionId": "cond-toxic", "clobTokenIds": [None, "tokDown"],
+                     "outcomes": ["Up", "Down"], "slug": params["slug"],
+                     "endDate": "2099-01-01T00:00:00Z"}]
+        attempts["n"] += 1
+        raise AssertionError("book GET must never be reached for invalid token metadata")
+
+    pf, sig = _hl_fixture()
+    times = iter(list(range(NOW_MS, NOW_MS + 100_000)))
+    result = fwd.run(db, now_ms_provider=lambda: next(times), monotonic_provider=lambda: 0.0,
+                     public_get=toxic_market, hl_price_feedts=pf, hl_sigma_annual=sig)
+    assert attempts["n"] == 0
+    import sqlite3
+    conn = sqlite3.connect(db)
+    n = conn.execute("SELECT COUNT(*) FROM gateg8_paper_ledger").fetchone()[0]
+    conn.close()
+    assert n == 1
+    assert result["observations"] == 1
+
+
+# ===========================================================================
+# BLOCKER 4 — atomic one-PAPER_OPEN-per-condition_id in the SQLite ledger path itself
+# (DB-level uniqueness guard, not only the Python-list enforce_one_entry_per_condition).
+# ===========================================================================
+def _open_decision(condition_id, ts):
+    return {"status": "PAPER_OPEN", "condition_id": condition_id, "slug": "btc-updown-15m-1000",
+           "asset": "BTC", "window": "1000", "paper_decision_ts": ts, "fair_yes": "0.70",
+           "reference_age_ms": 30_000, "tte_s": 300, "yes_token_id": "tokUp",
+           "no_token_id": "tokDown", "yes_quote_ts_ms": ts - 100, "no_quote_ts_ms": ts - 90,
+           "yes_capture_started_ms": ts - 500, "yes_capture_completed_ms": ts - 400,
+           "no_capture_started_ms": ts - 400, "no_capture_completed_ms": ts - 300,
+           "dual_book_skew_ms": 100, "hl_capture_started_ms": ts - 600,
+           "hl_capture_completed_ms": ts - 550,
+           "yes_exec_ask_vwap": "0.40", "yes_filled_qty": "62.5",
+           "no_exec_ask_vwap": "0.55", "no_filled_qty": "45.45", "fee_rate": "0.07",
+           "fee_exponent": 1, "yes_gross_edge": "0.30", "yes_net_edge": "0.28",
+           "no_gross_edge": "-0.25", "no_net_edge": "-0.27", "selected_side": "YES",
+           "selected_token_id": "tokUp", "no_entry_reason": None,
+           "selected_filled_qty": "62.5", "selected_entry_notional": "25"}
+
+
+def test_write_paper_ledger_downgrades_second_paper_open_same_condition(tmp_path):
+    import sqlite3
+    db = str(tmp_path / "g8_dedup.sqlite3")
+    conn = sqlite3.connect(db)
+    fwd.init_paper_ledger(conn)
+    s1 = fwd.write_paper_ledger(conn, _open_decision("cid-dup", NOW_MS))
+    s2 = fwd.write_paper_ledger(conn, _open_decision("cid-dup", NOW_MS + 100))
+    assert s1 == "PAPER_OPEN"
+    assert s2 == "DUPLICATE_CONDITION_SKIPPED"
+    rows = conn.execute(
+        "SELECT status FROM gateg8_paper_ledger WHERE condition_id='cid-dup' ORDER BY id"
+    ).fetchall()
+    assert [r[0] for r in rows] == ["PAPER_OPEN", "DUPLICATE_CONDITION_SKIPPED"]
+    assert sum(1 for r in rows if r[0] == "PAPER_OPEN") == 1
+    conn.close()
+
+
+def test_write_paper_ledger_dedup_survives_db_reopen(tmp_path):
+    import sqlite3
+    db = str(tmp_path / "g8_dedup_reopen.sqlite3")
+    conn1 = sqlite3.connect(db)
+    fwd.init_paper_ledger(conn1)
+    fwd.write_paper_ledger(conn1, _open_decision("cid-reopen", NOW_MS))
+    conn1.close()
+
+    conn2 = sqlite3.connect(db)
+    fwd.init_paper_ledger(conn2)   # idempotent re-create; unique index persists on disk
+    s2 = fwd.write_paper_ledger(conn2, _open_decision("cid-reopen", NOW_MS + 500))
+    assert s2 == "DUPLICATE_CONDITION_SKIPPED"
+    count = conn2.execute(
+        "SELECT COUNT(*) FROM gateg8_paper_ledger WHERE condition_id='cid-reopen' AND status='PAPER_OPEN'"
+    ).fetchone()[0]
+    assert count == 1
+    conn2.close()
+
+
+def test_write_paper_ledger_different_conditions_both_open(tmp_path):
+    import sqlite3
+    db = str(tmp_path / "g8_dedup_multi.sqlite3")
+    conn = sqlite3.connect(db)
+    fwd.init_paper_ledger(conn)
+    s1 = fwd.write_paper_ledger(conn, _open_decision("cid-a", NOW_MS))
+    s2 = fwd.write_paper_ledger(conn, _open_decision("cid-b", NOW_MS))
+    assert s1 == "PAPER_OPEN" and s2 == "PAPER_OPEN"
+    conn.close()

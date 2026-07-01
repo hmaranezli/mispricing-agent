@@ -61,11 +61,26 @@ _NO_DOWN_LABELS = frozenset({"no", "down"})
 def bind_yes_no_tokens(outcomes, token_ids) -> dict:
     """Bind YES/Up and NO/Down tokens by NORMALIZED label (case/whitespace-insensitive),
     NEVER by a fixed array index. Works regardless of outcome/token ordering. Rejects
-    missing, duplicate, ambiguous, or unknown labels -- never falls back to a guess."""
+    missing, duplicate, ambiguous, or unknown labels -- never falls back to a guess.
+
+    Token-ID integrity (checked BEFORE any label binding, so a malformed carrier value
+    fails closed before a caller could ever issue a network GET for it): both token_ids
+    must be strings, non-empty after stripping, and distinct from each other. No numeric
+    format is assumed or regex-validated -- token IDs are opaque carrier values."""
     if not isinstance(outcomes, list) or not isinstance(token_ids, list) \
             or len(outcomes) != 2 or len(token_ids) != 2:
         raise OutcomeBindingError(
             f"expected exactly 2 outcomes and 2 token_ids: {outcomes!r} / {token_ids!r}")
+    cleaned_tokens = []
+    for t in token_ids:
+        if not isinstance(t, str):
+            raise OutcomeBindingError(f"non-string token_id: {t!r}")
+        stripped = t.strip()
+        if not stripped:
+            raise OutcomeBindingError(f"empty/whitespace-only token_id: {t!r}")
+        cleaned_tokens.append(stripped)
+    if cleaned_tokens[0] == cleaned_tokens[1]:
+        raise OutcomeBindingError(f"duplicate token_id: {token_ids!r}")
     norm = []
     for o in outcomes:
         if not isinstance(o, str):
@@ -81,7 +96,7 @@ def bind_yes_no_tokens(outcomes, token_ids) -> dict:
         raise OutcomeBindingError(f"missing/duplicate/ambiguous outcome labels: {outcomes!r}")
     yes_idx, no_idx = norm.index("YES"), norm.index("NO")
     return {"yes_index": yes_idx, "no_index": no_idx,
-            "yes_token_id": str(token_ids[yes_idx]), "no_token_id": str(token_ids[no_idx])}
+            "yes_token_id": cleaned_tokens[yes_idx], "no_token_id": cleaned_tokens[no_idx]}
 
 
 def _d(v):
@@ -341,6 +356,7 @@ def realized_effective_n(resolved_rows: list) -> dict:
 # ===========================================================================
 def build_paper_decision(*, market: dict, yes_book: dict, no_book: dict, fair_yes,
                          feed_ts: int, tte_s: int, max_skew_ms: int, decision_ts: int,
+                         hl_capture_started_ms: int = None, hl_capture_completed_ms: int = None,
                          intended_stake: Decimal = Decimal("25"),
                          cost_buffer: Decimal = Decimal("0")) -> dict:
     """Pure: no network/DB/clock. Binds YES/NO tokens by label (never index), enforces the
@@ -349,6 +365,12 @@ def build_paper_decision(*, market: dict, yes_book: dict, no_book: dict, fair_ye
     reads feeSchedule canonically (never takerBaseFee), then delegates the actual edge math to
     the COMMITTED evaluate_bidirectional_entry (never duplicated). `decision_ts` must be
     created by the caller only after every input (both books + HL fair-value) is available.
+
+    `hl_capture_started_ms`/`hl_capture_completed_ms` are OPTIONAL diagnostic timestamps
+    bracketing the caller's complete HL fair-value input acquisition/calculation. When
+    supplied, `hl_capture_completed_ms` joins the SAME no-lookahead ordering check as the
+    dual-book capture completions (decision_ts must be >= all three); they are never used in
+    edge/fee/selection math, only persisted as entry-time evidence.
     """
     cid, slug = market["conditionId"], market.get("slug")
     binding = bind_yes_no_tokens(market["outcomes"], market["clobTokenIds"])   # fail closed first
@@ -358,11 +380,14 @@ def build_paper_decision(*, market: dict, yes_book: dict, no_book: dict, fair_ye
         return {"status": DUAL_BOOK_SKEW_EXCEEDED, "dual_book_skew_ms": skew_ms,
                 "condition_id": cid, "slug": slug}
 
-    for field, ts in (("yes_quote_ts_ms", yes_book["quote_ts_ms"]),
-                      ("yes_capture_completed_ms", yes_book["capture_completed_ms"]),
-                      ("no_quote_ts_ms", no_book["quote_ts_ms"]),
-                      ("no_capture_completed_ms", no_book["capture_completed_ms"]),
-                      ("hl_feed_ts", feed_ts)):
+    no_lookahead_checks = [("yes_quote_ts_ms", yes_book["quote_ts_ms"]),
+                           ("yes_capture_completed_ms", yes_book["capture_completed_ms"]),
+                           ("no_quote_ts_ms", no_book["quote_ts_ms"]),
+                           ("no_capture_completed_ms", no_book["capture_completed_ms"]),
+                           ("hl_feed_ts", feed_ts)]
+    if hl_capture_completed_ms is not None:
+        no_lookahead_checks.append(("hl_capture_completed_ms", hl_capture_completed_ms))
+    for field, ts in no_lookahead_checks:
         if ts > decision_ts:
             return {"status": FUTURE_TIMESTAMP_REJECTED, "field": field,
                     "condition_id": cid, "slug": slug}
@@ -402,6 +427,8 @@ def build_paper_decision(*, market: dict, yes_book: dict, no_book: dict, fair_ye
         "no_capture_started_ms": no_book["capture_started_ms"],
         "no_capture_completed_ms": no_book["capture_completed_ms"],
         "dual_book_skew_ms": skew_ms,
+        "hl_capture_started_ms": hl_capture_started_ms,
+        "hl_capture_completed_ms": hl_capture_completed_ms,
         "yes_exec_ask_vwap": decision["yes"]["exec_ask_vwap"], "yes_filled_qty": decision["yes"]["filled_qty"],
         "no_exec_ask_vwap": decision["no"]["exec_ask_vwap"], "no_filled_qty": decision["no"]["filled_qty"],
         "fee_rate": (str(fee_cfg["fee_rate"]) if fee_cfg["fee_rate"] is not None else None),
