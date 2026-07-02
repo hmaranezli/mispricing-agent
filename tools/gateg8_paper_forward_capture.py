@@ -21,6 +21,7 @@ HARD BOUNDARIES:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import datetime
 import json
 import os
@@ -28,11 +29,14 @@ import re
 import sqlite3
 import sys
 import time
+import uuid
 from decimal import Decimal
 
 from analysis.forensic import gateg5_model as gm
 from analysis.forensic import gateg7_paper_pnl as pp
 from analysis.forensic import gateg8_exit_evidence as ee
+from analysis.forensic import gateg8_proxy_basis as pb
+from data import public_spot_fetchers as spot
 from tools import gateg5_telemetry_runner as runner
 from tools.gateg5_telemetry_runner import (
     CLOB_BOOK, TARGET_INTERVAL_S, TransportError,
@@ -284,6 +288,16 @@ def capture_and_decide(market: dict, *, now_ms_provider, max_skew_ms: int,
     decision["_no_asks"] = no_book["asks"]
     decision["_yes_bids"] = yes_book["bids"]
     decision["_no_bids"] = no_book["bids"]
+    # non-persisted HL reference inputs for proxy-basis evidence (Slice 2); reuses the values already
+    # captured above -- adds ZERO extra HL request. Ignored by the ledger writer (non-column keys).
+    decision["_hl_window_strike"] = strike
+    decision["_hl_strike_feed_ts"] = strike_feed_ts
+    decision["_hl_strike_capture_started_ms"] = stage_timings[STAGE_HL_WINDOW_STRIKE]["start_ts"]
+    decision["_hl_strike_capture_completed_ms"] = stage_timings[STAGE_HL_WINDOW_STRIKE]["completed_ts"]
+    decision["_hl_current_price"] = p_now
+    decision["_hl_current_feed_ts"] = feed_ts
+    decision["_hl_current_capture_started_ms"] = stage_timings[STAGE_HL_CURRENT_PRICE]["start_ts"]
+    decision["_hl_current_capture_completed_ms"] = stage_timings[STAGE_HL_CURRENT_PRICE]["completed_ts"]
     return decision
 
 
@@ -465,9 +479,71 @@ def _maybe_write_exit_evidence(conn, decision: dict, source_ledger_id: int,
     ee.write_exit_evidence(conn, row)
 
 
+# proxy-basis hook (Slice 2): on a PAPER_OPEN entry poll ONLY, capture per-source RAW reference
+# evidence (HL strike + HL current from in-memory values; Kraken + Coinbase via concurrent public
+# GET) and write all four as ONE atomic group. PAPER/SHADOW; no orders/wallet/G9/blend/delta.
+async def _gather_spot_ticks(asset: str, client):
+    """Concurrent Coinbase + Kraken USD spot capture via an INJECTED async client. No retry.
+    HL perp is NEVER fetched here (kept strictly separate from the spot legs)."""
+    return await asyncio.gather(
+        spot.fetch_coinbase_spot(asset, client=client),
+        spot.fetch_kraken_spot(asset, client=client),
+    )
+
+
+def _capture_spot_ticks(asset: str, *, client) -> tuple:
+    """Drive the concurrent async spot fetch from the sync forward-capture loop. Exactly TWO
+    public GETs (Coinbase + Kraken); each leg's failure is absorbed into its tick (reject_reason)
+    by the fetcher, never raised here."""
+    return asyncio.run(_gather_spot_ticks(asset, client))
+
+
+def _maybe_write_proxy_basis(conn, decision: dict, source_ledger_id: int, poll_ledger_status: str,
+                             capture_run_id, *, now_ms_provider, spot_http_client) -> None:
+    """When Slice 2 is armed (capture_run_id set) AND this poll persisted a PAPER_OPEN, build all
+    four complete reference dicts in memory (HL strike, HL current, Coinbase, Kraken -- a failed
+    spot leg becomes a complete REJECTED dict) and write them as ONE atomic group. Runs strictly
+    AFTER the ledger commit and Slice 1 evidence write; a group-write failure propagates (fail-fast).
+    """
+    if capture_run_id is None:
+        return
+    if poll_ledger_status != pp.PAPER_OPEN:
+        return
+    market_ident = {k: decision.get(k) for k in ("condition_id", "slug", "asset", "window")}
+    entry_ledger_id = source_ledger_id   # ENTRY-only Slice 2: the PAPER_OPEN poll is its own anchor
+
+    # --- BUILD phase (no DB write): all four complete dicts first ---
+    group = list(pb.build_hl_reference_rows(
+        capture_run_id=capture_run_id, source_ledger_id=source_ledger_id,
+        entry_ledger_id=entry_ledger_id, market_ident=market_ident,
+        window_strike=decision.get("_hl_window_strike"),
+        window_strike_ts_ms=decision.get("_hl_strike_feed_ts"),
+        window_strike_started_ms=decision.get("_hl_strike_capture_started_ms"),
+        window_strike_completed_ms=decision.get("_hl_strike_capture_completed_ms"),
+        current_price=decision.get("_hl_current_price"),
+        current_ts_ms=decision.get("_hl_current_feed_ts"),
+        current_started_ms=decision.get("_hl_current_capture_started_ms"),
+        current_completed_ms=decision.get("_hl_current_capture_completed_ms")))
+
+    started_ms = now_ms_provider()
+    cb_tick, kr_tick = _capture_spot_ticks(market_ident.get("asset"), client=spot_http_client)
+    completed_ms = now_ms_provider()
+
+    for reference_kind, tick in ((pb.REF_COINBASE_SPOT, cb_tick), (pb.REF_KRAKEN_SPOT, kr_tick)):
+        group.append(pb.build_spot_reference_row(
+            reference_kind=reference_kind, tick=tick, capture_started_ms=started_ms,
+            capture_completed_ms=completed_ms, capture_run_id=capture_run_id,
+            source_ledger_id=source_ledger_id, entry_ledger_id=entry_ledger_id,
+            market_ident=market_ident))
+
+    # --- WRITE phase: one atomic all-or-zero group ---
+    pb.write_proxy_basis_group(conn, group)
+
+
 def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000),
        monotonic_provider=time.monotonic, abort_check=None,
-       public_get=None, hl_price_feedts=None, hl_sigma_annual=None) -> dict:
+       public_get=None, hl_price_feedts=None, hl_sigma_annual=None,
+       spot_http_client=None) -> dict:
     """Bounded single-pass paper forward-capture driver (PAPER/SHADOW ONLY; NO orders, NO
     resolution fetch). Requires GATEG8_PAPER_ARM + GATEG8_MAX_OBSERVATIONS +
     GATEG8_MAX_ELAPSED_S + GATEG8_MAX_SKEW_MS explicitly set -- fails closed otherwise,
@@ -492,10 +568,19 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000),
     public_get = public_get or _default_public_get
     hl_pf = hl_price_feedts or _default_hl_price_feedts
     hl_sig = hl_sigma_annual or _default_hl_sigma_annual
+    spot_http_client = spot_http_client or runner._default_async_http_client
 
     conn = sqlite3.connect(db_path)
     init_paper_ledger(conn)
     ee.init_exit_evidence_table(conn)
+
+    # Slice 2 proxy-basis is a SEPARATE opt-in inside the arm gate. OFF -> zero proxy calls, zero
+    # proxy-table creation, byte-identical ledger/Slice 1 output. ON -> exactly one UUIDv4 for the
+    # whole run (never timestamp-derived), reused for every proxy row this run produces.
+    capture_run_id = None
+    if pb.is_armed():
+        pb.init_proxy_basis_table(conn)
+        capture_run_id = str(uuid.uuid4())
 
     start_mono = monotonic_provider()
     observations = 0
@@ -543,6 +628,11 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000),
                 # exit-evidence write that fails raises here and stops the loop (non-zero exit),
                 # leaving the committed ledger row as an auditable orphan -- never silently skipped.
                 _maybe_write_exit_evidence(conn, decision, source_ledger_id, status_persisted)
+                # Slice 2 proxy-basis: after the ledger + Slice 1 writes, only for a persisted
+                # PAPER_OPEN. A group-write failure propagates here and stops the loop (fail-fast).
+                _maybe_write_proxy_basis(conn, decision, source_ledger_id, status_persisted,
+                                         capture_run_id, now_ms_provider=now_ms_provider,
+                                         spot_http_client=spot_http_client)
                 observations += 1
                 _emit_observation_log(observations, decision)
         if stop_reason == "OPERATOR_ABORT":
