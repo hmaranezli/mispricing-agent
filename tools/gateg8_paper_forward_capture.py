@@ -50,6 +50,16 @@ PAPER_ARM_TOKEN = "BIDIRECTIONAL-PAPER-CONFIRMED"
 DEFAULT_STAKE = Decimal("25")
 POLL_INTERVAL_S = runner.POLL_INTERVAL_S  # reused G5 cadence; never redefined independently
 
+# Optional single-window containment lock (design lock; OFF by default). When
+# GATEG8_TARGET_WINDOW_START_MS is set to a canonical 15m boundary (ms), the run freezes its
+# target slug set to exactly that window and adds a wall-clock top-of-loop expiry backstop, so a
+# boundary-launched run can never open or persist the following window. Absent -> the committed
+# rolling behavior (runner._target_slugs) is unchanged.
+TARGET_WINDOW_ENV = "GATEG8_TARGET_WINDOW_START_MS"
+TARGET_WINDOW_EXPIRED = "TARGET_WINDOW_EXPIRED"
+_WINDOW_MS = TARGET_INTERVAL_S * 1000            # 900_000: one 15m window in ms
+_TARGET_WINDOW_RE = re.compile(r"[0-9]+")        # plain non-negative decimal only (no sign/space/./e)
+
 _LEDGER_COLS = [
     "condition_id", "slug", "asset", "window", "paper_decision_ts", "fair_yes",
     "reference_age_ms", "tte_s", "yes_token_id", "no_token_id", "yes_quote_ts_ms",
@@ -371,6 +381,35 @@ def _require_env_int(name: str) -> int:
     return value
 
 
+def _locked_window_start_ms() -> int | None:
+    """Parse the optional single-window lock. Returns None when GATEG8_TARGET_WINDOW_START_MS is
+    absent/blank (rolling behavior preserved). Otherwise fails closed with PermissionError unless
+    the value is a plain positive decimal on a canonical 15m boundary -- rejecting signs, spaces,
+    decimals, and scientific notation BEFORE any DB creation or network call."""
+    raw = os.environ.get(TARGET_WINDOW_ENV)
+    if raw is None or raw.strip() == "":
+        return None
+    if not _TARGET_WINDOW_RE.fullmatch(raw):
+        raise PermissionError(
+            f"{TARGET_WINDOW_ENV} must be a plain positive integer (ms), got {raw!r}")
+    value = int(raw)
+    if value <= 0:
+        raise PermissionError(f"{TARGET_WINDOW_ENV} must be positive, got {value!r}")
+    if value % _WINDOW_MS != 0:
+        raise PermissionError(
+            f"{TARGET_WINDOW_ENV} must be a canonical 15m boundary (multiple of {_WINDOW_MS}), "
+            f"got {value!r}")
+    return value
+
+
+def _locked_target_slugs(window_start_ms: int):
+    """Frozen single-window slug set: the current-window slug (never the next) for each configured
+    target asset, reusing the committed runner slug template. Never calls runner._target_slugs."""
+    start_s = window_start_ms // 1000
+    for asset in runner.TARGET_ASSETS:
+        yield f"{asset.lower()}-updown-15m-{start_s}"
+
+
 def _capture_failed_decision(exc, market: dict) -> dict:
     """Build a fully-diagnosable CAPTURE_FAILED ledger row from a stage-instrumented
     exception: failure_stage, exception class, SANITIZED message, partial stage timings,
@@ -559,6 +598,14 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000),
     max_elapsed_s = _require_env_int("GATEG8_MAX_ELAPSED_S")
     max_skew_ms = _require_env_int("GATEG8_MAX_SKEW_MS")
 
+    # Optional single-window lock: validate + refuse an already-expired target BEFORE any DB
+    # creation or network call (fail closed like the other startup guards).
+    locked_window_start_ms = _locked_window_start_ms()
+    if locked_window_start_ms is not None:
+        if now_ms_provider() >= locked_window_start_ms + _WINDOW_MS:
+            raise PermissionError(
+                f"{TARGET_WINDOW_ENV} target window already closed at launch -- refusing to start")
+
     if abort_check is None:
         abort_check = lambda: runner._ABORT_REQUESTED   # noqa: E731
 
@@ -598,8 +645,17 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000),
             stop_reason = "MAX_ELAPSED"
             break
 
-        now_ms = now_ms_provider()
-        for slug in runner._target_slugs(now_ms):
+        # Locked mode: wall-clock expiry backstop (fires before any per-cycle network) + frozen
+        # single-window slug set. Unlocked mode: unchanged committed rolling target discovery.
+        if locked_window_start_ms is not None:
+            if now_ms_provider() >= locked_window_start_ms + _WINDOW_MS:
+                stop_reason = TARGET_WINDOW_EXPIRED
+                break
+            cycle_slugs = _locked_target_slugs(locked_window_start_ms)
+        else:
+            cycle_slugs = runner._target_slugs(now_ms_provider())
+
+        for slug in cycle_slugs:
             if abort_check():
                 stop_reason = "OPERATOR_ABORT"
                 break
