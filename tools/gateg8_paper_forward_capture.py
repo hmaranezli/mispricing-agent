@@ -32,6 +32,7 @@ from decimal import Decimal
 
 from analysis.forensic import gateg5_model as gm
 from analysis.forensic import gateg7_paper_pnl as pp
+from analysis.forensic import gateg8_exit_evidence as ee
 from tools import gateg5_telemetry_runner as runner
 from tools.gateg5_telemetry_runner import (
     CLOB_BOOK, TARGET_INTERVAL_S, TransportError,
@@ -144,7 +145,10 @@ def _fetch_book(token_id: str, *, now_ms_provider, public_get) -> dict:
     except (TypeError, ValueError):
         ts = completed
     asks = [[lvl["price"], lvl["size"]] for lvl in raw.get("asks", [])]
-    return {"asks": asks, "quote_ts_ms": ts,
+    # bids retained in-memory for exit-evidence (Slice 1); entry math never reads them, and the
+    # ledger writer ignores non-column keys. This adds NO network request (same /book response).
+    bids = [[lvl["price"], lvl["size"]] for lvl in raw.get("bids", [])]
+    return {"asks": asks, "bids": bids, "quote_ts_ms": ts,
             "capture_started_ms": started, "capture_completed_ms": completed}
 
 
@@ -275,6 +279,11 @@ def capture_and_decide(market: dict, *, now_ms_provider, max_skew_ms: int,
     # evidence-only enrichment (adds diagnostic keys; never mutates economic fields)
     decision["stage_timings_json"] = json.dumps(stage_timings, separators=(",", ":"))
     decision.update(window_evidence)
+    # non-persisted held-token ladders for exit-evidence (Slice 1); ignored by the ledger writer.
+    decision["_yes_asks"] = yes_book["asks"]
+    decision["_no_asks"] = no_book["asks"]
+    decision["_yes_bids"] = yes_book["bids"]
+    decision["_no_bids"] = no_book["bids"]
     return decision
 
 
@@ -402,6 +411,60 @@ def _emit_observation_log(n: int, decision: dict) -> None:
     print(" ".join(str(p) for p in parts), file=sys.stderr, flush=True)
 
 
+# exit-evidence hook (Slice 1): later/opening polls of an OPEN condition persist one simulated
+# held-token exit-liquidation row. Reads the original PAPER_OPEN row as the immutable holding.
+_EXIT_ENTRY_COLS = [
+    "condition_id", "slug", "asset", "window", "selected_side", "selected_token_id",
+    "yes_token_id", "no_token_id", "selected_filled_qty", "yes_exec_ask_vwap",
+    "no_exec_ask_vwap", "fee_rate", "selected_entry_notional", "paper_decision_ts",
+]
+
+
+def _side_book(decision: dict, side: str):
+    """Reassemble the captured book for one side from the non-persisted ladders + the persisted
+    per-side capture timing. None when this poll captured no book for the side."""
+    bids = decision.get(f"_{side}_bids")
+    asks = decision.get(f"_{side}_asks")
+    if bids is None and asks is None:
+        return None
+    return {"bids": bids or [], "asks": asks or [],
+            "quote_ts_ms": decision.get(f"{side}_quote_ts_ms"),
+            "capture_started_ms": decision.get(f"{side}_capture_started_ms"),
+            "capture_completed_ms": decision.get(f"{side}_capture_completed_ms")}
+
+
+def _books_by_token_from_decision(decision: dict) -> dict:
+    out = {}
+    yti, nti = decision.get("yes_token_id"), decision.get("no_token_id")
+    if yti is not None:
+        out[yti] = _side_book(decision, "yes")
+    if nti is not None:
+        out[nti] = _side_book(decision, "no")
+    return out
+
+
+def _maybe_write_exit_evidence(conn, decision: dict, source_ledger_id: int,
+                               poll_ledger_status: str) -> None:
+    """If this poll's condition has an original PAPER_OPEN anchor, persist exactly one simulated
+    exit-evidence row (fail-fast: any error propagates and stops the loop)."""
+    cid = decision.get("condition_id")
+    if cid is None:
+        return
+    r = conn.execute(
+        f"SELECT rowid,{','.join(_EXIT_ENTRY_COLS)} FROM gateg8_paper_ledger "
+        "WHERE condition_id=? AND status=?", (cid, pp.PAPER_OPEN)).fetchone()
+    if r is None:
+        return   # no PAPER_OPEN anchor for this condition -> no exit evidence
+    entry_ledger_id = r[0]
+    entry_row = dict(zip(_EXIT_ENTRY_COLS, r[1:]))
+    obs_ts_ms = decision.get("paper_decision_ts") or decision.get("probe_now_ms")
+    row = ee.build_exit_evidence(
+        entry_row=entry_row, entry_ledger_id=entry_ledger_id, source_ledger_id=source_ledger_id,
+        obs_ts_ms=obs_ts_ms, poll_ledger_status=poll_ledger_status,
+        books_by_token=_books_by_token_from_decision(decision))
+    ee.write_exit_evidence(conn, row)
+
+
 def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000),
        monotonic_provider=time.monotonic, abort_check=None,
        public_get=None, hl_price_feedts=None, hl_sigma_annual=None) -> dict:
@@ -432,6 +495,7 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000),
 
     conn = sqlite3.connect(db_path)
     init_paper_ledger(conn)
+    ee.init_exit_evidence_table(conn)
 
     start_mono = monotonic_provider()
     observations = 0
@@ -473,7 +537,12 @@ def run(db_path: str, *, now_ms_provider=lambda: int(time.time() * 1000),
                         hl_sigma_annual=hl_sig)
                 except (pp.OutcomeBindingError, TransportError, gm.ModelInputError) as e:
                     decision = _capture_failed_decision(e, market)
-                write_paper_ledger(conn, decision)
+                status_persisted = write_paper_ledger(conn, decision)
+                source_ledger_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                # Option B transaction boundary: ledger row already committed; a required
+                # exit-evidence write that fails raises here and stops the loop (non-zero exit),
+                # leaving the committed ledger row as an auditable orphan -- never silently skipped.
+                _maybe_write_exit_evidence(conn, decision, source_ledger_id, status_persisted)
                 observations += 1
                 _emit_observation_log(observations, decision)
         if stop_reason == "OPERATOR_ABORT":
